@@ -22,6 +22,7 @@ import com.google.android.gms.location.Priority
 import com.tegenwind.app.MainActivity
 import com.tegenwind.app.R
 import com.tegenwind.app.appContainer
+import com.tegenwind.app.eta.priorForm
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -74,10 +75,23 @@ class RideService : Service() {
         createChannel()
         startForeground(NOTIFICATION_ID, notification("Starting ride…"), ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION)
         scope.launch {
-            val route = routeId?.let { appContainer.routes.load(it) }
-            recorder.start(simulated, route)
-            if (simulated) simulation = launch { RideSimulator.run(route?.line, recorder::onFix) }
-            else startGps()
+            val container = appContainer
+            val route = routeId?.let { container.routes.load(it) }
+            recorder.start(simulated, route, priorForm(container.db.rides().recentForms()))
+            if (route != null) {
+                // Wind forecast for the middle of the route, refreshed every 15 minutes.
+                launch {
+                    while (isActive) {
+                        container.weather.forecast(route.line.pointAt(route.line.lengthM / 2))?.let(recorder::setForecast)
+                        delay(15 * 60_000L)
+                    }
+                }
+            }
+            if (simulated) {
+                simulation = launch {
+                    RideSimulator.run(route?.line, route?.signalsAtM.orEmpty(), recorder::simulatedSpeedAt, recorder::onFix)
+                }
+            } else startGps()
             while (isActive) {
                 recorder.live.value?.let { updateNotification(it) }
                 delay(5_000)
@@ -137,7 +151,8 @@ class RideService : Service() {
 
     private fun updateNotification(ride: LiveRide) {
         val s = ride.snapshot
-        val routePart = ride.route?.let { r -> "%.1f km to go · ".format(r.progress.remainingM / 1000) } ?: ""
+        val etaPart = ride.eta?.let { "ETA ${formatClock(it.eta.arrivalMs)} · " } ?: ""
+        val routePart = etaPart + (ride.route?.let { r -> "%.1f km to go · ".format(r.progress.remainingM / 1000) } ?: "")
         val text = routePart + "%.1f km · %s moving".format(s.distanceM / 1000, formatElapsed(s.movingMs)) +
             (if (ride.simulated) " · simulated" else "")
         getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification(text))
@@ -165,6 +180,11 @@ class RideService : Service() {
         }
     }
 }
+
+/** Wall-clock time as HH:mm in the phone's time zone. */
+fun formatClock(epochMs: Long): String =
+    java.time.Instant.ofEpochMilli(epochMs).atZone(java.time.ZoneId.systemDefault())
+        .format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"))
 
 /** 754_000 -> "12:34", 3_725_000 -> "1:02:05" */
 fun formatElapsed(ms: Long): String {

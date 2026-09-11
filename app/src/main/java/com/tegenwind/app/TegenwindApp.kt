@@ -8,6 +8,7 @@ import com.tegenwind.app.health.HealthConnectHr
 import com.tegenwind.app.ride.RideRecorder
 import com.tegenwind.app.routes.RouteEnricher
 import com.tegenwind.app.routes.RouteRepository
+import com.tegenwind.app.weather.WeatherRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -29,6 +30,7 @@ class AppContainer(app: Application) {
     val recorder = RideRecorder(db.rides(), appScope)
     val healthConnect = HealthConnectHr(app)
     val routes = RouteRepository(db.routes(), RouteEnricher(), appScope)
+    val weather = WeatherRepository()
 }
 
 val Context.appContainer: AppContainer

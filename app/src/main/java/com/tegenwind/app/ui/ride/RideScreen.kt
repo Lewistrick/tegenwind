@@ -8,12 +8,6 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.material3.FilterChip
-import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
-import com.tegenwind.app.data.RouteEntity
-import com.tegenwind.app.ride.RideRoute
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -22,11 +16,14 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -40,6 +37,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.TextStyle
@@ -50,17 +55,32 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.tegenwind.app.appContainer
+import com.tegenwind.app.data.RouteEntity
+import com.tegenwind.app.eta.Eta
+import com.tegenwind.app.eta.FormEstimate
+import com.tegenwind.app.eta.LiveEta
+import com.tegenwind.app.eta.WindNow
+import com.tegenwind.app.eta.etaModel
+import com.tegenwind.app.eta.priorForm
 import com.tegenwind.app.ride.LiveRide
+import com.tegenwind.app.ride.RideRoute
 import com.tegenwind.app.ride.RideService
+import com.tegenwind.app.ride.formatClock
 import com.tegenwind.app.ride.formatElapsed
 import com.tegenwind.app.ui.TimeSeriesChart
 import com.tegenwind.app.ui.theme.Danger
 import com.tegenwind.app.ui.theme.GoodColor
 import com.tegenwind.app.ui.theme.HeartColor
 import com.tegenwind.app.ui.theme.SpeedColor
+import com.tegenwind.app.weather.WindSample
+import com.tegenwind.app.weather.beaufort
+import com.tegenwind.app.weather.compassPoint
+import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 
 private const val PREF_ROUTE = "lastRouteId"
+
+private val etaNumber = TextStyle(fontSize = 48.sp, fontWeight = FontWeight.Bold, fontFeatureSettings = "tnum", lineHeight = 50.sp)
 
 private val bigNumber = TextStyle(fontSize = 64.sp, fontWeight = FontWeight.Bold, fontFeatureSettings = "tnum", lineHeight = 64.sp)
 
@@ -144,6 +164,7 @@ private fun IdleView(
                 }
             }
         }
+        selectedRouteId?.let { LeaveNowPreview(it) }
         if (!locationOk) {
             Text(
                 "Tegenwind needs your location to measure speed and distance. It stays on this phone.",
@@ -204,7 +225,7 @@ private fun LiveView(ride: LiveRide, onStop: () -> Unit) {
             Text(formatElapsed(now - s.startedAtMs), style = MaterialTheme.typography.titleLarge.copy(fontFeatureSettings = "tnum"))
         }
 
-        ride.route?.let { RouteCard(it) }
+        ride.route?.let { EtaCard(it, ride.eta) }
 
         Card(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
@@ -271,32 +292,128 @@ private fun LiveView(ride: LiveRide, onStop: () -> Unit) {
     }
 }
 
+private data class Preview(val eta: Eta, val wind: WindSample?)
+
+/** "Leave now, arrive at 08:43": the ETA for the whole route with the current forecast and your usual form. */
 @Composable
-private fun RouteCard(r: RideRoute) {
-    val p = r.progress
+private fun LeaveNowPreview(routeId: Long) {
+    val container = LocalContext.current.appContainer
+    val preview by produceState<Preview?>(null, routeId) {
+        val route = container.routes.load(routeId) ?: return@produceState
+        val model = route.etaModel()
+        val form = FormEstimate(priorForm(container.db.rides().recentForms()), 0.01)
+        while (true) {
+            val forecast = container.weather.forecast(route.line.pointAt(route.line.lengthM / 2))
+            val now = System.currentTimeMillis()
+            value = Preview(model.predict(0.0, now, forecast, form), forecast?.at(now))
+            delay(60_000)
+        }
+    }
+    val p = preview ?: return
     Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Row(verticalAlignment = Alignment.Bottom) {
-                Text(r.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                Spacer(Modifier.weight(1f))
-                Text(
-                    "%.1f km to go".format(p.remainingM / 1000),
-                    style = MaterialTheme.typography.titleLarge.copy(fontFeatureSettings = "tnum"),
-                    fontWeight = FontWeight.SemiBold,
-                )
-            }
-            ProgressTrack(r, Modifier.fillMaxWidth().height(14.dp))
+        Column(Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text("Leave now, arrive at", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(formatClock(p.eta.arrivalMs), style = etaNumber)
             Text(
-                when {
-                    !p.onRouteYet -> "Head to the route to start tracking progress"
-                    p.offRoute -> "Off route · progress paused until you're back"
-                    else -> "%.1f of %.1f km".format(p.progressM / 1000, p.lengthM / 1000)
-                },
+                "%s · ± %s".format(formatElapsed((p.eta.remainingS * 1000).toLong()), formatMargin(1.28 * p.eta.sigmaS)),
+                style = MaterialTheme.typography.bodyMedium.copy(fontFeatureSettings = "tnum"),
+            )
+            Text(
+                p.wind?.let { w -> "Wind %s %d Bft · costs %s".format(compassPoint(w.fromDeg), beaufort(w.speedMps), formatSigned(p.eta.windCostS)) }
+                    ?: "No wind forecast (offline?)",
                 style = MaterialTheme.typography.bodySmall,
-                color = if (p.offRoute) Danger else MaterialTheme.colorScheme.onSurfaceVariant,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }
+}
+
+/** Arrival time, route progress and the wind as you feel it: the heart of the ride screen. */
+@Composable
+private fun EtaCard(r: RideRoute, live: LiveEta?) {
+    val p = r.progress
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Arrival · ${r.name}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Row(verticalAlignment = Alignment.Bottom) {
+                        Text(live?.let { formatClock(it.eta.arrivalMs) } ?: "--:--", style = etaNumber)
+                        live?.let {
+                            Text(
+                                "  ± " + formatMargin(1.28 * it.eta.sigmaS),
+                                style = MaterialTheme.typography.titleMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+                live?.wind?.let { WindBadge(it) }
+            }
+            ProgressTrack(r, Modifier.fillMaxWidth().height(14.dp))
+            Row {
+                Text(
+                    when {
+                        !p.onRouteYet -> "Head to the route to start tracking"
+                        p.offRoute -> "Off route · progress paused"
+                        else -> "%.1f km to go".format(p.remainingM / 1000)
+                    },
+                    style = MaterialTheme.typography.bodyMedium.copy(fontFeatureSettings = "tnum"),
+                    color = if (p.offRoute) Danger else MaterialTheme.colorScheme.onSurface,
+                )
+                Spacer(Modifier.weight(1f))
+                live?.let {
+                    val formPct = ((it.form - 1) * 100).roundToInt()
+                    Text(
+                        "form %+d%% · wind %s".format(formPct, formatSigned(it.eta.windCostS)),
+                        style = MaterialTheme.typography.bodyMedium.copy(fontFeatureSettings = "tnum"),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** Arrow showing where the wind pushes you (up = from behind), with head/tail/cross label. */
+@Composable
+private fun WindBadge(w: WindNow) {
+    val arrowColor = MaterialTheme.colorScheme.primary
+    val ring = MaterialTheme.colorScheme.outline
+    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(96.dp)) {
+        Canvas(Modifier.size(44.dp)) {
+            drawCircle(ring, size.minDimension / 2 - 2.dp.toPx(), style = Stroke(2.dp.toPx()))
+            rotate(w.relativeDeg.toFloat()) {
+                val cx = size.width / 2
+                val top = 8.dp.toPx()
+                val bottom = size.height - 8.dp.toPx()
+                val head = 7.dp.toPx()
+                val stroke = Stroke(3.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
+                drawLine(arrowColor, Offset(cx, bottom), Offset(cx, top), strokeWidth = 3.dp.toPx(), cap = StrokeCap.Round)
+                drawPath(Path().apply {
+                    moveTo(cx - head, top + head)
+                    lineTo(cx, top)
+                    lineTo(cx + head, top + head)
+                }, arrowColor, style = stroke)
+            }
+        }
+        Text(w.label, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+        Text(
+            "%d km/h · %s".format((kotlin.math.abs(w.headwindMps) * 3.6).roundToInt(), if (w.exposure >= 0.7) "open" else if (w.exposure >= 0.4) "partly open" else "sheltered"),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+/** 42 s -> "40 s", 95 s -> "2 min" */
+private fun formatMargin(seconds: Double): String =
+    if (seconds < 50) "${maxOf(5, (seconds / 5).roundToInt() * 5)} s" else "${(seconds / 60).roundToInt()} min"
+
+/** Signed m:ss, e.g. +1:40 or −0:55 */
+private fun formatSigned(seconds: Double): String {
+    val s = kotlin.math.abs(seconds).roundToInt()
+    return (if (seconds < 0) "−" else "+") + "%d:%02d".format(s / 60, s % 60)
 }
 
 /** Route progress bar with segment boundaries, traffic lights (red dots) and your position. */

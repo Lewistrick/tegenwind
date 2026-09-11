@@ -24,6 +24,32 @@ data class RideEntity(
     val simulated: Boolean = false,
     /** The route followed, if one was picked. No foreign key: deleting a route keeps its rides. */
     val routeId: Long? = null,
+    /** Forecast wind at 10 m when the ride started. */
+    val windSpeedMps: Double? = null,
+    val windFromDeg: Double? = null,
+    /** Speed relative to the physics model at the end of the ride (1.0 = as predicted). */
+    val formFactor: Double? = null,
+)
+
+/** How long one ride took over one route segment: the raw material for stats and learning. */
+@Entity(
+    tableName = "segment_traversals",
+    primaryKeys = ["rideId", "segIdx"],
+    foreignKeys = [ForeignKey(RideEntity::class, ["id"], ["rideId"], onDelete = ForeignKey.CASCADE)],
+    indices = [Index("routeId", "segIdx")],
+)
+data class SegmentTraversalEntity(
+    val rideId: Long,
+    val routeId: Long,
+    val segIdx: Int,
+    val enterMs: Long,
+    val exitMs: Long,
+    /** Time spent moving; exitMs - enterMs - movingMs was spent standing still (lights, crossings). */
+    val movingMs: Long,
+    /** Forecast headwind at rider height when entering the segment, m/s (negative = tailwind). */
+    val headwindMps: Double?,
+    /** Physics prediction for the moving time at form 1.0, for later comparison. */
+    val predictedMovingMs: Long,
 )
 
 /** Every GPS fix as received, including inaccurate ones (the ride stats skip those). */
@@ -122,6 +148,13 @@ interface RideDao {
 
     @Query("DELETE FROM rides WHERE id = :id")
     suspend fun delete(id: Long)
+
+    @Insert
+    suspend fun insertTraversals(traversals: List<SegmentTraversalEntity>)
+
+    /** Recent end-of-ride form factors, newest first: the starting guess for the next ride. */
+    @Query("SELECT formFactor FROM rides WHERE formFactor IS NOT NULL AND simulated = 0 ORDER BY startedAtMs DESC LIMIT 10")
+    suspend fun recentForms(): List<Double>
 }
 
 @Dao
@@ -172,10 +205,13 @@ interface RouteDao {
 }
 
 @Database(
-    entities = [RideEntity::class, TrackPointEntity::class, RouteEntity::class, RoutePointEntity::class, RouteSegmentEntity::class],
-    version = 2,
+    entities = [
+        RideEntity::class, TrackPointEntity::class, RouteEntity::class, RoutePointEntity::class,
+        RouteSegmentEntity::class, SegmentTraversalEntity::class,
+    ],
+    version = 3,
     exportSchema = true,
-    autoMigrations = [AutoMigration(from = 1, to = 2)],
+    autoMigrations = [AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3)],
 )
 abstract class TegenwindDb : RoomDatabase() {
     abstract fun rides(): RideDao

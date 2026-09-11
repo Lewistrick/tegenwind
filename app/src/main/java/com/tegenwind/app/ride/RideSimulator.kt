@@ -9,13 +9,20 @@ import kotlin.math.max
 import kotlin.math.sin
 
 /**
- * Fake GPS for trying the ride screen at a desk: ~25 km/h with traffic-light stops, one fix per second.
- * Follows [route] when given (and stands still at its end), otherwise rides a straight line.
+ * Fake GPS for trying the ride screen at a desk, one fix per second.
+ * With a [route]: follows it at [speedAt] (the ETA model's speed, so wind matters), stops at about
+ * half the traffic lights in [signalsAtM], and stands still at the end.
+ * Without: ~25 km/h in a straight line with a stop every few minutes.
  */
 object RideSimulator {
     private const val METERS_PER_DEG_LAT = 111_195.0
 
-    suspend fun run(route: Polyline?, emit: (Fix) -> Unit) {
+    suspend fun run(
+        route: Polyline?,
+        signalsAtM: List<Double> = emptyList(),
+        speedAt: (alongM: Double) -> Double? = { null },
+        emit: (Fix) -> Unit,
+    ) {
         val rnd = Random()
         var free = GeoPoint(52.0907, 5.1214)
         val bearing = Math.toRadians(40.0)
@@ -24,15 +31,23 @@ object RideSimulator {
         var drift = 0.0
         var stopLeft = 0
         var nextStopIn = 90 + rnd.nextInt(120)
+        val lightsAhead = ArrayDeque(signalsAtM.sorted())
         while (true) {
-            if (stopLeft > 0) stopLeft--
-            else if (--nextStopIn <= 0) {
+            if (stopLeft > 0) {
+                stopLeft--
+            } else if (route == null && --nextStopIn <= 0) {
                 stopLeft = 15 + rnd.nextInt(30)
                 nextStopIn = 120 + rnd.nextInt(150)
             }
+            // Reaching a traffic light: red about half the time.
+            while (lightsAhead.isNotEmpty() && along >= lightsAhead.first() - 5) {
+                lightsAhead.removeFirst()
+                if (rnd.nextBoolean()) stopLeft = 10 + rnd.nextInt(35)
+            }
             drift += -drift * 0.1 + rnd.nextGaussian() * 0.02
             val arrived = route != null && along >= route.lengthM
-            val target = if (stopLeft > 0 || arrived) 0.0 else 7.0 * (1 + drift)
+            val cruise = speedAt(along) ?: 7.0
+            val target = if (stopLeft > 0 || arrived) 0.0 else cruise * (1 + drift)
             v = max(0.0, v + (target - v).coerceIn(-2.5, 0.9))
             val p = if (route != null) {
                 along = (along + v).coerceAtMost(route.lengthM)
