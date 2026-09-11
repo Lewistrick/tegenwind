@@ -63,6 +63,16 @@ class RoutesTest {
     }
 
     @Test
+    fun simplifiesARideTrackIntoARoute() {
+        // 1 km east then 500 m north, one GPS point per 5 m with ±2 m wobble.
+        val track = (0..200).map { i -> p(i * 5.0, if (i % 2 == 0) 2.0 else -2.0) } +
+            (1..100).map { i -> p(1000.0 + if (i % 2 == 0) 2.0 else -2.0, i * 5.0) }
+        val route = simplify(track, toleranceM = 5.0)
+        assertTrue("kept ${route.size} points", route.size in 3..6) // start, corner, end (plus maybe a wobble)
+        assertEquals(1500.0, Polyline(route).lengthM, 15.0) // the wobble is gone from the length
+    }
+
+    @Test
     fun clustersTrafficLightsAtOneJunction() {
         assertEquals(listOf(100.0, 500.0), clusterAlong(listOf(500.0, 100.0, 120.0, 130.0, 515.0), withinM = 40.0))
     }

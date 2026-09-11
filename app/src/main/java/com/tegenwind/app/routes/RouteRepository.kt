@@ -33,6 +33,13 @@ class RouteRepository(
         return save(name, Polyline(points))
     }
 
+    /** Turns a recorded ride's GPS track into a route. Standing still and GPS wobble are filtered out. */
+    suspend fun createFromTrack(name: String, track: List<GeoPoint>): Long {
+        val points = simplify(cleanPoints(track, minStepM = 3.0), toleranceM = 5.0)
+        if (points.size < 2 || Polyline(points).lengthM < 200) throw IllegalArgumentException("This ride is too short for a route")
+        return save(name, Polyline(points))
+    }
+
     /** Creates the same route in the other direction, e.g. "werk-woon" from "woon-werk". */
     suspend fun createReverse(routeId: Long): Long {
         val route = dao.route(routeId) ?: throw IllegalArgumentException("Route not found")

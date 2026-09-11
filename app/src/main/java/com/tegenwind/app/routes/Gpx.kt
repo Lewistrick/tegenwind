@@ -9,8 +9,9 @@ object Gpx {
     fun parse(input: InputStream): List<GeoPoint> {
         val factory = DocumentBuilderFactory.newInstance().apply {
             isNamespaceAware = false
-            // GPX files never need external entities; refusing them avoids XXE surprises.
-            setFeature("http://apache.org/xml/features/disallow-doctype-decl", true)
+            // GPX files never need a DOCTYPE; refusing one avoids external-entity surprises on the JVM.
+            // Android's parser doesn't know this setting (and never loads external entities anyway).
+            runCatching { setFeature("http://apache.org/xml/features/disallow-doctype-decl", true) }
         }
         val doc = factory.newDocumentBuilder().parse(input)
         for (tag in listOf("trkpt", "rtept")) {

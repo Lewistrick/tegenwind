@@ -14,6 +14,8 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import com.tegenwind.app.routes.GeoPoint
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -60,6 +62,8 @@ fun RideDetailScreen(rideId: Long, onBack: () -> Unit) {
     var hr by remember { mutableStateOf<HrState>(HrState.Loading) }
     var hrRefresh by remember { mutableIntStateOf(0) }
     var confirmDelete by remember { mutableStateOf(false) }
+    var routeName by remember { mutableStateOf<String?>(null) } // non-null while the "Save as route" dialog is open
+    var routeMessage by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(rideId) {
         ride = dao.ride(rideId)
@@ -127,9 +131,48 @@ fun RideDetailScreen(rideId: Long, onBack: () -> Unit) {
             }
         }
 
+        if (!r.simulated) {
+            OutlinedButton(onClick = { routeName = "" }) { Text("Save as route") }
+            Text(
+                "Uses this ride's GPS track as a route, for example woon-werk. Ride it once, save it, done.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        routeMessage?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
+
         TextButton(onClick = { confirmDelete = true }) {
             Text("Delete ride", color = MaterialTheme.colorScheme.error)
         }
+    }
+
+    routeName?.let { name ->
+        AlertDialog(
+            onDismissRequest = { routeName = null },
+            title = { Text("Save as route") },
+            text = {
+                OutlinedTextField(value = name, onValueChange = { routeName = it }, label = { Text("Name, e.g. woon-werk") }, singleLine = true)
+            },
+            confirmButton = {
+                TextButton(enabled = name.isNotBlank(), onClick = {
+                    routeName = null
+                    scope.launch {
+                        routeMessage = try {
+                            val track = dao.points(rideId)
+                                .filter { (it.accuracyM ?: 0.0) <= RideTracker.MAX_ACCURACY_M }
+                                .map { GeoPoint(it.lat, it.lon) }
+                            container.routes.createFromTrack(name, track)
+                            "Saved \"${name.trim()}\". Find it under Routes, where you can also add the reverse route."
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (e: Exception) {
+                            "Couldn't save the route: ${e.message ?: e::class.simpleName}"
+                        }
+                    }
+                }) { Text("Save") }
+            },
+            dismissButton = { TextButton(onClick = { routeName = null }) { Text("Cancel") } },
+        )
     }
 
     if (confirmDelete) {

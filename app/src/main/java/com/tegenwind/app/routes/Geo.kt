@@ -86,6 +86,43 @@ fun cleanPoints(points: List<GeoPoint>, minStepM: Double = 1.0): List<GeoPoint> 
     return out
 }
 
+/**
+ * Douglas-Peucker: keeps only the points needed to stay within [toleranceM] of the original line.
+ * Turns a ride's 1-per-second GPS track into a compact route.
+ */
+fun simplify(points: List<GeoPoint>, toleranceM: Double): List<GeoPoint> {
+    if (points.size < 3) return points
+    val lat0 = points.first().lat
+    val kx = 111_320.0 * cos(Math.toRadians(lat0))
+    val ky = 110_574.0
+    val xs = points.map { (it.lon - points.first().lon) * kx }
+    val ys = points.map { (it.lat - lat0) * ky }
+    val keep = BooleanArray(points.size).also { it[0] = true; it[points.lastIndex] = true }
+    val stack = ArrayDeque<Pair<Int, Int>>().apply { addLast(0 to points.lastIndex) }
+    while (stack.isNotEmpty()) {
+        val (a, b) = stack.removeLast()
+        val dx = xs[b] - xs[a]
+        val dy = ys[b] - ys[a]
+        val len2 = dx * dx + dy * dy
+        var worst = -1
+        var worstD = toleranceM
+        for (i in a + 1 until b) {
+            val t = if (len2 > 0) (((xs[i] - xs[a]) * dx + (ys[i] - ys[a]) * dy) / len2).coerceIn(0.0, 1.0) else 0.0
+            val d = hypot(xs[i] - xs[a] - t * dx, ys[i] - ys[a] - t * dy)
+            if (d > worstD) {
+                worstD = d
+                worst = i
+            }
+        }
+        if (worst > 0) {
+            keep[worst] = true
+            stack.addLast(a to worst)
+            stack.addLast(worst to b)
+        }
+    }
+    return points.filterIndexed { i, _ -> keep[i] }
+}
+
 /** Merges positions along a route that lie within [withinM] of the previous one; returns the first of each group. */
 fun clusterAlong(alongM: List<Double>, withinM: Double): List<Double> {
     val out = ArrayList<Double>()
