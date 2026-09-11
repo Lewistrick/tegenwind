@@ -49,6 +49,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
@@ -311,18 +312,31 @@ private fun LeaveNowPreview(routeId: Long) {
     }
     val p = preview ?: return
     Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("Leave now, arrive at", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(formatClock(p.eta.arrivalMs), style = etaNumber)
+        Column(
+            Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
             Text(
-                "%s · ± %s".format(formatElapsed((p.eta.remainingS * 1000).toLong()), formatMargin(1.28 * p.eta.sigmaS)),
-                style = MaterialTheme.typography.bodyMedium.copy(fontFeatureSettings = "tnum"),
-            )
-            Text(
-                p.wind?.let { w -> "Wind %s %d Bft · costs %s".format(compassPoint(w.fromDeg), beaufort(w.speedMps), formatSigned(p.eta.windCostS)) }
-                    ?: "No wind forecast (offline?)",
-                style = MaterialTheme.typography.bodySmall,
+                "Leave now, arrive at",
+                style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+            )
+            Text(formatClock(p.eta.arrivalMs), style = etaNumber, textAlign = TextAlign.Center)
+            Text(
+                "%s ride · ± %s".format(formatElapsed((p.eta.remainingS * 1000).toLong()), formatMargin(1.28 * p.eta.sigmaS)),
+                style = MaterialTheme.typography.bodyMedium.copy(fontFeatureSettings = "tnum"),
+                textAlign = TextAlign.Center,
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                p.wind?.let { w ->
+                    "Wind %s %d Bft\n%s".format(compassPoint(w.fromDeg), beaufort(w.speedMps), windEffect(p.eta.windCostS))
+                } ?: "No wind forecast (offline?)",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
             )
         }
     }
@@ -365,7 +379,7 @@ private fun EtaCard(r: RideRoute, live: LiveEta?) {
                 live?.let {
                     val formPct = ((it.form - 1) * 100).roundToInt()
                     Text(
-                        "form %+d%% · wind %s".format(formPct, formatSigned(it.eta.windCostS)),
+                        "form %+d%% · %s".format(formPct, windEffect(it.eta.windCostS)),
                         style = MaterialTheme.typography.bodyMedium.copy(fontFeatureSettings = "tnum"),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -410,10 +424,15 @@ private fun WindBadge(w: WindNow) {
 private fun formatMargin(seconds: Double): String =
     if (seconds < 50) "${maxOf(5, (seconds / 5).roundToInt() * 5)} s" else "${(seconds / 60).roundToInt()} min"
 
-/** Signed m:ss, e.g. +1:40 or −0:55 */
-private fun formatSigned(seconds: Double): String {
-    val s = kotlin.math.abs(seconds).roundToInt()
-    return (if (seconds < 0) "−" else "+") + "%d:%02d".format(s / 60, s % 60)
+/** Positive = wind slows you down: "wind costs 1:40"; negative: "wind gains 0:55". */
+fun windEffect(windCostS: Double): String {
+    val s = kotlin.math.abs(windCostS).roundToInt()
+    val time = "%d:%02d".format(s / 60, s % 60)
+    return when {
+        s < 15 -> "wind barely matters"
+        windCostS > 0 -> "wind costs $time"
+        else -> "wind gains $time"
+    }
 }
 
 /** Route progress bar with segment boundaries, traffic lights (red dots) and your position. */
