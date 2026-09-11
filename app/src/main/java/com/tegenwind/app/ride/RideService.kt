@@ -61,18 +61,22 @@ class RideService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
-            ACTION_START -> startRide(simulated = intent.getBooleanExtra(EXTRA_SIMULATE, false))
+            ACTION_START -> startRide(
+                simulated = intent.getBooleanExtra(EXTRA_SIMULATE, false),
+                routeId = intent.getLongExtra(EXTRA_ROUTE_ID, NO_ROUTE).takeIf { it != NO_ROUTE },
+            )
             ACTION_STOP -> stopRide()
         }
         return START_NOT_STICKY
     }
 
-    private fun startRide(simulated: Boolean) {
+    private fun startRide(simulated: Boolean, routeId: Long?) {
         createChannel()
         startForeground(NOTIFICATION_ID, notification("Starting ride…"), ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION)
         scope.launch {
-            recorder.start(simulated)
-            if (simulated) simulation = launch { RideSimulator.run(recorder::onFix) }
+            val route = routeId?.let { appContainer.routes.load(it) }
+            recorder.start(simulated, route)
+            if (simulated) simulation = launch { RideSimulator.run(route?.line, recorder::onFix) }
             else startGps()
             while (isActive) {
                 recorder.live.value?.let { updateNotification(it) }
@@ -133,7 +137,8 @@ class RideService : Service() {
 
     private fun updateNotification(ride: LiveRide) {
         val s = ride.snapshot
-        val text = "%.1f km · %s moving".format(s.distanceM / 1000, formatElapsed(s.movingMs)) +
+        val routePart = ride.route?.let { r -> "%.1f km to go · ".format(r.progress.remainingM / 1000) } ?: ""
+        val text = routePart + "%.1f km · %s moving".format(s.distanceM / 1000, formatElapsed(s.movingMs)) +
             (if (ride.simulated) " · simulated" else "")
         getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification(text))
     }
@@ -144,11 +149,14 @@ class RideService : Service() {
         private const val ACTION_START = "com.tegenwind.app.START_RIDE"
         private const val ACTION_STOP = "com.tegenwind.app.STOP_RIDE"
         private const val EXTRA_SIMULATE = "simulate"
+        private const val EXTRA_ROUTE_ID = "routeId"
+        private const val NO_ROUTE = -1L
 
-        fun start(context: Context, simulated: Boolean) {
+        fun start(context: Context, simulated: Boolean, routeId: Long?) {
             val intent = Intent(context, RideService::class.java)
                 .setAction(ACTION_START)
                 .putExtra(EXTRA_SIMULATE, simulated)
+                .putExtra(EXTRA_ROUTE_ID, routeId ?: NO_ROUTE)
             context.startForegroundService(intent)
         }
 

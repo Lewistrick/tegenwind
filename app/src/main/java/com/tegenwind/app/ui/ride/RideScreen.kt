@@ -5,7 +5,15 @@ import android.content.Context
 import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.material3.FilterChip
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import com.tegenwind.app.data.RouteEntity
+import com.tegenwind.app.ride.RideRoute
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -52,6 +60,8 @@ import com.tegenwind.app.ui.theme.HeartColor
 import com.tegenwind.app.ui.theme.SpeedColor
 import kotlinx.coroutines.delay
 
+private const val PREF_ROUTE = "lastRouteId"
+
 private val bigNumber = TextStyle(fontSize = 64.sp, fontWeight = FontWeight.Bold, fontFeatureSettings = "tnum", lineHeight = 64.sp)
 
 private fun hasLocation(context: Context) =
@@ -79,9 +89,19 @@ fun RideScreen() {
         onDispose { view.keepScreenOn = false }
     }
 
+    val routes by remember { context.appContainer.routes.routes() }.collectAsStateWithLifecycle(emptyList())
+    val prefs = remember { context.getSharedPreferences("tegenwind", Context.MODE_PRIVATE) }
+    var routeId by remember { mutableStateOf(prefs.getLong(PREF_ROUTE, -1L).takeIf { it >= 0 }) }
+
     val ride = live
     if (ride == null) {
         IdleView(
+            routes = routes,
+            selectedRouteId = routeId?.takeIf { id -> routes.any { it.id == id } },
+            onSelectRoute = { id ->
+                routeId = id
+                prefs.edit().putLong(PREF_ROUTE, id ?: -1L).apply()
+            },
             locationOk = locationOk,
             onAllow = {
                 permissionLauncher.launch(
@@ -92,7 +112,9 @@ fun RideScreen() {
                     )
                 )
             },
-            onStart = { simulated -> RideService.start(context, simulated) },
+            onStart = { simulated ->
+                RideService.start(context, simulated, routeId?.takeIf { id -> routes.any { it.id == id } })
+            },
         )
     } else {
         LiveView(ride, onStop = { RideService.stop(context) })
@@ -100,13 +122,28 @@ fun RideScreen() {
 }
 
 @Composable
-private fun IdleView(locationOk: Boolean, onAllow: () -> Unit, onStart: (simulated: Boolean) -> Unit) {
+private fun IdleView(
+    routes: List<RouteEntity>,
+    selectedRouteId: Long?,
+    onSelectRoute: (Long?) -> Unit,
+    locationOk: Boolean,
+    onAllow: () -> Unit,
+    onStart: (simulated: Boolean) -> Unit,
+) {
     Column(
         Modifier.fillMaxSize().padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text("Tegenwind", style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold)
+        if (routes.isNotEmpty()) {
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(selected = selectedRouteId == null, onClick = { onSelectRoute(null) }, label = { Text("Free ride") })
+                routes.forEach { r ->
+                    FilterChip(selected = selectedRouteId == r.id, onClick = { onSelectRoute(r.id) }, label = { Text(r.name) })
+                }
+            }
+        }
         if (!locationOk) {
             Text(
                 "Tegenwind needs your location to measure speed and distance. It stays on this phone.",
@@ -166,6 +203,8 @@ private fun LiveView(ride: LiveRide, onStop: () -> Unit) {
             Spacer(Modifier.weight(1f))
             Text(formatElapsed(now - s.startedAtMs), style = MaterialTheme.typography.titleLarge.copy(fontFeatureSettings = "tnum"))
         }
+
+        ride.route?.let { RouteCard(it) }
 
         Card(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
@@ -229,6 +268,57 @@ private fun LiveView(ride: LiveRide, onStop: () -> Unit) {
             colors = if (confirmStop) ButtonDefaults.buttonColors(containerColor = Danger)
             else ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surfaceVariant, contentColor = MaterialTheme.colorScheme.onSurface),
         ) { Text(if (confirmStop) "Tap again to stop" else "Stop ride", style = MaterialTheme.typography.titleMedium) }
+    }
+}
+
+@Composable
+private fun RouteCard(r: RideRoute) {
+    val p = r.progress
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(verticalAlignment = Alignment.Bottom) {
+                Text(r.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.weight(1f))
+                Text(
+                    "%.1f km to go".format(p.remainingM / 1000),
+                    style = MaterialTheme.typography.titleLarge.copy(fontFeatureSettings = "tnum"),
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+            ProgressTrack(r, Modifier.fillMaxWidth().height(14.dp))
+            Text(
+                when {
+                    !p.onRouteYet -> "Head to the route to start tracking progress"
+                    p.offRoute -> "Off route · progress paused until you're back"
+                    else -> "%.1f of %.1f km".format(p.progressM / 1000, p.lengthM / 1000)
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = if (p.offRoute) Danger else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+/** Route progress bar with segment boundaries, traffic lights (red dots) and your position. */
+@Composable
+private fun ProgressTrack(r: RideRoute, modifier: Modifier) {
+    val track = MaterialTheme.colorScheme.surfaceVariant
+    val fill = MaterialTheme.colorScheme.primary
+    val tick = MaterialTheme.colorScheme.surfaceContainer
+    val me = MaterialTheme.colorScheme.onSurface
+    Canvas(modifier) {
+        val len = r.progress.lengthM.toFloat()
+        val barTop = 4.dp.toPx()
+        val barH = size.height - 2 * barTop
+        val done = (r.progress.progressM.toFloat() / len).coerceIn(0f, 1f) * size.width
+        drawRoundRect(track, Offset(0f, barTop), Size(size.width, barH), CornerRadius(barH / 2))
+        drawRoundRect(fill, Offset(0f, barTop), Size(done, barH), CornerRadius(barH / 2))
+        r.segmentStartsM.drop(1).forEach { m ->
+            val x = m.toFloat() / len * size.width
+            drawLine(tick, Offset(x, barTop), Offset(x, barTop + barH), strokeWidth = 1.dp.toPx())
+        }
+        r.signalsAtM.forEach { m -> drawCircle(Danger, 2.5.dp.toPx(), Offset(m.toFloat() / len * size.width, 2.5.dp.toPx())) }
+        drawCircle(me, 6.dp.toPx(), Offset(done, size.height / 2))
     }
 }
 

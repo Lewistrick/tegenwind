@@ -6,6 +6,8 @@ import androidx.room.Room
 import com.tegenwind.app.data.TegenwindDb
 import com.tegenwind.app.health.HealthConnectHr
 import com.tegenwind.app.ride.RideRecorder
+import com.tegenwind.app.routes.RouteEnricher
+import com.tegenwind.app.routes.RouteRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -26,6 +28,7 @@ class AppContainer(app: Application) {
     val db: TegenwindDb = Room.databaseBuilder(app, TegenwindDb::class.java, "tegenwind.db").build()
     val recorder = RideRecorder(db.rides(), appScope)
     val healthConnect = HealthConnectHr(app)
+    val routes = RouteRepository(db.routes(), RouteEnricher(), appScope)
 }
 
 val Context.appContainer: AppContainer

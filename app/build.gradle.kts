@@ -36,6 +36,11 @@ android {
     }
 }
 
+ksp {
+    // Keep a copy of every database version so migrations can be checked.
+    arg("room.schemaLocation", "$projectDir/schemas")
+}
+
 dependencies {
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.activity.compose)

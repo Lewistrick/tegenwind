@@ -6,6 +6,9 @@
     <uses-permission android:name="android.permission.health.READ_HEART_RATE" />
     <uses-permission android:name="android.permission.health.READ_EXERCISE" />
 
+    <!-- Elevation (Open-Meteo) and OpenStreetMap data for routes -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
     <!-- GPS while riding, also with the screen off -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />

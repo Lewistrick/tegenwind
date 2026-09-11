@@ -21,12 +21,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import com.tegenwind.app.hrprobe.HrProbeScreen
 import com.tegenwind.app.ui.rides.RidesScreen
+import com.tegenwind.app.ui.routes.RoutesScreen
 import com.tegenwind.app.ui.ride.RideScreen
 import com.tegenwind.app.ui.theme.TegenwindTheme
 
 private enum class Tab(val label: String, @param:DrawableRes val icon: Int) {
     RIDE("Ride", R.drawable.ic_ride),
     RIDES("Rides", R.drawable.ic_rides),
+    ROUTES("Routes", R.drawable.ic_route),
     HR_TEST("HR test", R.drawable.ic_heart),
 }
 
@@ -55,6 +57,7 @@ class MainActivity : ComponentActivity() {
                         when (tab) {
                             Tab.RIDE -> RideScreen()
                             Tab.RIDES -> RidesScreen()
+                            Tab.ROUTES -> RoutesScreen()
                             Tab.HR_TEST -> HrProbeScreen()
                         }
                     }
