@@ -22,6 +22,8 @@ data class RideSnapshot(
     val distanceM: Double,
     val movingMs: Long,
     val paused: Boolean,
+    /** When the current stop began, while paused; null while moving. */
+    val pausedSinceMs: Long?,
     val speedKmh: Double?,
     val avg2MinKmh: Double?,
     val speeds: List<Sample>,
@@ -80,6 +82,7 @@ class RideTracker(private val startedAtMs: Long) {
         distanceM = distanceM,
         movingMs = movingMs,
         paused = paused,
+        pausedSinceMs = if (paused) stoppedSinceMs else null,
         speedKmh = speedKmh,
         avg2MinKmh = avgKmh,
         speeds = speeds.toList(),

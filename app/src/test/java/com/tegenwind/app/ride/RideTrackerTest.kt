@@ -35,6 +35,9 @@ class RideTrackerTest {
         assertTrue(snap.paused)
         // Stopped from the first fix at 0 s; seconds 1–4 still count, the pause starts at 5 s.
         assertEquals(4_000, snap.movingMs)
+        assertEquals(0L, snap.pausedSinceMs) // the stop began at the first fix
+        t.add(fixAt(11, 20.0, 5.0))
+        assertEquals(null, t.snapshot().pausedSinceMs) // riding again
     }
 
     @Test

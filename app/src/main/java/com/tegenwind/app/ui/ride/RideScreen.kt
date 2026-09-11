@@ -19,12 +19,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -70,6 +72,7 @@ import com.tegenwind.app.ride.TWO_MINUTES_MS
 import com.tegenwind.app.ride.formatClock
 import com.tegenwind.app.ride.formatElapsed
 import com.tegenwind.app.ui.TimeSeriesChart
+import com.tegenwind.app.ui.theme.AmberInk
 import com.tegenwind.app.ui.theme.Danger
 import com.tegenwind.app.ui.theme.GoodColor
 import com.tegenwind.app.ui.theme.HeartColor
@@ -213,19 +216,21 @@ private fun LiveView(ride: LiveRide, onStop: () -> Unit) {
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
+            val state = when {
+                gpsLost -> "Waiting for GPS"
+                s.paused -> "Paused"
+                else -> "Recording"
+            }
             Text(
-                when {
-                    ride.simulated -> "● Simulated ride"
-                    gpsLost -> "● Waiting for GPS"
-                    s.paused -> "● Paused"
-                    else -> "● Recording"
-                },
+                "● " + (if (ride.simulated) "Simulated · " else "") + state,
                 color = if (gpsLost || s.paused) MaterialTheme.colorScheme.onSurfaceVariant else GoodColor,
                 style = MaterialTheme.typography.labelLarge,
             )
             Spacer(Modifier.weight(1f))
             Text(formatElapsed(now - s.startedAtMs), style = MaterialTheme.typography.titleLarge.copy(fontFeatureSettings = "tnum"))
         }
+
+        s.pausedSinceMs?.let { since -> PausedBar(stoppedMs = now - since) }
 
         ride.route?.let { EtaCard(it, ride.eta) }
 
@@ -339,6 +344,35 @@ private fun LeaveNowPreview(routeId: Long) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
             )
+        }
+    }
+}
+
+/**
+ * Shown while auto-paused (standing still for 5+ s): moving time and distance stop counting
+ * until you ride again. The clock at the top keeps running.
+ */
+@Composable
+private fun PausedBar(stoppedMs: Long) {
+    Surface(
+        color = MaterialTheme.colorScheme.primary,
+        contentColor = MaterialTheme.colorScheme.onPrimary,
+        shape = RoundedCornerShape(12.dp),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(Modifier.padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Canvas(Modifier.size(14.dp)) {
+                val w = size.width * 0.3f
+                drawRect(AmberInk, Offset(0f, 0f), Size(w, size.height))
+                drawRect(AmberInk, Offset(size.width - w, 0f), Size(w, size.height))
+            }
+            Text(
+                "  Paused · ${formatElapsed(stoppedMs.coerceAtLeast(0))}",
+                style = MaterialTheme.typography.titleMedium.copy(fontFeatureSettings = "tnum"),
+                fontWeight = FontWeight.SemiBold,
+            )
+            Spacer(Modifier.weight(1f))
+            Text("moving time stopped", style = MaterialTheme.typography.labelMedium)
         }
     }
 }

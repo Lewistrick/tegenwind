@@ -154,6 +154,7 @@ class RideService : Service() {
         val etaPart = ride.eta?.let { "ETA ${formatClock(it.eta.arrivalMs)} · " } ?: ""
         val routePart = etaPart + (ride.route?.let { r -> "%.1f km to go · ".format(r.progress.remainingM / 1000) } ?: "")
         val text = routePart + "%.1f km · %s moving".format(s.distanceM / 1000, formatElapsed(s.movingMs)) +
+            (if (s.paused) " · paused" else "") +
             (if (ride.simulated) " · simulated" else "")
         getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification(text))
     }

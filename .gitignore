@@ -16,3 +16,5 @@ local.properties
 .kotlin
 # Routes contain home/work locations: never commit them
 *.gpx
+# Android Studio: selected test device (contains its serial)
+/.idea/deploymentTargetSelector.xml
