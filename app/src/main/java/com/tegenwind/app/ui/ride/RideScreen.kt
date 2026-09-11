@@ -66,6 +66,7 @@ import com.tegenwind.app.eta.priorForm
 import com.tegenwind.app.ride.LiveRide
 import com.tegenwind.app.ride.RideRoute
 import com.tegenwind.app.ride.RideService
+import com.tegenwind.app.ride.TWO_MINUTES_MS
 import com.tegenwind.app.ride.formatClock
 import com.tegenwind.app.ride.formatElapsed
 import com.tegenwind.app.ui.TimeSeriesChart
@@ -256,7 +257,7 @@ private fun LiveView(ride: LiveRide, onStop: () -> Unit) {
                     Text("Speed", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     Spacer(Modifier.weight(1f))
                     Text(
-                        "dots GPS · line 2-min avg · ${if (fullRide) "full ride" else "10 min"}",
+                        "dots GPS · line 2-min avg · ${if (fullRide) "full ride" else "last 2 min"}",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -265,7 +266,7 @@ private fun LiveView(ride: LiveRide, onStop: () -> Unit) {
                     samples = s.speeds,
                     color = SpeedColor,
                     modifier = Modifier.fillMaxWidth().height(140.dp).padding(top = 6.dp),
-                    windowMs = if (fullRide) null else 10 * 60_000L,
+                    windowMs = if (fullRide) null else TWO_MINUTES_MS,
                     endMs = if (fullRide) null else now,
                     yRange = 0.0..45.0,
                     emptyText = "Waiting for GPS…",
