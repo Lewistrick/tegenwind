@@ -1,0 +1,723 @@
+<title>Tegenwind bike dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --page:#E3E7E5; --ink:#0F1416; --ink2:#4A565B; --panel:#F3F5F4; --rule:#C9D1CE;
+  --amber:#E9A21A; --amber-ink:#2B1C00; --bezel:#14181A; --focus:#0A6FC2;
+  --f-display:"Barlow Condensed","Arial Narrow",system-ui,sans-serif;
+  --f-body:"Barlow",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){--page:#0A0C0D;--ink:#E3E9E6;--ink2:#93A0A4;--panel:#121718;--rule:#243033;--bezel:#000;--focus:#3FB6FF}
+}
+:root[data-theme="dark"]{--page:#0A0C0D;--ink:#E3E9E6;--ink2:#93A0A4;--panel:#121718;--rule:#243033;--bezel:#000;--focus:#3FB6FF}
+
+*{box-sizing:border-box}
+body{margin:0;background:var(--page);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.5}
+[hidden]{display:none!important}
+button{font:inherit;color:inherit;cursor:pointer}
+:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+
+.top{max-width:1180px;margin:0 auto;padding:28px 24px 8px;display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 20px}
+.mark{font-family:var(--f-display);font-weight:700;font-size:34px;letter-spacing:.01em;line-height:1}
+.mark i{font-style:normal;color:var(--amber)}
+.top .sub{font-family:var(--f-mono);font-size:12px;color:var(--ink2);letter-spacing:.04em;text-transform:uppercase}
+.top .lede{flex-basis:100%;margin:6px 0 0;max-width:68ch;color:var(--ink2);text-wrap:pretty}
+
+.stage{max-width:1180px;margin:0 auto;padding:16px 24px 48px;display:grid;grid-template-columns:auto minmax(0,440px);gap:40px;justify-content:center;align-items:start}
+@media (max-width:920px){.stage{grid-template-columns:minmax(0,1fr);justify-items:center}.side{width:100%;max-width:560px}}
+
+/* ---------- phone ---------- */
+.phone{width:392px;height:830px;padding:10px;border-radius:48px;background:var(--bezel);position:relative}
+@media (max-width:460px){.phone{width:100%;height:min(830px,100svh);padding:0;border-radius:0}.phone .app{border-radius:0}.stage{padding:0 0 40px}}
+.app{
+  --bg:#0D1113; --surf:#151B1E; --surf2:#1D2528; --line:#2A3438; --text:#EDF2F0; --muted:#8E9A9E;
+  --hr:#FF5B4F; --spd:#3FB6FF; --accent:#F2B53A; --accent-ink:#241800; --fast:#39CC85; --slow:#FF6A5C; --typ:#6F7D82;
+  --map-ground:#11181A; --map-built:#1E272B; --water:#1D4863; --casing:#070A0B; --warn-bg:#3A2C0C; --warn:#F2C04E; --ok-bg:#0F3324; --ok:#48D695;
+  width:100%;height:100%;border-radius:38px;overflow:hidden;position:relative;
+  background:var(--bg);color:var(--text);display:flex;flex-direction:column;font-family:var(--f-body)
+}
+.app[data-mode="sun"]{
+  --bg:#F6F7F5; --surf:#FFFFFF; --surf2:#ECEFED; --line:#D2D9D6; --text:#0A0F11; --muted:#52606A;
+  --hr:#D22D25; --spd:#0868B8; --accent:#B87600; --accent-ink:#FFFFFF; --fast:#10804B; --slow:#D22D25; --typ:#8B979C;
+  --map-ground:#E9EFE4; --map-built:#D6DAD7; --water:#98C5E4; --casing:#FFFFFF; --warn-bg:#FFF0C7; --warn:#7A5200; --ok-bg:#DDF3E7; --ok:#0B6B3E;
+}
+.status{height:34px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 26px;font-family:var(--f-mono);font-size:12px;color:var(--muted)}
+.status b{color:var(--text);font-weight:500}
+.status .dots{display:flex;gap:10px}
+.status .dots span::before{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--ok);margin-right:5px;vertical-align:1px}
+.screen{flex:1;overflow-y:auto;overflow-x:hidden;padding:4px 14px 14px;display:flex;flex-direction:column;gap:10px;position:relative;scrollbar-width:none}
+.screen::-webkit-scrollbar{display:none}
+.tabs{flex:none;height:66px;display:grid;grid-template-columns:repeat(4,1fr);border-top:1px solid var(--line);background:var(--surf);padding-bottom:6px}
+.tabs button{background:none;border:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;color:var(--muted);font-size:12px;font-weight:500;letter-spacing:.02em}
+.tabs button svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.tabs button[aria-selected="true"]{color:var(--accent)}
+
+.eyebrow{font-family:var(--f-mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:0}
+.bar{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:30px}
+.bar h2{font-family:var(--f-display);font-weight:600;font-size:22px;margin:0;letter-spacing:.01em}
+.pill{font-family:var(--f-mono);font-size:11px;padding:3px 8px;border-radius:999px;background:var(--surf2);color:var(--muted);white-space:nowrap}
+.pill.rec{background:var(--ok-bg);color:var(--ok)}
+.pill.rec::before{content:"";display:inline-block;width:7px;height:7px;border-radius:50%;background:currentColor;margin-right:6px;vertical-align:0}
+.pill.warn{background:var(--warn-bg);color:var(--warn)}
+.pill.ok{background:var(--ok-bg);color:var(--ok)}
+
+.tiles{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.tile{background:var(--surf);border-radius:14px;padding:10px 12px 11px;min-width:0}
+.bignum{font-family:var(--f-display);font-weight:600;font-size:58px;line-height:.95;letter-spacing:-.01em;font-variant-numeric:tabular-nums lining-nums;margin:2px 0 0;display:flex;align-items:baseline;gap:5px}
+.bignum small{font-size:16px;font-weight:500;color:var(--muted);letter-spacing:.02em}
+.tile .meta{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-top:4px;font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}
+.tile .meta b{color:var(--text);font-weight:600}
+.hrnum{color:var(--hr)} .spdnum{color:var(--text)}
+
+.eta{background:var(--surf);border-radius:14px;padding:10px 12px 12px;display:grid;grid-template-columns:1fr auto;gap:2px 10px}
+.eta .clock{font-family:var(--f-display);font-weight:700;font-size:46px;line-height:1;font-variant-numeric:tabular-nums;display:flex;align-items:baseline;gap:8px}
+.eta .clock small{font-family:var(--f-body);font-size:15px;font-weight:500;color:var(--muted)}
+.wind{grid-row:1 / span 2;grid-column:2;display:flex;flex-direction:column;align-items:center;gap:2px;text-align:center;min-width:92px}
+.wind svg{width:48px;height:48px}
+.wind .wl{font-size:12px;font-weight:600;line-height:1.2}
+.wind .ws{font-size:11px;color:var(--muted);line-height:1.2}
+.progress{grid-column:1 / -1;margin-top:8px;position:relative;height:10px}
+.progress .track{position:absolute;inset:3px 0;border-radius:4px;background:var(--surf2);overflow:hidden}
+.progress .fill{position:absolute;left:0;top:0;bottom:0;background:var(--accent);border-radius:4px}
+.progress .tick{position:absolute;top:3px;bottom:3px;width:2px;background:var(--bg)}
+.progress .light{position:absolute;top:0;width:4px;height:4px;border-radius:50%;background:var(--slow);transform:translateX(-50%)}
+.progress .me{position:absolute;top:-1px;width:12px;height:12px;border-radius:50%;background:var(--text);border:3px solid var(--bg);transform:translateX(-50%)}
+.eta .row{grid-column:1 / -1;display:flex;justify-content:space-between;gap:8px;font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums;margin-top:6px}
+.eta .row b{color:var(--text);font-weight:600}
+
+.chart{background:var(--surf);border-radius:14px;padding:8px 10px 6px;cursor:pointer;border:0;text-align:left;width:100%}
+.chart .ch{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12px;color:var(--muted)}
+.chart .ch strong{font-family:var(--f-display);font-size:16px;font-weight:600;color:var(--text);letter-spacing:.02em}
+.key{display:flex;gap:10px;align-items:center;font-family:var(--f-mono);font-size:10.5px}
+.key i{display:inline-block;vertical-align:middle;margin-right:4px}
+.key .kd{width:5px;height:5px;border-radius:50%;background:var(--c);opacity:.6}
+.key .kl{width:14px;height:2.5px;border-radius:2px;background:var(--c)}
+.chart canvas{display:block;width:100%;height:118px}
+
+.arrive{position:absolute;inset:0;background:color-mix(in srgb,var(--bg) 88%,transparent);display:flex;align-items:center;padding:16px;z-index:3}
+.arrive .card{background:var(--surf);border:1px solid var(--line);border-radius:18px;padding:18px;width:100%;display:flex;flex-direction:column;gap:10px}
+.arrive h3{font-family:var(--f-display);font-size:30px;font-weight:700;margin:0;line-height:1}
+.arrive .cmp{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.arrive .cmp div{background:var(--surf2);border-radius:10px;padding:8px 10px}
+.arrive .cmp b{display:block;font-family:var(--f-display);font-size:26px;font-weight:600;font-variant-numeric:tabular-nums}
+.arrive ul{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:6px;font-size:13.5px}
+.arrive li{display:flex;justify-content:space-between;gap:10px;border-bottom:1px solid var(--line);padding-bottom:6px}
+.arrive li span:last-child{font-family:var(--f-mono);font-size:12.5px;white-space:nowrap}
+.btnrow{display:flex;gap:8px}
+.abtn{flex:1;border:1px solid var(--line);background:var(--surf2);border-radius:12px;padding:10px;font-weight:600;font-size:14px}
+.abtn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+
+/* map */
+.mapbox{background:var(--map-ground);border-radius:14px;overflow:hidden;position:relative}
+.mapbox svg{display:block;width:100%;height:auto}
+.m-built{fill:var(--map-built)}
+.m-water{fill:none;stroke:var(--water);stroke-width:7;stroke-linecap:round;stroke-linejoin:round}
+.m-casing{fill:none;stroke:var(--casing);stroke-width:10;stroke-linecap:round;stroke-linejoin:round}
+.m-seg{fill:none;stroke-width:6;stroke-linecap:round;stroke-linejoin:round}
+.m-seg.fast{stroke:var(--fast)} .m-seg.slow{stroke:var(--slow)} .m-seg.typ{stroke:var(--typ)}
+.m-bridge{stroke:var(--text);stroke-width:1.5;opacity:.6}
+.m-light{fill:var(--bg);stroke:var(--slow);stroke-width:2}
+.m-me{fill:var(--text);stroke:var(--bg);stroke-width:3}
+.m-halo{fill:var(--text);opacity:.15}
+.m-lbl{font-family:var(--f-mono);font-size:10px;fill:var(--muted)}
+.m-end{fill:var(--bg);stroke:var(--text);stroke-width:2.5}
+.compass{position:absolute;right:10px;top:10px;background:var(--surf);border-radius:12px;padding:6px 8px;display:flex;align-items:center;gap:6px;font-size:12px}
+.compass svg{width:30px;height:30px}
+.legend{display:flex;gap:12px;flex-wrap:wrap;font-size:12px;color:var(--muted)}
+.legend i{display:inline-block;width:14px;height:5px;border-radius:3px;margin-right:5px;vertical-align:middle}
+.list{background:var(--surf);border-radius:14px;padding:4px 12px}
+.list .li{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);font-size:14px}
+.list .li:last-child{border-bottom:0}
+.list .li .d{margin-left:auto;font-family:var(--f-mono);font-size:12.5px;color:var(--muted);white-space:nowrap}
+.list .li .ic{width:26px;height:26px;border-radius:8px;background:var(--surf2);display:grid;place-items:center;flex:none}
+.list .li .ic svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.list .li small{display:block;color:var(--muted);font-size:12px}
+
+/* stats */
+.seg{display:grid;grid-template-columns:1fr 1fr;background:var(--surf2);border-radius:12px;padding:3px}
+.seg button{border:0;background:none;border-radius:9px;padding:7px;font-weight:600;font-size:14px;color:var(--muted)}
+.seg button[aria-pressed="true"]{background:var(--surf);color:var(--text)}
+.kpis{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.kpi{background:var(--surf);border-radius:14px;padding:9px 12px}
+.kpi b{display:block;font-family:var(--f-display);font-weight:600;font-size:32px;line-height:1.05;font-variant-numeric:tabular-nums}
+.kpi span{font-size:12px;color:var(--muted)}
+.kpi.f b{color:var(--fast)} .kpi.s b{color:var(--slow)}
+.panel-a{background:var(--surf);border-radius:14px;padding:10px 12px}
+.panel-a h3{font-family:var(--f-display);font-size:17px;font-weight:600;margin:0 0 2px;letter-spacing:.01em}
+.panel-a p{margin:0 0 4px;font-size:12px;color:var(--muted)}
+.panel-a svg{display:block;width:100%;height:auto;overflow:visible}
+.s-grid{stroke:var(--line);stroke-width:1}
+.s-ax{font-family:var(--f-mono);font-size:10px;fill:var(--muted)}
+.s-dot{fill:var(--spd);opacity:.75}
+.s-fast{fill:var(--fast)} .s-slow{fill:var(--slow)}
+.s-ring{fill:none;stroke:var(--surf);stroke-width:2}
+.s-trend{stroke:var(--text);stroke-width:1.5;stroke-dasharray:4 4;fill:none;opacity:.7}
+.s-bar{fill:var(--spd);opacity:.8}
+.s-bar.med{fill:var(--accent);opacity:1}
+.s-note{font-family:var(--f-body);font-size:11px;font-weight:600;fill:var(--text)}
+table.segs{width:100%;border-collapse:collapse;font-size:13px}
+table.segs td{padding:7px 0;border-bottom:1px solid var(--line)}
+table.segs tr:last-child td{border-bottom:0}
+table.segs td.x{font-family:var(--f-mono);color:var(--slow);text-align:right;white-space:nowrap}
+table.segs td small{display:block;color:var(--muted);font-size:11.5px}
+
+/* routes */
+.route{background:var(--surf);border-radius:14px;padding:11px 12px;display:flex;align-items:center;gap:12px;border:0;text-align:left;width:100%}
+.route .rt{font-family:var(--f-display);font-weight:600;font-size:20px;line-height:1.1}
+.route small{display:block;color:var(--muted);font-size:12.5px}
+.route .spark{margin-left:auto;width:70px;height:28px;flex:none}
+.route .spark path{fill:none;stroke:var(--spd);stroke-width:1.6}
+.actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.actions button{border:1px solid var(--line);background:var(--surf);border-radius:12px;padding:11px 10px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px}
+.actions button svg{width:18px;height:18px;fill:none;stroke:var(--accent);stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.meter{height:6px;border-radius:3px;background:var(--surf2);overflow:hidden;margin:4px 0 8px}
+.meter i{display:block;height:100%;background:var(--fast);border-radius:3px}
+.mstat{display:flex;justify-content:space-between;font-size:13px}
+.mstat b{font-family:var(--f-mono);font-weight:500;font-size:12.5px}
+
+.toast{position:absolute;left:14px;right:14px;bottom:78px;background:var(--text);color:var(--bg);border-radius:12px;padding:10px 12px;font-size:13px;z-index:5;transition:opacity .2s}
+
+/* ---------- side panel ---------- */
+.side{display:flex;flex-direction:column;gap:18px;position:sticky;top:16px}
+.box{background:var(--panel);border:1px solid var(--rule);border-radius:16px;padding:16px 18px}
+.box h2{font-family:var(--f-display);font-weight:600;font-size:22px;margin:0 0 10px;letter-spacing:.01em;text-wrap:balance}
+.ctl{display:flex;flex-direction:column;gap:6px;margin-bottom:14px}
+.ctl:last-child{margin-bottom:0}
+.ctl > span{font-family:var(--f-mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink2)}
+.segp{display:flex;flex-wrap:wrap;gap:6px}
+.segp button{border:1px solid var(--rule);background:transparent;border-radius:10px;padding:6px 11px;font-size:14px;font-weight:500}
+.segp button[aria-pressed="true"]{background:var(--amber);border-color:var(--amber);color:var(--amber-ink)}
+.radio{display:flex;flex-direction:column;gap:6px}
+.radio button{border:1px solid var(--rule);background:transparent;border-radius:12px;padding:8px 12px;text-align:left;font-size:14px;font-weight:600;display:block;width:100%}
+.radio button small{display:block;font-weight:400;font-size:12.5px;color:var(--ink2);margin-top:1px}
+.radio button[aria-pressed="true"]{border-color:var(--amber);box-shadow:inset 0 0 0 1px var(--amber)}
+.radio button[aria-pressed="true"]::after{content:"Selected";float:right;font-family:var(--f-mono);font-size:10.5px;font-weight:500;letter-spacing:.05em;text-transform:uppercase;color:var(--ink2);margin-top:2px}
+.notes ul{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:7px;max-width:62ch}
+.notes li{text-wrap:pretty}
+.tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
+.tags span{font-family:var(--f-mono);font-size:11.5px;border:1px solid var(--rule);border-radius:6px;padding:2px 7px;color:var(--ink2)}
+.fine{font-size:12.5px;color:var(--ink2);margin:0}
+@media (prefers-reduced-motion: reduce){.toast{transition:none}}
+</style>
+
+<header class="top">
+  <span class="mark">Tegen<i>wind</i></span>
+  <span class="sub">Bike dashboard · clickable prototype · phase 0</span>
+  <p class="lede">A simulated commute from home to work, running on the phone on the left. Switch the wind and the heart-rate source to see how the ETA and the heart-rate chart react. All data is simulated. "Tegenwind" (Dutch for headwind) is a working title.</p>
+</header>
+
+<main class="stage">
+  <div class="phone">
+    <div class="app" id="app" data-mode="night">
+      <div class="status"><b id="sbClock">08:23</b><div class="dots"><span>GPS</span><span id="sbHc">Health Connect</span></div><span>82%</span></div>
+
+      <!-- RIDE -->
+      <section class="screen" data-screen="ride" id="scr-ride">
+        <div class="bar">
+          <h2>Home → work</h2>
+          <span class="pill rec" id="recPill">06:20</span>
+        </div>
+        <div class="tiles">
+          <div class="tile">
+            <p class="eyebrow">Speed</p>
+            <p class="bignum spdnum"><span id="spdNow">--</span><small>km/h</small></p>
+            <div class="meta"><span>2-min avg</span><b id="spdAvg">--</b></div>
+          </div>
+          <div class="tile">
+            <p class="eyebrow">Heart rate</p>
+            <p class="bignum hrnum"><span id="hrNow">--</span><small>bpm</small></p>
+            <div class="meta"><span class="pill" id="hrFresh">--</span><b id="hrAvg"></b></div>
+          </div>
+        </div>
+        <div class="eta">
+          <p class="eyebrow">Arrival at work</p>
+          <div class="clock"><span id="etaClock">--:--</span><small id="etaBand">± 1 min</small></div>
+          <div class="wind" aria-live="off">
+            <svg viewBox="-24 -24 48 48" aria-hidden="true"><circle r="21" fill="none" stroke="var(--line)" stroke-width="2"/><circle r="2.5" fill="var(--muted)" cy="-21"/><g id="windArrow"><path d="M0 14 L0 -12 M-7 -5 L0 -13 L7 -5" fill="none" stroke="var(--accent)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></g></svg>
+            <span class="wl" id="windLbl">Headwind</span>
+            <span class="ws" id="windSub">12 km/h · exposed</span>
+          </div>
+          <div class="progress" id="prog"><div class="track"><div class="fill" id="progFill"></div></div></div>
+          <div class="row"><span><b id="kmDone">0.0</b> / <span id="kmTot">10.5</span> km</span><span><b id="minLeft">--</b> left</span><span>form <b id="form">±0%</b></span><span>wind <b id="windCost">--</b></span></div>
+        </div>
+        <button class="chart" id="hrChartBtn" aria-label="Heart rate chart, tap to switch between last 10 minutes and full ride">
+          <div class="ch"><strong>Heart rate</strong><span class="key" style="--c:var(--hr)"><span><i class="kd"></i>raw</span><span><i class="kl"></i>2-min avg</span><span class="win">10 min</span></span></div>
+          <canvas id="hrCanvas"></canvas>
+        </button>
+        <button class="chart" id="spdChartBtn" aria-label="Speed chart, tap to switch between last 10 minutes and full ride">
+          <div class="ch"><strong>Speed</strong><span class="key" style="--c:var(--spd)"><span><i class="kd"></i>GPS</span><span><i class="kl"></i>2-min avg</span><span class="win">10 min</span></span></div>
+          <canvas id="spdCanvas"></canvas>
+        </button>
+
+        <div class="arrive" id="arrive" hidden>
+          <div class="card">
+            <p class="eyebrow">Ride complete</p>
+            <h3 id="arrTitle">Arrived 08:43</h3>
+            <div class="cmp">
+              <div><span class="eyebrow">Predicted at start</span><b id="arrPred">08:42</b></div>
+              <div><span class="eyebrow">Ride time</span><b id="arrDur">26:10</b></div>
+            </div>
+            <p class="eyebrow" style="margin-top:4px">What the model learned</p>
+            <ul id="arrLearn"></ul>
+            <div class="btnrow"><button class="abtn" id="arrStats">See route stats</button><button class="abtn primary" id="arrAgain">Ride again</button></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- MAP -->
+      <section class="screen" data-screen="map" id="scr-map" hidden>
+        <div class="bar"><h2>Home → work</h2><span class="pill" id="mapLeft">4.1 km left</span></div>
+        <div class="mapbox">
+          <svg id="mapSvg" viewBox="0 0 340 430" role="img" aria-label="Schematic route map, segments colored by predicted speed versus usual"></svg>
+          <div class="compass"><svg viewBox="-16 -16 32 32" aria-hidden="true"><circle r="14" fill="none" stroke="var(--line)" stroke-width="2"/><text y="-7" text-anchor="middle" font-size="8" fill="var(--muted)" font-family="IBM Plex Mono, monospace">N</text><g id="mapWind"><path d="M0 10 L0 -8 M-5 -3 L0 -9 L5 -3" fill="none" stroke="var(--accent)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></g></svg><span id="mapWindLbl">NE 5 Bft</span></div>
+        </div>
+        <div class="legend"><span><i style="background:var(--fast)"></i>faster than usual</span><span><i style="background:var(--typ)"></i>usual</span><span><i style="background:var(--slow)"></i>slower than usual</span></div>
+        <p class="eyebrow">Coming up</p>
+        <div class="list" id="nextList"></div>
+      </section>
+
+      <!-- STATS -->
+      <section class="screen" data-screen="stats" id="scr-stats" hidden>
+        <div class="bar"><h2>Route stats</h2><span class="pill">48 rides</span></div>
+        <div class="seg" role="group" aria-label="Route">
+          <button aria-pressed="true" data-route="hw">Home → work</button>
+          <button aria-pressed="false" data-route="wh">Work → home</button>
+        </div>
+        <div class="kpis" id="kpis"></div>
+        <div class="panel-a"><h3>Ride time over time</h3><p id="trendNote">Minutes per ride, Jan–Aug 2026</p><svg id="svgTrend" viewBox="0 0 340 150" role="img" aria-label="Ride durations over time"></svg></div>
+        <div class="panel-a"><h3>Wind costs you</h3><p id="windNote">Headwind vs ride time</p><svg id="svgWind" viewBox="0 0 340 150" role="img" aria-label="Headwind versus ride duration"></svg></div>
+        <div class="panel-a"><h3>How long it usually takes</h3><p>Rides per 1-minute bucket; median highlighted</p><svg id="svgHist" viewBox="0 0 340 120" role="img" aria-label="Histogram of ride durations"></svg></div>
+        <div class="panel-a"><h3>Where you lose time</h3><p>Learned extra time per segment, on top of the physics estimate</p><table class="segs" id="segTable"></table></div>
+      </section>
+
+      <!-- ROUTES -->
+      <section class="screen" data-screen="routes" id="scr-routes" hidden>
+        <div class="bar"><h2>Routes</h2><span class="pill">3 saved</span></div>
+        <button class="route" data-toast="Opens route details: segments on the map, learned corrections, and rides."><div><span class="rt">Home → work</span><small>10.5 km · 48 rides · usually 25 min</small></div><svg class="spark" viewBox="0 0 70 28" aria-hidden="true"><path d="M2 9 L10 14 L18 8 L26 16 L34 12 L42 18 L50 15 L58 20 L68 19"/></svg></button>
+        <button class="route" data-toast="Opens route details: segments on the map, learned corrections, and rides."><div><span class="rt">Work → home</span><small>10.6 km · 45 rides · usually 27 min</small></div><svg class="spark" viewBox="0 0 70 28" aria-hidden="true"><path d="M2 12 L10 8 L18 15 L26 11 L34 17 L42 13 L50 18 L58 16 L68 21"/></svg></button>
+        <button class="route" data-toast="New routes need about five rides before the per-segment corrections kick in. Until then the ETA uses physics and your live pace."><div><span class="rt">Home → gym</span><small>4.2 km · 3 rides · still learning</small></div><svg class="spark" viewBox="0 0 70 28" aria-hidden="true"><path d="M2 14 L24 10 L46 17"/></svg></button>
+        <div class="actions">
+          <button data-toast="Starts a ride that is saved as a new route when you stop. The track is simplified, split into ~250 m segments, and enriched in the background."><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/></svg>Record route</button>
+          <button data-toast="Pick a GPX file from Komoot or Strava. It is segmented and enriched the same way as a recorded route."><svg viewBox="0 0 24 24"><path d="M12 16V4 M7 9l5-5 5 5 M5 20h14"/></svg>Import GPX</button>
+          <button data-toast="Re-fetches elevation (Open-Meteo) and OpenStreetMap data: buildings for wind exposure, traffic signals, and road type."><svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 5.7 M20 5v6h-6"/></svg>Re-enrich</button>
+          <button data-toast="Clears learned segment corrections for this route. Your rides stay; the model starts again from physics only."><svg viewBox="0 0 24 24"><path d="M5 7h14 M9 7V4h6v3 M7 7l1 13h8l1-13"/></svg>Reset learning</button>
+        </div>
+        <div class="panel-a">
+          <h3>Model status · home → work</h3>
+          <div class="mstat"><span>Segments learned</span><b>14 / 14</b></div><div class="meter"><i style="width:100%"></i></div>
+          <div class="mstat"><span>ETA error halfway, last 10 rides</span><b>42 s</b></div><div class="meter"><i style="width:70%"></i></div>
+          <div class="mstat"><span>Fitness, 42-day trend</span><b>+4%</b></div><div class="meter"><i style="width:54%"></i></div>
+          <div class="mstat"><span>Cruise power estimate</span><b>152 W</b></div>
+        </div>
+      </section>
+
+      <nav class="tabs" role="tablist" aria-label="Screens">
+        <button role="tab" aria-selected="true" data-tab="ride"><svg viewBox="0 0 24 24"><circle cx="5.5" cy="16.5" r="3.5"/><circle cx="18.5" cy="16.5" r="3.5"/><path d="M5.5 16.5 9 9h6l3.5 7.5 M9 9l3.5 7.5H5.5 M13 6h3l-1 3"/></svg>Ride</button>
+        <button role="tab" aria-selected="false" data-tab="map"><svg viewBox="0 0 24 24"><path d="M3 6.5 9 4l6 2.5L21 4v13.5L15 20l-6-2.5L3 20z M9 4v13.5 M15 6.5V20"/></svg>Map</button>
+        <button role="tab" aria-selected="false" data-tab="stats"><svg viewBox="0 0 24 24"><path d="M5 20v-8 M12 20V5 M19 20v-5 M3 20h18"/></svg>Stats</button>
+        <button role="tab" aria-selected="false" data-tab="routes"><svg viewBox="0 0 24 24"><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="6" r="2.5"/><path d="M8.5 18H15a3 3 0 0 0 0-6H9a3 3 0 0 1 0-6h6.5"/></svg>Routes</button>
+      </nav>
+      <div class="toast" id="toast" hidden></div>
+    </div>
+  </div>
+
+  <aside class="side">
+    <section class="box" aria-label="Simulation controls">
+      <h2>Simulate the ride</h2>
+      <div class="ctl"><span>Playback</span>
+        <div class="segp" id="playCtl">
+          <button id="playBtn" aria-pressed="true">Pause</button>
+          <button data-mult="1" aria-pressed="false">1×</button>
+          <button data-mult="5" aria-pressed="true">5×</button>
+          <button data-mult="20" aria-pressed="false">20×</button>
+          <button id="restartBtn" aria-pressed="false">Restart</button>
+        </div>
+      </div>
+      <div class="ctl"><span>Wind today</span>
+        <div class="segp" id="windCtl">
+          <button data-wind="head" aria-pressed="true">Headwind NE 5 Bft</button>
+          <button data-wind="tail" aria-pressed="false">Tailwind SW 5 Bft</button>
+          <button data-wind="cross" aria-pressed="false">Crosswind NW 4 Bft</button>
+          <button data-wind="calm" aria-pressed="false">Calm</button>
+        </div>
+      </div>
+      <div class="ctl"><span>Heart-rate source</span>
+        <div class="radio" id="hrCtl">
+          <button data-hr="hc" aria-pressed="true">Steel HR via Health Connect<small>Recommended now. The watch syncs every few minutes, so points arrive in batches.</small></button>
+          <button data-hr="after" aria-pressed="false">Steel HR, sync after ride<small>Worst case: nothing arrives until you stop, then the chart fills in.</small></button>
+          <button data-hr="ble" aria-pressed="false">Bluetooth chest strap<small>Possible later upgrade: a live reading every second.</small></button>
+        </div>
+      </div>
+      <div class="ctl"><span>App theme</span>
+        <div class="segp" id="modeCtl">
+          <button data-mode="night" aria-pressed="true">Night</button>
+          <button data-mode="sun" aria-pressed="false">Sun (high contrast)</button>
+        </div>
+      </div>
+    </section>
+    <section class="box notes" id="notes" aria-live="polite"></section>
+    <p class="fine">Tap a chart to switch between the last 10 minutes and the full ride.</p>
+  </aside>
+</main>
+
+<script>
+(() => {
+"use strict";
+const $ = s => document.querySelector(s);
+const $$ = s => [...document.querySelectorAll(s)];
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+function gauss(r){let u=0;while(!u)u=r();return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*r())}
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const pad2=n=>String(n).padStart(2,"0");
+const START=8*3600+17*60;
+const fmtClock=s=>{s=Math.round(s);return pad2(Math.floor(s/3600)%24)+":"+pad2(Math.floor(s/60)%60)};
+const fmtMS=s=>{s=Math.max(0,Math.round(s));return Math.floor(s/60)+":"+pad2(s%60)};
+const fmtSigned=s=>(s<0?"−":"+")+fmtMS(Math.abs(s));
+
+/* ---------- route model ---------- */
+const SEGS=[
+  {name:"Home street",len:450,kind:"town",exp:.35,grade:0,lights:false,b:40},
+  {name:"Residential loop",len:700,kind:"town",exp:.4,grade:0,lights:true,b:70},
+  {name:"Polder path",len:1600,kind:"open",exp:1,grade:0,lights:false,b:60},
+  {name:"Dike",len:1200,kind:"open",exp:1,grade:.3,lights:false,b:20},
+  {name:"Bridge ramp",len:350,kind:"open",exp:.9,grade:4,lights:false,b:35,bridge:true},
+  {name:"Bridge descent",len:350,kind:"open",exp:.9,grade:-4,lights:false,b:35,bridge:true},
+  {name:"Canal path",len:1300,kind:"open",exp:.8,grade:0,lights:false,b:80,water:true},
+  {name:"Ring road crossing",len:400,kind:"suburb",exp:.5,grade:0,lights:true,b:95},
+  {name:"Business park",len:900,kind:"suburb",exp:.6,grade:0,lights:false,b:50},
+  {name:"Rail underpass",len:300,kind:"city",exp:.1,grade:0,lights:false,b:40,tunnel:true},
+  {name:"City centre",len:1100,kind:"city",exp:.3,grade:0,lights:true,b:25},
+  {name:"Stationsplein",len:500,kind:"city",exp:.25,grade:0,lights:true,b:5,busy:true},
+  {name:"Old town",len:900,kind:"city",exp:.3,grade:.5,lights:false,b:345},
+  {name:"Office",len:400,kind:"city",exp:.3,grade:0,lights:false,b:20}
+];
+let acc0=0; SEGS.forEach(s=>{s.start=acc0;acc0+=s.len}); const TOTAL=acc0;
+const TRAFFIC={town:.96,open:1,suburb:.95,city:.86};
+const stopP=s=>s.busy?.8:.55, stopMean=s=>s.busy?30:22;
+const stopExp=s=>s.lights?stopP(s)*stopMean(s):0;
+const stopVar=s=>s.lights?(s.busy?400:256):0;
+
+const WINDS={head:{from:45,w:8.5,dir:"NE",bft:5},tail:{from:225,w:8.5,dir:"SW",bft:5},cross:{from:315,w:7,dir:"NW",bft:4},calm:{from:200,w:1.5,dir:"S",bft:1}};
+const CALM={from:0,w:0};
+const PH={rho:1.2,CdA:.5,Crr:.006,m:90,g:9.81};
+const P_MODEL=150, P_TRUE=156, VMAX=9.7;
+function solveV(P,grade,wh){let lo=.3,hi=20;for(let i=0;i<36;i++){const v=(lo+hi)/2,a=v+wh;const need=.5*PH.rho*PH.CdA*a*Math.abs(a)*v+PH.Crr*PH.m*PH.g*v+PH.m*PH.g*(grade/100)*v;if(need>P)hi=v;else lo=v}return(lo+hi)/2}
+const windAt=t=>{const W=WINDS[state.wind];return{from:W.from+6*Math.sin(t/700),w:W.w*(1+.08*Math.sin(t/1100+1))}};
+const headwind=(s,w)=>w.w*.55*s.exp*Math.cos((w.from-s.b)*Math.PI/180);
+const vPred=(s,t,w)=>Math.min(VMAX,solveV(P_MODEL,s.grade,headwind(s,w||windAt(t))))*TRAFFIC[s.kind];
+
+/* ---------- state ---------- */
+const state={playing:true,mult:5,wind:"head",hr:"hc",mode:"night",tab:"ride",win:{hr:600,spd:600},route:"hw"};
+let rng,sim,speed,hrAll,est,segLog,predStart,etaStartT;
+
+function reset(seed){
+  rng=mulberry32(seed||42);
+  sim={t:0,d:0,seg:0,v:0,stopUntil:-1,plan:null,segEntryT:0,segStopped:0,ar:0,gust:0,hr:92,lastSync:-1e9,nextSync:170,done:false,arrT:0};
+  speed=[];hrAll=[];segLog=[];est={f:1,P:.0036};
+  enterSeg();
+  predStart=SEGS.map(s=>s.len/vPred(s,0)+stopExp(s));
+  etaStartT=remaining().sec;
+  $("#arrive").hidden=true;
+}
+function enterSeg(){
+  const s=SEGS[sim.seg];sim.segEntryT=sim.t;sim.segStopped=0;
+  sim.plan=(s.lights&&rng()<stopP(s))?{at:s.start+s.len-20,dur:8+rng()*(s.busy?44:30),done:false}:null;
+}
+function completeSeg(){
+  const s=SEGS[sim.seg];const actual=sim.t-sim.segEntryT;const move=Math.max(1,actual-sim.segStopped);
+  const obs=clamp((s.len/vPred(s,sim.segEntryT))/move,.6,1.5);
+  est.P+=.0003;const K=est.P/(est.P+.0025);est.f+=K*(obs-est.f);est.P*=(1-K);
+  segLog.push({i:sim.seg,actual,pred:predStart[sim.seg],stopped:sim.segStopped});
+  sim.seg++;
+  if(sim.seg>=SEGS.length){sim.done=true;sim.arrT=sim.t;sim.seg=SEGS.length-1;sim.d=TOTAL;onArrive();return}
+  enterSeg();
+}
+function tick(){
+  if(sim.done)return;
+  sim.t++;const t=sim.t;const s=SEGS[sim.seg];
+  sim.gust+=-sim.gust*.04+gauss(rng)*.2;
+  const wf=windAt(t),wTrue={from:wf.from,w:wf.w*(1+.15*sim.gust)};
+  if(sim.plan&&!sim.plan.done&&sim.d>=sim.plan.at){sim.stopUntil=t+sim.plan.dur;sim.plan.done=true}
+  let target=0;
+  if(sim.stopUntil<=t){const fat=1-.00004*t;target=Math.min(VMAX,solveV(P_TRUE*fat,s.grade,headwind(s,wTrue)))*TRAFFIC[s.kind]*(1+sim.ar)}
+  sim.ar+=-sim.ar*.1+gauss(rng)*.012;
+  sim.v=Math.max(0,sim.v+clamp(target-sim.v,-2.5,.9));
+  sim.d+=sim.v;
+  if(sim.v<.4)sim.segStopped++;
+  if(!s.tunnel&&rng()>.012)speed.push({t,v:Math.max(0,sim.v+gauss(rng)*.33)*3.6});
+  const effort=sim.v<.4?0:P_TRUE*(s.grade>2?1.5:s.grade<-2?.3:1);
+  sim.hr+=(88+.34*effort+.3*(t/60)-sim.hr)/22;
+  hrAll.push({t,v:Math.round(sim.hr+gauss(rng)*2.6)});
+  if(t>=sim.nextSync){sim.lastSync=t;sim.nextSync=t+150+rng()*140}
+  while(!sim.done&&sim.d>=SEGS[sim.seg].start+SEGS[sim.seg].len)completeSeg();
+}
+function remaining(){
+  let tc=sim.t,sum=0,calm=0,move=0,sv=0;
+  for(let j=sim.seg;j<SEGS.length;j++){
+    const s=SEGS[j];const dist=j===sim.seg?Math.max(0,s.start+s.len-sim.d):s.len;
+    const tm=dist/(vPred(s,tc)*est.f);sum+=tm;move+=tm;calm+=dist/(vPred(s,tc,CALM)*est.f);
+    if(j===sim.seg){
+      if(sim.stopUntil>sim.t){sum+=sim.stopUntil-sim.t;calm+=sim.stopUntil-sim.t}
+      else if(s.lights&&!(sim.plan&&sim.plan.done)&&sim.d<s.start+s.len-20){sum+=stopExp(s);calm+=stopExp(s);sv+=stopVar(s)}}
+    else{sum+=stopExp(s);calm+=stopExp(s);sv+=stopVar(s)}
+    tc+=tm;
+  }
+  const sigma=Math.sqrt(Math.pow(Math.sqrt(est.P)*move,2)+sv+Math.pow(.02*move,2));
+  return{sec:sum,sigma,windCost:sum-calm};
+}
+
+/* ---------- HR visibility ---------- */
+function hrVisible(){
+  if(state.hr==="ble")return hrAll;
+  const lim=state.hr==="hc"?sim.lastSync-15:(sim.done?Infinity:-Infinity);
+  const out=[];for(const p of hrAll){if(p.t>lim)break;if(p.t%5===0)out.push(p)}return out;
+}
+
+/* ---------- charts ---------- */
+const appEl=$("#app");
+const tok=n=>getComputedStyle(appEl).getPropertyValue(n).trim();
+function rolling(arr){const out=new Array(arr.length);let j=0,sum=0;for(let i=0;i<arr.length;i++){sum+=arr[i].v;while(arr[j].t<=arr[i].t-120){sum-=arr[j].v;j++}out[i]=sum/(i-j+1)}return out}
+function drawChart(cv,data,color,winSec,yFix,nowT){
+  const dpr=window.devicePixelRatio||1,W=cv.clientWidth,H=cv.clientHeight;if(!W)return;
+  if(cv.width!==Math.round(W*dpr)){cv.width=Math.round(W*dpr);cv.height=Math.round(H*dpr)}
+  const c=cv.getContext("2d");c.setTransform(dpr,0,0,dpr,0,0);c.clearRect(0,0,W,H);
+  const t1=Math.max(nowT,winSec?0:60),t0=winSec?t1-winSec:0;
+  const L=30,R=6,T=6,B=17,pw=W-L-R,ph=H-T-B;
+  const inWin=data.filter(p=>p.t>=t0);
+  let lo,hi;
+  if(yFix){lo=yFix[0];hi=yFix[1]}else{let mn=1e9,mx=-1e9;inWin.forEach(p=>{mn=Math.min(mn,p.v);mx=Math.max(mx,p.v)});if(mn>mx){mn=90;mx=160}lo=Math.floor((mn-6)/10)*10;hi=Math.ceil((mx+6)/10)*10;if(hi-lo<40){hi=lo+40}}
+  const X=t=>L+(t-t0)/(t1-t0)*pw,Y=v=>T+(1-(v-lo)/(hi-lo))*ph;
+  const muted=tok("--muted"),line=tok("--line"),bg=tok("--surf");
+  c.font='500 10px "IBM Plex Mono", ui-monospace, monospace';c.textBaseline="middle";c.textAlign="right";
+  const step=(hi-lo)>60?20:10;
+  for(let v=lo;v<=hi;v+=step){const y=Math.round(Y(v))+.5;c.strokeStyle=line;c.lineWidth=1;c.beginPath();c.moveTo(L,y);c.lineTo(W-R,y);c.stroke();c.fillStyle=muted;c.fillText(v,L-5,y)}
+  c.textBaseline="alphabetic";
+  const xl=winSec?[[t0,"−10 min","left"],[t0+winSec/2,"−5","center"],[t1,"now","right"]]:[[0,"0","left"],[t1/2,Math.round(t1/120)+" min","center"],[t1,Math.round(t1/60)+" min","right"]];
+  xl.forEach(([t,s,a])=>{c.textAlign=a;c.fillStyle=muted;c.fillText(s,X(t)+(a==="left"?0:a==="right"?0:0),H-3)});
+  c.save();c.beginPath();c.rect(L,0,pw+R,H-B+2);c.clip();
+  c.fillStyle=color;c.globalAlpha=.42;
+  const r=inWin.length>900?1.2:1.7;
+  for(const p of inWin){c.beginPath();c.arc(X(p.t),Y(p.v),r,0,6.283);c.fill()}
+  c.globalAlpha=1;
+  const avg=rolling(data);c.strokeStyle=color;c.lineWidth=2.5;c.lineJoin="round";c.lineCap="round";c.beginPath();
+  let started=false,prevT=-1e9;
+  for(let i=0;i<data.length;i++){const p=data[i];if(p.t<t0-5){prevT=p.t;continue}
+    const x=X(p.t),y=Y(avg[i]);if(!started||p.t-prevT>30){c.moveTo(x,y);started=true}else c.lineTo(x,y);prevT=p.t}
+  c.stroke();
+  if(data.length){const i=data.length-1;const x=X(data[i].t),y=Y(avg[i]);c.beginPath();c.arc(x,y,4.5,0,6.283);c.fillStyle=color;c.fill();c.lineWidth=2;c.strokeStyle=bg;c.stroke()}
+  c.restore();
+  if(data.length&&nowT-data[data.length-1].t>60){
+    const x0=X(data[data.length-1].t)+6;
+    if(W-R-x0>70){c.fillStyle=muted;c.textAlign="center";c.fillText(state.hr==="after"?"arrives after ride":"not synced yet",(x0+W-R)/2,T+14)}
+  } else if(!data.length){c.fillStyle=muted;c.textAlign="center";c.fillText(state.hr==="after"?"Heart rate arrives after the ride":"Waiting for first watch sync",L+pw/2,T+ph/2)}
+}
+
+/* ---------- ride render ---------- */
+const progEl=$("#prog");
+SEGS.forEach((s,i)=>{if(i>0){const d=document.createElement("div");d.className="tick";d.style.left=(s.start/TOTAL*100)+"%";progEl.appendChild(d)}
+  if(s.lights){const l=document.createElement("div");l.className="light";l.style.left=((s.start+s.len-20)/TOTAL*100)+"%";progEl.appendChild(l)}});
+const me=document.createElement("div");me.className="me";progEl.appendChild(me);
+$("#kmTot").textContent=(TOTAL/1000).toFixed(1);
+
+function windDesc(s,t){
+  const w=windAt(t);const rw=w.w*.55*s.exp;const hw=rw*Math.cos((w.from-s.b)*Math.PI/180);
+  const rel=((w.from-s.b)%360+360)%360;
+  let lbl=Math.abs(hw)<rw*.45?"Crosswind":hw>0?"Headwind":"Tailwind";if(rw<.8)lbl="Little wind";
+  const shelter=s.exp>=.8?"exposed":s.exp>=.45?"partly sheltered":"sheltered";
+  return{lbl,kmh:Math.round(Math.abs(state.wind==="calm"?rw:hw)*3.6),shelter,rot:rel+180};
+}
+function renderRide(){
+  const t=sim.t;const s=SEGS[sim.seg];
+  $("#sbClock").textContent=fmtClock(START+t);
+  $("#recPill").textContent=sim.done?"Finished":fmtMS(t);
+  $("#recPill").className="pill "+(sim.done?"ok":"rec");
+  const last=speed[speed.length-1];const sAvg=rolling(speed);
+  $("#spdNow").textContent=last?(s.tunnel&&!sim.done?"--":last.v.toFixed(1)):"--";
+  $("#spdAvg").textContent=sAvg.length?sAvg[sAvg.length-1].toFixed(1)+" km/h":"--";
+  const hv=hrVisible();const hAvg=rolling(hv);
+  const fr=$("#hrFresh");
+  if(hv.length){$("#hrNow").textContent=hv[hv.length-1].v;$("#hrAvg").textContent="avg "+Math.round(hAvg[hAvg.length-1])}
+  else{$("#hrNow").textContent="--";$("#hrAvg").textContent=""}
+  if(state.hr==="ble"){fr.textContent="live";fr.className="pill ok"}
+  else if(state.hr==="after"&&!sim.done){fr.textContent="after ride";fr.className="pill"}
+  else if(!hv.length){fr.textContent="no sync yet";fr.className="pill warn"}
+  else{const age=t-hv[hv.length-1].t;const m=Math.round(age/60);fr.textContent=sim.done&&state.hr==="after"?"backfilled":age<60?"just synced":m+" min ago";fr.className="pill"+(age>300?" warn":"")}
+  const rem=sim.done?{sec:0,sigma:0,windCost:0}:remaining();
+  $("#etaClock").textContent=fmtClock(START+(sim.done?sim.arrT:t+rem.sec));
+  const band=1.28*rem.sigma;
+  $("#etaBand").textContent=sim.done?"arrived":band<50?"± "+Math.max(5,Math.round(band/5)*5)+" s":"± "+Math.round(band/60)+" min";
+  $("#kmDone").textContent=(sim.d/1000).toFixed(1);
+  $("#minLeft").textContent=sim.done?"0 min":Math.ceil(rem.sec/60)+" min";
+  const fp=Math.round((est.f-1)*100);$("#form").textContent=(fp>0?"+":fp<0?"−":"±")+Math.abs(fp)+"%";
+  $("#windCost").textContent=sim.done?"--":fmtSigned(rem.windCost);
+  $("#progFill").style.width=(sim.d/TOTAL*100)+"%";me.style.left=(sim.d/TOTAL*100)+"%";
+  const wd=windDesc(s,t);$("#windLbl").textContent=wd.lbl;$("#windSub").textContent=wd.kmh+" km/h · "+wd.shelter;
+  $("#windArrow").setAttribute("transform","rotate("+wd.rot.toFixed(1)+")");
+  drawChart($("#hrCanvas"),hv,tok("--hr"),state.win.hr,null,t);
+  drawChart($("#spdCanvas"),speed,tok("--spd"),state.win.spd,[0,45],t);
+}
+function onArrive(){
+  $("#arrTitle").textContent="Arrived "+fmtClock(START+sim.arrT);
+  $("#arrPred").textContent=fmtClock(START+etaStartT);
+  $("#arrDur").textContent=fmtMS(sim.arrT);
+  const diffs=segLog.map(l=>({n:SEGS[l.i].name,d:l.actual-l.pred,stop:l.stopped})).sort((a,b)=>Math.abs(b.d)-Math.abs(a.d)).slice(0,3);
+  $("#arrLearn").innerHTML=diffs.map(x=>`<li><span>${x.n}${x.stop>5?" · waited "+x.stop+" s":""}</span><span>${x.d>=0?"+":"−"}${Math.abs(Math.round(x.d))} s vs expected</span></li>`).join("")+`<li><span>Today's form</span><span>${est.f>=1?"+":"−"}${Math.abs(Math.round((est.f-1)*100))}% vs usual</span></li>`;
+  $("#arrive").hidden=false;
+}
+
+/* ---------- map ---------- */
+const GEO=(()=>{let x=0,y=0;const pts=[];SEGS.forEach((s,i)=>{const sub=[];sub.push([x,y]);[-7,9].forEach((db,k)=>{const b=(s.b+(i%2?db:-db))*Math.PI/180;x+=Math.sin(b)*s.len/2;y-=Math.cos(b)*s.len/2;sub.push([x,y])});pts.push(sub)});
+  const all=pts.flat();const mnx=Math.min(...all.map(p=>p[0])),mxx=Math.max(...all.map(p=>p[0])),mny=Math.min(...all.map(p=>p[1])),mxy=Math.max(...all.map(p=>p[1]));
+  const sc=Math.min((340-60)/(mxx-mnx),(430-70)/(mxy-mny));const ox=(340-(mxx-mnx)*sc)/2,oy=(430-(mxy-mny)*sc)/2+10;
+  return pts.map(sub=>sub.map(([a,b])=>[ox+(a-mnx)*sc,oy+(b-mny)*sc]))})();
+const P=p=>p[0].toFixed(1)+","+p[1].toFixed(1);
+function posAt(d){const i=SEGS.findIndex(s=>d<s.start+s.len);const k=i<0?SEGS.length-1:i;const s=SEGS[k];const f=clamp((d-s.start)/s.len,0,1);const g=GEO[k];const h=f<.5?0:1;const ff=f<.5?f*2:(f-.5)*2;return[g[h][0]+(g[h+1][0]-g[h][0])*ff,g[h][1]+(g[h+1][1]-g[h][1])*ff]}
+(function buildMap(){
+  let h="";
+  SEGS.forEach((s,i)=>{if(s.kind==="city"||s.kind==="town"||s.kind==="suburb"){const r=s.kind==="city"?30:s.kind==="town"?22:16;GEO[i].forEach(p=>{h+=`<circle class="m-built" cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="${r}"/>`})}});
+  SEGS.forEach((s,i)=>{if(s.water){const g=GEO[i];h+=`<polyline class="m-water" points="${g.map(p=>P([p[0]+2,p[1]+9])).join(" ")} ${P([g[2][0]+40,g[2][1]+18])}"/>`}});
+  h+=`<polyline class="m-casing" points="${GEO.map(g=>g.map(P).join(" ")).join(" ")}"/>`;
+  SEGS.forEach((s,i)=>{h+=`<polyline class="m-seg typ" id="ms${i}" points="${GEO[i].map(P).join(" ")}"/>`});
+  SEGS.forEach((s,i)=>{if(s.bridge){const m=GEO[i][1];h+=`<line class="m-bridge" x1="${m[0]-7}" y1="${m[1]-5}" x2="${m[0]+7}" y2="${m[1]+5}"/>`}
+    if(s.lights){const p=posAt(s.start+s.len-20);h+=`<circle class="m-light" cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="4"/>`}});
+  const a=GEO[0][0],z=GEO[SEGS.length-1][2];
+  h+=`<circle class="m-end" cx="${a[0]}" cy="${a[1]}" r="6"/><text class="m-lbl" x="${a[0]+10}" y="${a[1]+4}">home</text>`;
+  h+=`<rect class="m-end" x="${z[0]-6}" y="${z[1]-6}" width="12" height="12" rx="2"/><text class="m-lbl" x="${z[0]-10}" y="${z[1]+4}" text-anchor="end">work</text>`;
+  const mid=GEO[2][1];h+=`<text class="m-lbl" x="${mid[0]+14}" y="${mid[1]+22}">polder</text>`;
+  const cc=GEO[11][1];h+=`<text class="m-lbl" x="${cc[0]+36}" y="${cc[1]+4}">centre</text>`;
+  h+=`<circle class="m-halo" id="mHalo" r="14"/><circle class="m-me" id="mMe" r="7"/>`;
+  $("#mapSvg").innerHTML=h;
+})();
+function renderMap(){
+  const t=sim.t;
+  SEGS.forEach((s,i)=>{const r=vPred(s,t)/vPred(s,t,CALM);$("#ms"+i).setAttribute("class","m-seg "+(r>1.05?"fast":r<.95?"slow":"typ"))});
+  const p=posAt(sim.d);["#mMe","#mHalo"].forEach(id=>{$(id).setAttribute("cx",p[0].toFixed(1));$(id).setAttribute("cy",p[1].toFixed(1))});
+  const W=WINDS[state.wind];$("#mapWind").setAttribute("transform","rotate("+(windAt(t).from+180).toFixed(1)+")");
+  $("#mapWindLbl").textContent=W.dir+" "+W.bft+" Bft";
+  $("#mapLeft").textContent=sim.done?"Arrived":((TOTAL-sim.d)/1000).toFixed(1)+" km left";
+  const items=[];
+  const ICON={light:'<path d="M9 3h6v18H9z M12 7v.01 M12 12v.01 M12 17v.01"/>',hill:'<path d="M3 19l6-8 4 5 3-3 5 6z"/>',wind:'<path d="M3 8h11a3 3 0 1 0-3-3 M3 12h15a3 3 0 1 1-3 3 M3 16h7"/>',flag:'<path d="M5 21V4 M5 4h11l-2 4 2 4H5"/>'};
+  for(let j=sim.seg;j<SEGS.length&&items.length<3;j++){const s=SEGS[j];
+    if(s.lights){const at=s.start+s.len-20;if(at>sim.d+5)items.push({ic:"light",t:s.busy?s.name+" lights":"Traffic lights",sub:"usually +"+Math.round(stopExp(s))+" s",d:at-sim.d})}
+    if(s.grade>2&&s.start>sim.d)items.push({ic:"hill",t:s.name,sub:s.grade+"% climb over "+s.len+" m",d:s.start-sim.d});
+    if(s.exp>=.8&&s.start>sim.d&&!s.bridge){const r=vPred(s,t)/vPred(s,t,CALM);if(r<.93||r>1.07)items.push({ic:"wind",t:s.name+" (exposed)",sub:(r<1?"headwind: ":"tailwind: ")+(r<1?"−":"+")+Math.abs(Math.round((vPred(s,t)-vPred(s,t,CALM))*3.6))+" km/h vs usual",d:s.start-sim.d})}
+  }
+  if(items.length<3)items.push({ic:"flag",t:"Work",sub:"arrive around "+fmtClock(START+t+(sim.done?0:remaining().sec)),d:TOTAL-sim.d});
+  const fd=d=>d>=1000?(d/1000).toFixed(1)+" km":Math.round(d/10)*10+" m";
+  $("#nextList").innerHTML=items.slice(0,3).map(x=>`<div class="li"><span class="ic"><svg viewBox="0 0 24 24">${ICON[x.ic]}</svg></span><span>${x.t}<small>${x.sub}</small></span><span class="d">${sim.done?"":"in "+fd(x.d)}</span></div>`).join("");
+}
+
+/* ---------- stats ---------- */
+const MON=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+function history(key){const r=mulberry32(key==="hw"?7:19);const out=[];let d=new Date(2026,0,5);
+  for(let i=0;i<48;i++){d=new Date(d.getTime()+(2+Math.floor(r()*6))*864e5);while(d.getDay()===0||d.getDay()===6)d=new Date(d.getTime()+864e5);
+    const hw=Math.round(-18+r()*40);const base=key==="hw"?25.7:27.2;const dur=base+hw*.075-(i/47)*1.3+gauss(r)*.55+(r()<.12?1+r()*2:0);out.push({date:d,hw,dur})}return out}
+const fmtMin=m=>fmtMS(m*60);
+const fmtDate=d=>d.getDate()+" "+MON[d.getMonth()];
+function renderStats(){
+  const H=history(state.route);const durs=H.map(h=>h.dur);const sorted=[...durs].sort((a,b)=>a-b);
+  const mean=durs.reduce((a,b)=>a+b,0)/durs.length,med=(sorted[23]+sorted[24])/2;
+  const fi=durs.indexOf(sorted[0]),si=durs.indexOf(sorted[sorted.length-1]);
+  const wtxt=h=>h.hw<-3?"tailwind "+(-h.hw)+" km/h":h.hw>3?"headwind "+h.hw+" km/h":"calm";
+  $("#kpis").innerHTML=`<div class="kpi f"><span>Fastest</span><b>${fmtMin(sorted[0])}</b><span>${fmtDate(H[fi].date)} · ${wtxt(H[fi])}</span></div>
+    <div class="kpi s"><span>Slowest</span><b>${fmtMin(sorted[47])}</b><span>${fmtDate(H[si].date)} · ${wtxt(H[si])}</span></div>
+    <div class="kpi"><span>Average</span><b>${fmtMin(mean)}</b><span>over 48 rides</span></div>
+    <div class="kpi"><span>Median</span><b>${fmtMin(med)}</b><span>half your rides are faster</span></div>`;
+  const lo=Math.floor(sorted[0])-1,hi=Math.ceil(sorted[47])+1;
+  // trend
+  {const L=30,R=10,T=10,B=20,W=340,Hh=150;const t0=H[0].date.getTime(),t1=H[47].date.getTime();
+   const X=d=>L+(d.getTime()-t0)/(t1-t0)*(W-L-R),Y=v=>T+(1-(v-lo)/(hi-lo))*(Hh-T-B);let s="";
+   for(let v=Math.ceil(lo/2)*2;v<=hi;v+=2)s+=`<line class="s-grid" x1="${L}" x2="${W-R}" y1="${Y(v)}" y2="${Y(v)}"/><text class="s-ax" x="${L-5}" y="${Y(v)+3}" text-anchor="end">${v}</text>`;
+   for(let m=0;m<12;m+=2){const d=new Date(2026,m,1);if(d.getTime()>=t0&&d.getTime()<=t1)s+=`<text class="s-ax" x="${X(d)}" y="${Hh-4}" text-anchor="middle">${MON[m]}</text>`}
+   const n=48,xs=H.map((h,i)=>i),mx=23.5,my=mean;let num=0,den=0;xs.forEach((x,i)=>{num+=(x-mx)*(durs[i]-my);den+=(x-mx)*(x-mx)});const sl=num/den;
+   s+=`<line class="s-trend" x1="${X(H[0].date)}" y1="${Y(my-sl*mx)}" x2="${X(H[47].date)}" y2="${Y(my+sl*(n-1-mx))}"/>`;
+   H.forEach((h,i)=>{if(i!==fi&&i!==si)s+=`<circle class="s-dot" cx="${X(h.date).toFixed(1)}" cy="${Y(h.dur).toFixed(1)}" r="3"/>`});
+   [[fi,"s-fast","fastest"],[si,"s-slow","slowest"]].forEach(([i,c,l])=>{const x=X(H[i].date),y=Y(H[i].dur);s+=`<circle class="${c}" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="5"/><circle class="s-ring" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="6"/>`;
+     const anc=x>W-80?"end":x<L+50?"start":"middle";s+=`<text class="s-note" x="${(anc==="end"?x-9:anc==="start"?x+9:x).toFixed(1)}" y="${(l==="fastest"?y+17:y-10).toFixed(1)}" text-anchor="${anc}">${l} ${fmtMin(H[i].dur)}</text>`});
+   $("#svgTrend").innerHTML=s;
+   const perMonth=sl*21;$("#trendNote").textContent="Minutes per ride, "+MON[H[0].date.getMonth()]+"–"+MON[H[47].date.getMonth()]+" 2026 · trend "+(perMonth<0?"−":"+")+Math.abs(Math.round(perMonth*60))+" s per month";}
+  // wind
+  {const L=30,R=10,T=22,B=22,W=340,Hh=150;const X=v=>L+(v+20)/45*(W-L-R),Y=v=>T+(1-(v-lo)/(hi-lo))*(Hh-T-B);let s="";
+   for(let v=Math.ceil(lo/2)*2;v<=hi;v+=2)s+=`<line class="s-grid" x1="${L}" x2="${W-R}" y1="${Y(v)}" y2="${Y(v)}"/><text class="s-ax" x="${L-5}" y="${Y(v)+3}" text-anchor="end">${v}</text>`;
+   [-20,-10,0,10,20].forEach(v=>s+=`<text class="s-ax" x="${X(v)}" y="${Hh-6}" text-anchor="middle">${v===0?"0":v>0?v:"−"+(-v)}</text>`);
+   s+=`<text class="s-ax" x="${L}" y="9">← tailwind</text><text class="s-ax" x="${W-R}" y="9" text-anchor="end">headwind km/h →</text>`;
+   const mx=H.reduce((a,h)=>a+h.hw,0)/48;let num=0,den=0;H.forEach(h=>{num+=(h.hw-mx)*(h.dur-mean);den+=(h.hw-mx)**2});const sl=num/den,b0=mean-sl*mx;
+   H.forEach(h=>s+=`<circle class="s-dot" cx="${X(h.hw).toFixed(1)}" cy="${Y(h.dur).toFixed(1)}" r="3"/>`);
+   s+=`<line class="s-trend" x1="${X(-20)}" y1="${Y(b0-20*sl)}" x2="${X(25)}" y2="${Y(b0+25*sl)}"/>`;
+   $("#svgWind").innerHTML=s;$("#windNote").textContent="Each 10 km/h of headwind adds about "+fmtMS(sl*10*60)+" to your ride";}
+  // histogram
+  {const L=30,R=10,T=8,B=20,W=340,Hh=120;const bins=[];for(let m=lo;m<hi;m++)bins.push({m,c:0});durs.forEach(d=>{const b=bins[Math.floor(d)-lo];if(b)b.c++});
+   const mxc=Math.max(...bins.map(b=>b.c));const bw=(W-L-R)/bins.length;const Y=c=>T+(1-c/mxc)*(Hh-T-B);let s="";
+   [0,Math.ceil(mxc/2),mxc].forEach(c=>s+=`<line class="s-grid" x1="${L}" x2="${W-R}" y1="${Y(c)}" y2="${Y(c)}"/><text class="s-ax" x="${L-5}" y="${Y(c)+3}" text-anchor="end">${c}</text>`);
+   bins.forEach((b,i)=>{const x=L+i*bw+1.5,h=Hh-B-Y(b.c);if(b.c)s+=`<path class="s-bar${Math.floor(med)===b.m?" med":""}" d="M${x.toFixed(1)} ${Hh-B} v${(-h+3).toFixed(1)} q0 -3 3 -3 h${(bw-9).toFixed(1)} q3 0 3 3 v${(h-3).toFixed(1)} z"/>`;
+     s+=`<text class="s-ax" x="${(x+bw/2-1.5).toFixed(1)}" y="${Hh-5}" text-anchor="middle">${b.m}</text>`});
+   $("#svgHist").innerHTML=s;}
+  const segs=state.route==="hw"?[["Stationsplein","lights · busy crossing","+38 s"],["Polder path","exposed to wind","+24 s"],["Ring road crossing","lights","+19 s"],["Bridge ramp","4% climb","+9 s"]]
+    :[["Stationsplein","lights · busy crossing","+41 s"],["City centre","lights · rush hour","+27 s"],["Dike","exposed to wind","+22 s"],["Residential loop","lights","+12 s"]];
+  $("#segTable").innerHTML=segs.map(r=>`<tr><td>${r[0]}<small>${r[1]}</small></td><td class="x">${r[2]}</td></tr>`).join("");
+}
+
+/* ---------- notes ---------- */
+const NOTES={
+  ride:{h:"Ride · the handlebar screen",li:[
+    "Speed comes from phone GPS, once per second. Dots are the raw readings; the line is a 2-minute rolling average. There is a gap in the rail underpass because GPS drops out there.",
+    "Heart rate goes from the Steel HR to the Withings app, then Health Connect, then this app. The label under the number shows how old the last reading is. Use the heart-rate source buttons to compare the options.",
+    "The ETA adds up predicted times for the remaining segments. It uses the wind forecast, how exposed each segment is, climbs and traffic lights, and it adjusts to how fast you are riding today. \"Wind\" shows how much time the wind adds or saves.",
+    "Leave the ride running to the end and you get a card showing what the model learned from this ride."],
+    tags:["Jetpack Compose","FusedLocationProvider","Health Connect","Vico","Open-Meteo"]},
+  map:{h:"Map · where time is won or lost",li:[
+    "Each segment is colored by how fast you're likely to ride it now, compared with calm weather. Change the wind and the polder turns red or green, while the sheltered centre barely changes.",
+    "How exposed a segment is to wind starts as an estimate from building density on OpenStreetMap. The app then corrects it for each segment from your own rides.",
+    "\"Coming up\" warns about traffic lights, climbs and exposed stretches ahead.",
+    "The real app uses MapLibre with OpenFreeMap tiles. The map here is a simplified drawing."],
+    tags:["MapLibre","OpenFreeMap","OSM Overpass","spatial-k"]},
+  stats:{h:"Stats · per route",li:[
+    "Fastest, slowest, average and median ride time, taken from every saved ride on the selected route.",
+    "Ride time over time shows your fitness trend. The wind chart shows how much a headwind costs you.",
+    "\"Where you lose time\" lists the corrections the ETA model has learned for each segment, such as traffic lights, busy crossings and wind.",
+    "These numbers come from 48 made-up example rides."],
+    tags:["Room","Vico","Bayesian regression"]},
+  routes:{h:"Routes · set up once",li:[
+    "Save a route by recording a ride, or import a GPX file from Komoot or Strava.",
+    "The app then splits the route into segments of about 250 m and looks up each one's slope (Open-Meteo), wind exposure, traffic lights and road type (OpenStreetMap).",
+    "Model status shows how much the app has learned about the route and how accurate its ETA has been.",
+    "Tap any button to see what it would do."],
+    tags:["WorkManager","Open-Meteo Elevation","OSM Overpass","GPX"]}
+};
+function renderNotes(){const n=NOTES[state.tab];$("#notes").innerHTML=`<h2>${n.h}</h2><ul>${n.li.map(l=>`<li>${l}</li>`).join("")}</ul><div class="tags">${n.tags.map(t=>`<span>${t}</span>`).join("")}</div>`}
+
+/* ---------- controls ---------- */
+function press(group,btn){$$(group+" button").forEach(b=>{if(b.dataset[Object.keys(btn.dataset)[0]]!==undefined)b.setAttribute("aria-pressed",b===btn?"true":"false")})}
+$$(".tabs button").forEach(b=>b.addEventListener("click",()=>{state.tab=b.dataset.tab;
+  $$(".tabs button").forEach(x=>x.setAttribute("aria-selected",x===b?"true":"false"));
+  $$(".screen").forEach(s=>s.hidden=s.dataset.screen!==state.tab);
+  if(state.tab==="stats")renderStats();renderNotes();render(true)}));
+$("#playBtn").addEventListener("click",e=>{state.playing=!state.playing;e.currentTarget.textContent=state.playing?"Pause":"Play";e.currentTarget.setAttribute("aria-pressed",String(state.playing))});
+$$("#playCtl [data-mult]").forEach(b=>b.addEventListener("click",()=>{state.mult=+b.dataset.mult;press("#playCtl",b)}));
+$("#restartBtn").addEventListener("click",()=>{reset(Math.floor(Math.random()*1e6));preroll(0);render(true)});
+$$("#windCtl button").forEach(b=>b.addEventListener("click",()=>{state.wind=b.dataset.wind;press("#windCtl",b);render(true)}));
+$$("#hrCtl button").forEach(b=>b.addEventListener("click",()=>{state.hr=b.dataset.hr;press("#hrCtl",b);render(true)}));
+$$("#modeCtl button").forEach(b=>b.addEventListener("click",()=>{state.mode=b.dataset.mode;appEl.dataset.mode=state.mode;press("#modeCtl",b);if(state.tab==="stats")renderStats();render(true)}));
+[["#hrChartBtn","hr"],["#spdChartBtn","spd"]].forEach(([id,k])=>$(id).addEventListener("click",()=>{state.win[k]=state.win[k]?0:600;$(id+" .win").textContent=state.win[k]?"10 min":"full ride";render(true)}));
+$$(".seg button").forEach(b=>b.addEventListener("click",()=>{state.route=b.dataset.route;$$(".seg button").forEach(x=>x.setAttribute("aria-pressed",x===b?"true":"false"));renderStats()}));
+let toastT;$$("[data-toast]").forEach(b=>b.addEventListener("click",()=>{const t=$("#toast");t.textContent=b.dataset.toast;t.hidden=false;clearTimeout(toastT);toastT=setTimeout(()=>t.hidden=true,4200)}));
+$("#arrAgain").addEventListener("click",()=>{reset(Math.floor(Math.random()*1e6));render(true)});
+$("#arrStats").addEventListener("click",()=>$('.tabs [data-tab="stats"]').click());
+
+/* ---------- loop ---------- */
+function render(){if(state.tab==="ride")renderRide();else if(state.tab==="map"){renderMap();$("#sbClock").textContent=fmtClock(START+sim.t)}else $("#sbClock").textContent=fmtClock(START+sim.t)}
+function preroll(n){for(let i=0;i<n;i++)tick()}
+let last=performance.now(),accT=0,lastR=0;
+function loop(now){const dt=Math.min(.25,(now-last)/1000);last=now;
+  if(state.playing&&!sim.done){accT+=dt*state.mult;let n=Math.floor(accT);accT-=n;while(n-->0)tick()}
+  if(now-lastR>100){render();lastR=now}
+  requestAnimationFrame(loop)}
+reset(42);preroll(400);renderNotes();
+new ResizeObserver(()=>render()).observe($("#hrCanvas"));
+render();requestAnimationFrame(loop);
+})();
+</script>

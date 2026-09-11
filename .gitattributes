@@ -1,0 +1,6 @@
+* text=auto
+# The Gradle wrapper script must keep Unix line endings to run on Linux (e.g. CI).
+gradlew text eol=lf
+*.bat text eol=crlf
+*.jar binary
+*.webp binary

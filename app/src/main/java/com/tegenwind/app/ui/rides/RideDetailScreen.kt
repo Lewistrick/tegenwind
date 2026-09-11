@@ -1,0 +1,195 @@
+package com.tegenwind.app.ui.rides
+
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Card
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import com.tegenwind.app.appContainer
+import com.tegenwind.app.data.RideEntity
+import com.tegenwind.app.health.HealthConnectHr
+import com.tegenwind.app.ride.RideTracker
+import com.tegenwind.app.ride.Sample
+import com.tegenwind.app.ride.formatElapsed
+import com.tegenwind.app.ui.TimeSeriesChart
+import com.tegenwind.app.ui.theme.HeartColor
+import com.tegenwind.app.ui.theme.SpeedColor
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
+import java.time.Instant
+
+private sealed interface HrState {
+    data object Loading : HrState
+    data object NoPermission : HrState
+    data object NotYet : HrState
+    data class Loaded(val samples: List<Sample>) : HrState
+    data class Failed(val message: String) : HrState
+}
+
+@Composable
+fun RideDetailScreen(rideId: Long, onBack: () -> Unit) {
+    val container = LocalContext.current.appContainer
+    val dao = container.db.rides()
+    val scope = rememberCoroutineScope()
+
+    var ride by remember { mutableStateOf<RideEntity?>(null) }
+    var speeds by remember { mutableStateOf<List<Sample>>(emptyList()) }
+    var hr by remember { mutableStateOf<HrState>(HrState.Loading) }
+    var hrRefresh by remember { mutableIntStateOf(0) }
+    var confirmDelete by remember { mutableStateOf(false) }
+
+    LaunchedEffect(rideId) {
+        ride = dao.ride(rideId)
+        speeds = dao.points(rideId)
+            .filter { (it.accuracyM ?: 0.0) <= RideTracker.MAX_ACCURACY_M && it.speedMps != null }
+            .map { Sample(it.timeMs, it.speedMps!! * 3.6) }
+    }
+    val r = ride
+    LaunchedEffect(r, hrRefresh) {
+        if (r != null) {
+            hr = HrState.Loading
+            hr = loadHeartRate(container.healthConnect, r)
+        }
+    }
+
+    Column(
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        TextButton(onClick = onBack) { Text("‹ Rides") }
+        if (r == null) {
+            Text("Loading…")
+            return@Column
+        }
+        Text(formatRideStart(r.startedAtMs), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+        if (r.simulated) Text("Simulated ride", color = MaterialTheme.colorScheme.onSurfaceVariant)
+
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Stat("Distance", "%.2f km".format(r.distanceM / 1000), Modifier.weight(1f))
+            Stat("Moving", formatElapsed(r.movingMs), Modifier.weight(1f))
+            Stat("Total", formatElapsed((r.endedAtMs ?: r.startedAtMs) - r.startedAtMs), Modifier.weight(1f))
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Stat("Avg speed", avgSpeedText(r), Modifier.weight(1f))
+            val hrSamples = (hr as? HrState.Loaded)?.samples
+            Stat("Avg heart rate", hrSamples?.let { "${it.map { s -> s.value }.average().toInt()} bpm" } ?: "--", Modifier.weight(1f))
+        }
+
+        ChartCard("Speed", "dots GPS · line 2-min avg") {
+            TimeSeriesChart(speeds, SpeedColor, Modifier.fillMaxWidth().height(150.dp), yRange = 0.0..45.0)
+        }
+
+        when (val state = hr) {
+            HrState.Loading -> ChartCard("Heart rate", "loading…") { }
+            is HrState.Loaded -> ChartCard(
+                "Heart rate",
+                "max ${state.samples.maxOf { it.value }.toInt()} bpm · line 2-min avg",
+            ) {
+                TimeSeriesChart(state.samples, HeartColor, Modifier.fillMaxWidth().height(150.dp), gapMs = 120_000)
+            }
+            else -> Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Heart rate", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, color = HeartColor)
+                    Text(
+                        when (state) {
+                            HrState.NoPermission -> "Allow heart-rate access first: open the HR test tab and tap Allow access."
+                            HrState.NotYet -> "No heart rate yet. End the workout on your watch and open the Withings app so it syncs, then refresh."
+                            is HrState.Failed -> state.message
+                            else -> ""
+                        },
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    OutlinedButton(onClick = { hrRefresh++ }) { Text("Refresh") }
+                }
+            }
+        }
+
+        TextButton(onClick = { confirmDelete = true }) {
+            Text("Delete ride", color = MaterialTheme.colorScheme.error)
+        }
+    }
+
+    if (confirmDelete) {
+        AlertDialog(
+            onDismissRequest = { confirmDelete = false },
+            title = { Text("Delete this ride?") },
+            text = { Text("The ride and its GPS track are removed from this phone. Heart rate stays in Health Connect.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmDelete = false
+                    scope.launch {
+                        dao.delete(rideId)
+                        onBack()
+                    }
+                }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } },
+        )
+    }
+}
+
+private suspend fun loadHeartRate(hc: HealthConnectHr, ride: RideEntity): HrState = try {
+    if (!hc.hasAllPermissions()) HrState.NoPermission
+    else {
+        val start = Instant.ofEpochMilli(ride.startedAtMs)
+        val end = Instant.ofEpochMilli(ride.endedAtMs ?: ride.startedAtMs)
+        val samples = hc.heartRateBetween(start, end)
+            .flatMap { it.samples }
+            .filter { !it.time.isBefore(start) && !it.time.isAfter(end) }
+            .map { Sample(it.time.toEpochMilli(), it.beatsPerMinute.toDouble()) }
+            .distinctBy { it.timeMs }
+            .sortedBy { it.timeMs }
+        if (samples.isEmpty()) HrState.NotYet else HrState.Loaded(samples)
+    }
+} catch (e: Exception) {
+    if (e is CancellationException) throw e
+    HrState.Failed("Couldn't read Health Connect: ${e.message ?: e::class.simpleName}")
+}
+
+@Composable
+private fun ChartCard(title: String, subtitle: String, content: @Composable () -> Unit) {
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+            Row {
+                Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.weight(1f))
+                Text(subtitle, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Spacer(Modifier.height(6.dp))
+            content()
+        }
+    }
+}
+
+@Composable
+private fun Stat(label: String, value: String, modifier: Modifier = Modifier) {
+    Card(modifier) {
+        Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+            Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(value, style = MaterialTheme.typography.titleMedium.copy(fontFeatureSettings = "tnum"), fontWeight = FontWeight.SemiBold)
+        }
+    }
+}
