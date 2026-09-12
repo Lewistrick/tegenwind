@@ -65,6 +65,7 @@ import com.tegenwind.app.eta.LiveEta
 import com.tegenwind.app.eta.WindNow
 import com.tegenwind.app.eta.etaModel
 import com.tegenwind.app.eta.priorForm
+import com.tegenwind.app.ride.AutoFinish
 import com.tegenwind.app.ride.LiveRide
 import com.tegenwind.app.ride.RideRoute
 import com.tegenwind.app.ride.RideService
@@ -73,6 +74,7 @@ import com.tegenwind.app.ride.formatClock
 import com.tegenwind.app.ride.formatElapsed
 import com.tegenwind.app.ui.TimeSeriesChart
 import com.tegenwind.app.ui.theme.AmberInk
+import com.tegenwind.app.ui.theme.Asphalt
 import com.tegenwind.app.ui.theme.Danger
 import com.tegenwind.app.ui.theme.GoodColor
 import com.tegenwind.app.ui.theme.HeartColor
@@ -194,6 +196,7 @@ private fun IdleView(
 
 @Composable
 private fun LiveView(ride: LiveRide, onStop: () -> Unit) {
+    val recorder = LocalContext.current.appContainer.recorder
     val s = ride.snapshot
     val now by produceState(System.currentTimeMillis(), ride.rideId) {
         while (true) {
@@ -230,7 +233,14 @@ private fun LiveView(ride: LiveRide, onStop: () -> Unit) {
             Text(formatElapsed(now - s.startedAtMs), style = MaterialTheme.typography.titleLarge.copy(fontFeatureSettings = "tnum"))
         }
 
-        s.pausedSinceMs?.let { since -> PausedBar(stoppedMs = now - since) }
+        s.pausedSinceMs?.let { since -> if (ride.arrivedAtMs == null) PausedBar(stoppedMs = now - since) }
+
+        ride.arrivedAtMs?.let { at ->
+            ArrivedBar(
+                secondsLeft = AutoFinish.secondsLeft(at, now),
+                onKeepRiding = { recorder.cancelAutoFinish() },
+            )
+        }
 
         ride.route?.let { EtaCard(it, ride.eta) }
 
@@ -344,6 +354,27 @@ private fun LeaveNowPreview(routeId: Long) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
             )
+        }
+    }
+}
+
+/** Shown on reaching the end of the route: the ride finishes itself unless you keep riding. */
+@Composable
+private fun ArrivedBar(secondsLeft: Int, onKeepRiding: () -> Unit) {
+    Surface(
+        color = GoodColor,
+        contentColor = Asphalt,
+        shape = RoundedCornerShape(12.dp),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(Modifier.padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Arrived", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Text("Finishing the ride in ${secondsLeft} s", style = MaterialTheme.typography.labelMedium)
+            }
+            TextButton(onClick = onKeepRiding, colors = ButtonDefaults.textButtonColors(contentColor = Asphalt)) {
+                Text("Keep riding", fontWeight = FontWeight.SemiBold)
+            }
         }
     }
 }

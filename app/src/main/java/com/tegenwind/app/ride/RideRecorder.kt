@@ -36,6 +36,8 @@ data class LiveRide(
     val snapshot: RideSnapshot,
     val route: RideRoute? = null,
     val eta: LiveEta? = null,
+    /** Set when the end of the route is reached; the ride then finishes by itself. */
+    val arrivedAtMs: Long? = null,
 )
 
 /**
@@ -59,6 +61,8 @@ class RideRecorder(private val dao: RideDao, private val scope: CoroutineScope) 
     private val traversals = ArrayList<SegmentTraversalEntity>()
     private var lastFlushMs = 0L
 
+    private var autoFinishCancelled = false
+
     // The segment being timed right now.
     private var segIdx = -1
     private var segEnterMs = 0L
@@ -77,6 +81,7 @@ class RideRecorder(private val dao: RideDao, private val scope: CoroutineScope) 
         model = route?.etaModel()
         form = FormEstimator(prior = priorForm)
         formObservations = 0
+        autoFinishCancelled = false
         forecast = null
         traversals.clear()
         segIdx = -1
@@ -114,9 +119,16 @@ class RideRecorder(private val dao: RideDao, private val scope: CoroutineScope) 
             val snap = t.snapshot()
             val progress = routeTracker?.update(GeoPoint(fix.lat, fix.lon))
             if (progress != null) timeSegments(progress, fix.timeMs, snap.movingMs)
+            val arrived = when {
+                ride.arrivedAtMs != null -> ride.arrivedAtMs
+                autoFinishCancelled || progress == null || !progress.onRouteYet -> null
+                AutoFinish.arrived(progress.remainingM) -> fix.timeMs
+                else -> null
+            }
             _live.value = ride.copy(
                 snapshot = snap,
                 route = ride.route?.let { r -> progress?.let { r.copy(progress = it) } ?: r },
+                arrivedAtMs = arrived,
             )
             refreshEta(fix.timeMs)
         }
@@ -124,6 +136,12 @@ class RideRecorder(private val dao: RideDao, private val scope: CoroutineScope) 
             lastFlushMs = fix.timeMs
             flush()
         }
+    }
+
+    /** Keeps a ride going that was about to finish on arrival; it won't ask again. */
+    fun cancelAutoFinish() {
+        autoFinishCancelled = true
+        _live.value = _live.value?.copy(arrivedAtMs = null)
     }
 
     /** Target speed for the simulator: what the model predicts on this stretch, ridden a bit briskly. */

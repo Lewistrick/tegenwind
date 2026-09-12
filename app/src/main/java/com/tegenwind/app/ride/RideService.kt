@@ -92,6 +92,17 @@ class RideService : Service() {
                     RideSimulator.run(route?.line, route?.signalsAtM.orEmpty(), recorder::simulatedSpeedAt, recorder::onFix)
                 }
             } else startGps()
+            // Finish by itself once the route's end is reached.
+            launch {
+                while (isActive) {
+                    val arrivedAt = recorder.live.value?.arrivedAtMs
+                    if (arrivedAt != null && AutoFinish.dueToStop(arrivedAt, System.currentTimeMillis())) {
+                        stopRide()
+                        break
+                    }
+                    delay(1_000)
+                }
+            }
             while (isActive) {
                 recorder.live.value?.let { updateNotification(it) }
                 delay(5_000)
@@ -153,6 +164,11 @@ class RideService : Service() {
         val s = ride.snapshot
         val etaPart = ride.eta?.let { "ETA ${formatClock(it.eta.arrivalMs)} · " } ?: ""
         val routePart = etaPart + (ride.route?.let { r -> "%.1f km to go · ".format(r.progress.remainingM / 1000) } ?: "")
+        if (ride.arrivedAtMs != null) {
+            getSystemService(NotificationManager::class.java)
+                .notify(NOTIFICATION_ID, notification("Arrived · finishing the ride"))
+            return
+        }
         val text = routePart + "%.1f km · %s moving".format(s.distanceM / 1000, formatElapsed(s.movingMs)) +
             (if (s.paused) " · paused" else "") +
             (if (ride.simulated) " · simulated" else "")
