@@ -64,9 +64,12 @@ fun RideDetailScreen(rideId: Long, onBack: () -> Unit) {
     var confirmDelete by remember { mutableStateOf(false) }
     var routeName by remember { mutableStateOf<String?>(null) } // non-null while the "Save as route" dialog is open
     var routeMessage by remember { mutableStateOf<String?>(null) }
+    var rideRouteName by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(rideId) {
-        ride = dao.ride(rideId)
+        val loaded = dao.ride(rideId)
+        ride = loaded
+        rideRouteName = loaded?.routeId?.let { container.db.routes().route(it)?.name }
         speeds = dao.points(rideId)
             .filter { (it.accuracyM ?: 0.0) <= RideTracker.MAX_ACCURACY_M && it.speedMps != null }
             .map { Sample(it.timeMs, it.speedMps!! * 3.6) }
@@ -88,8 +91,11 @@ fun RideDetailScreen(rideId: Long, onBack: () -> Unit) {
             Text("Loading…")
             return@Column
         }
-        Text(formatRideStart(r.startedAtMs), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
-        if (r.simulated) Text("Simulated ride", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(rideRouteName ?: "Free ride", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+        Text(
+            formatRideStart(r.startedAtMs) + if (r.simulated) " · simulated ride" else "",
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
 
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Stat("Distance", "%.2f km".format(r.distanceM / 1000), Modifier.weight(1f))
@@ -98,6 +104,7 @@ fun RideDetailScreen(rideId: Long, onBack: () -> Unit) {
         }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Stat("Avg speed", avgSpeedText(r), Modifier.weight(1f))
+            Stat("Form", formPercent(r.formFactor) ?: "–", Modifier.weight(1f))
             val hrSamples = (hr as? HrState.Loaded)?.samples
             Stat("Avg heart rate", hrSamples?.let { "${it.map { s -> s.value }.average().toInt()} bpm" } ?: "--", Modifier.weight(1f))
         }

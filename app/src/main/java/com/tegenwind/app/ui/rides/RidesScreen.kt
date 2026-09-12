@@ -38,8 +38,10 @@ fun formatRideStart(ms: Long): String = Instant.ofEpochMilli(ms).atZone(ZoneId.s
 
 @Composable
 fun RidesScreen() {
-    val dao = LocalContext.current.appContainer.db.rides()
-    val rides by remember { dao.finishedRides() }.collectAsStateWithLifecycle(emptyList())
+    val db = LocalContext.current.appContainer.db
+    val rides by remember { db.rides().finishedRides() }.collectAsStateWithLifecycle(emptyList())
+    val routes by remember { db.routes().routes() }.collectAsStateWithLifecycle(emptyList())
+    val routeNames = remember(routes) { routes.associate { it.id to it.name } }
     var openId by rememberSaveable { mutableStateOf<Long?>(null) }
 
     val id = openId
@@ -62,20 +64,27 @@ fun RidesScreen() {
                 )
             }
         }
-        items(rides, key = { it.id }) { ride -> RideRow(ride) { openId = ride.id } }
+        items(rides, key = { it.id }) { ride ->
+            RideRow(ride, routeNames[ride.routeId]) { openId = ride.id }
+        }
     }
 }
 
 @Composable
-private fun RideRow(ride: RideEntity, onClick: () -> Unit) {
+private fun RideRow(ride: RideEntity, routeName: String?, onClick: () -> Unit) {
     Card(Modifier.fillMaxWidth().clickable(onClick = onClick)) {
         Row(Modifier.padding(14.dp)) {
             Column(Modifier.weight(1f)) {
-                Text(formatRideStart(ride.startedAtMs), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Text(routeName ?: "Free ride", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Text(
+                    formatRideStart(ride.startedAtMs) + if (ride.simulated) " · simulated" else "",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
                 Text(
                     "%.1f km · %s moving".format(ride.distanceM / 1000, formatElapsed(ride.movingMs)) +
-                        if (ride.simulated) " · simulated" else "",
-                    style = MaterialTheme.typography.bodyMedium,
+                        (formPercent(ride.formFactor)?.let { " · form $it" } ?: ""),
+                    style = MaterialTheme.typography.bodyMedium.copy(fontFeatureSettings = "tnum"),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
@@ -87,6 +96,13 @@ private fun RideRow(ride: RideEntity, onClick: () -> Unit) {
         }
     }
 }
+
+/**
+ * Speed compared with the physics model at the end of that ride: "+3%" means 3% faster than predicted.
+ * Null for rides too short to judge (fewer than three complete route segments).
+ */
+fun formPercent(formFactor: Double?): String? =
+    formFactor?.let { "%+d%%".format(kotlin.math.round((it - 1) * 100).toInt()) }
 
 fun avgSpeedText(ride: RideEntity): String =
     if (ride.movingMs > 0) "%.1f km/h".format(ride.distanceM / (ride.movingMs / 1000.0) * 3.6) else "--"
