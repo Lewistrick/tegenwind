@@ -12,12 +12,15 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import com.tegenwind.app.routes.GeoPoint
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -56,6 +59,7 @@ fun RideDetailScreen(rideId: Long, onBack: () -> Unit) {
     val container = LocalContext.current.appContainer
     val dao = container.db.rides()
     val scope = rememberCoroutineScope()
+    val routes by remember { container.db.routes().routes() }.collectAsStateWithLifecycle(emptyList())
 
     var ride by remember { mutableStateOf<RideEntity?>(null) }
     var speeds by remember { mutableStateOf<List<Sample>>(emptyList()) }
@@ -65,6 +69,7 @@ fun RideDetailScreen(rideId: Long, onBack: () -> Unit) {
     var routeName by remember { mutableStateOf<String?>(null) } // non-null while the "Save as route" dialog is open
     var routeMessage by remember { mutableStateOf<String?>(null) }
     var rideRouteName by remember { mutableStateOf<String?>(null) }
+    var editingRoute by remember { mutableStateOf(false) }
 
     LaunchedEffect(rideId) {
         val loaded = dao.ride(rideId)
@@ -148,6 +153,15 @@ fun RideDetailScreen(rideId: Long, onBack: () -> Unit) {
         }
         routeMessage?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
 
+        if (routes.isNotEmpty()) {
+            OutlinedButton(onClick = { editingRoute = true }) { Text("Edit route") }
+            Text(
+                "Retroactively change which route was ridden.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+
         TextButton(onClick = { confirmDelete = true }) {
             Text("Delete ride", color = MaterialTheme.colorScheme.error)
         }
@@ -197,6 +211,30 @@ fun RideDetailScreen(rideId: Long, onBack: () -> Unit) {
                 }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
             },
             dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } },
+        )
+    }
+
+    if (editingRoute) {
+        var routeDropdownOpen by remember { mutableStateOf(false) }
+        AlertDialog(
+            onDismissRequest = { editingRoute = false },
+            title = { Text("Which route was ridden?") },
+            text = {
+                Column {
+                    OutlinedButton(onClick = { routeDropdownOpen = true }, modifier = Modifier.fillMaxWidth()) {
+                        Text(r?.routeId?.let { id -> routes.find { it.id == id }?.name } ?: "Free ride")
+                    }
+                    DropdownMenu(expanded = routeDropdownOpen, onDismissRequest = { routeDropdownOpen = false }, modifier = Modifier.fillMaxWidth(0.8f)) {
+                        DropdownMenuItem(text = { Text("Free ride") }, onClick = { r?.let { scope.launch { dao.updateRide(it.copy(routeId = null)); rideRouteName = null; editingRoute = false; routeDropdownOpen = false } } })
+                        routes.forEach { route ->
+                            DropdownMenuItem(text = { Text(route.name) }, onClick = { r?.let { scope.launch { dao.updateRide(it.copy(routeId = route.id)); rideRouteName = route.name; editingRoute = false; routeDropdownOpen = false } } })
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { editingRoute = false }) { Text("Done") }
+            },
         )
     }
 }

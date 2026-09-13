@@ -189,6 +189,9 @@ interface RouteDao {
     @Update
     suspend fun updateSegments(segments: List<RouteSegmentEntity>)
 
+    @Update
+    suspend fun updateRoute(route: RouteEntity)
+
     @Query("UPDATE routes SET enrichState = :state, enrichError = :error WHERE id = :id")
     suspend fun setEnrichState(id: Long, state: String, error: String?)
 

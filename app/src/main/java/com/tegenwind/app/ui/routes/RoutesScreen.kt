@@ -58,6 +58,8 @@ fun RoutesScreen() {
     var pendingUri by remember { mutableStateOf<Uri?>(null) }
     var importName by remember { mutableStateOf("") }
     var message by remember { mutableStateOf<String?>(null) }
+    var editingRouteId by remember { mutableStateOf<Long?>(null) }
+    var editingRouteName by remember { mutableStateOf("") }
 
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
@@ -91,7 +93,9 @@ fun RoutesScreen() {
                 )
             }
         }
-        items(routes, key = { it.id }) { r -> RouteRow(r) { openId = r.id } }
+        items(routes, key = { it.id }) { r ->
+            RouteRow(r, onClick = { openId = r.id }, onEditName = { editingRouteId = r.id; editingRouteName = r.name })
+        }
         item {
             Text(DATA_ATTRIBUTION, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
@@ -127,14 +131,44 @@ fun RoutesScreen() {
             dismissButton = { TextButton(onClick = { pendingUri = null }) { Text("Cancel") } },
         )
     }
+
+    val idToEdit = editingRouteId
+    if (idToEdit != null) {
+        AlertDialog(
+            onDismissRequest = { editingRouteId = null },
+            title = { Text("Edit route name") },
+            text = {
+                OutlinedTextField(value = editingRouteName, onValueChange = { editingRouteName = it }, label = { Text("Name") }, singleLine = true)
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = editingRouteName.isNotBlank(),
+                    onClick = {
+                        scope.launch {
+                            routes.find { it.id == idToEdit }?.let { route ->
+                                repo.updateRouteName(route.copy(name = editingRouteName))
+                                editingRouteId = null
+                            }
+                        }
+                    },
+                ) { Text("Save") }
+            },
+            dismissButton = { TextButton(onClick = { editingRouteId = null }) { Text("Cancel") } },
+        )
+    }
 }
 
 @Composable
-private fun RouteRow(route: RouteEntity, onClick: () -> Unit) {
+private fun RouteRow(route: RouteEntity, onClick: () -> Unit, onEditName: () -> Unit) {
     Card(Modifier.fillMaxWidth().clickable(onClick = onClick)) {
-        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(route.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-            Text("%.1f km".format(route.lengthM / 1000), color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(route.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+                    Text("%.1f km".format(route.lengthM / 1000), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                TextButton(onClick = onEditName) { Text("Edit", style = MaterialTheme.typography.labelSmall) }
+            }
             EnrichStatus(route)
         }
     }

@@ -24,8 +24,11 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -164,10 +167,17 @@ private fun IdleView(
     ) {
         Text("Tegenwind", style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold)
         if (routes.isNotEmpty()) {
-            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilterChip(selected = selectedRouteId == null, onClick = { onSelectRoute(null) }, label = { Text("Free ride") })
-                routes.forEach { r ->
-                    FilterChip(selected = selectedRouteId == r.id, onClick = { onSelectRoute(r.id) }, label = { Text(r.name) })
+            var routeDropdownOpen by remember { mutableStateOf(false) }
+            val selectedName = selectedRouteId?.let { id -> routes.find { it.id == id }?.name } ?: "Free ride"
+            Column {
+                OutlinedButton(onClick = { routeDropdownOpen = true }, modifier = Modifier.fillMaxWidth()) {
+                    Text(selectedName)
+                }
+                DropdownMenu(expanded = routeDropdownOpen, onDismissRequest = { routeDropdownOpen = false }, modifier = Modifier.fillMaxWidth(0.9f)) {
+                    DropdownMenuItem(text = { Text("Free ride") }, onClick = { onSelectRoute(null); routeDropdownOpen = false })
+                    routes.forEach { r ->
+                        DropdownMenuItem(text = { Text(r.name) }, onClick = { onSelectRoute(r.id); routeDropdownOpen = false })
+                    }
                 }
             }
         }

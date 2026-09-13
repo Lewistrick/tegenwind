@@ -49,6 +49,8 @@ class RouteRepository(
 
     suspend fun delete(routeId: Long) = dao.delete(routeId)
 
+    suspend fun updateRouteName(route: RouteEntity) = dao.updateRoute(route)
+
     suspend fun load(routeId: Long): LoadedRoute? {
         val route = dao.route(routeId) ?: return null
         val line = Polyline(dao.points(routeId).map { GeoPoint(it.lat, it.lon) })
