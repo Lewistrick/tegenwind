@@ -85,6 +85,8 @@ data class RouteEntity(
     /** Elevation and OpenStreetMap lookup: see [EnrichState]. */
     val enrichState: String = EnrichState.PENDING,
     val enrichError: String? = null,
+    /** When the current lookup started, so the UI can tell a slow one from a stalled one. */
+    val enrichStartedAtMs: Long? = null,
 )
 
 @Entity(
@@ -192,8 +194,12 @@ interface RouteDao {
     @Update
     suspend fun updateRoute(route: RouteEntity)
 
-    @Query("UPDATE routes SET enrichState = :state, enrichError = :error WHERE id = :id")
-    suspend fun setEnrichState(id: Long, state: String, error: String?)
+    @Query("UPDATE routes SET enrichState = :state, enrichError = :error, enrichStartedAtMs = :startedAtMs WHERE id = :id")
+    suspend fun setEnrichState(id: Long, state: String, error: String?, startedAtMs: Long? = null)
+
+    /** Routes whose lookup never finished, e.g. because Android stopped the app while it ran. */
+    @Query("SELECT * FROM routes WHERE enrichState IN ('pending', 'running')")
+    suspend fun unenriched(): List<RouteEntity>
 
     @Query("DELETE FROM routes WHERE id = :id")
     suspend fun delete(id: Long)
@@ -212,9 +218,9 @@ interface RouteDao {
         RideEntity::class, TrackPointEntity::class, RouteEntity::class, RoutePointEntity::class,
         RouteSegmentEntity::class, SegmentTraversalEntity::class,
     ],
-    version = 3,
+    version = 4,
     exportSchema = true,
-    autoMigrations = [AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3)],
+    autoMigrations = [AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3), AutoMigration(from = 3, to = 4)],
 )
 abstract class TegenwindDb : RoomDatabase() {
     abstract fun rides(): RideDao

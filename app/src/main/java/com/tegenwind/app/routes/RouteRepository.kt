@@ -8,10 +8,23 @@ import com.tegenwind.app.data.RouteSegmentEntity
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.InputStream
+
+/**
+ * How long a route lookup may take before the ride screen offers to start it again. A healthy one
+ * takes seconds; longer means the free map servers are making us wait, or the app was stopped
+ * mid-lookup. A route with no start time was left behind by an older version, so it counts as stuck.
+ */
+object EnrichProgress {
+    const val SLOW_AFTER_MS = 90_000L
+
+    fun looksStuck(startedAtMs: Long?, nowMs: Long): Boolean =
+        startedAtMs == null || nowMs - startedAtMs >= SLOW_AFTER_MS
+}
 
 /** A route ready for riding: its line plus the per-segment data. */
 data class LoadedRoute(val route: RouteEntity, val line: Polyline, val segments: List<RouteSegmentEntity>) {
@@ -24,6 +37,9 @@ class RouteRepository(
     private val enricher: RouteEnricher,
     private val scope: CoroutineScope,
 ) {
+    /** The lookup running per route, so starting one again replaces it instead of racing it. */
+    private val jobs = HashMap<Long, Job>()
+
     fun routes(): Flow<List<RouteEntity>> = dao.routes()
 
     /** Saves a GPX file as a route and starts looking up elevation and map data. */
@@ -73,11 +89,22 @@ class RouteRepository(
         return id
     }
 
+    /**
+     * Picks up lookups that never finished: the coroutine below lives in the app's scope, so Android
+     * stopping the app leaves the route sitting at "running" with nothing working on it.
+     */
+    fun resumeStalledEnrichment() {
+        scope.launch {
+            dao.unenriched().forEach { enrich(it.id) }
+        }
+    }
+
     /** Runs in the background; the route shows its progress through [RouteEntity.enrichState]. */
     fun enrich(routeId: Long) {
-        scope.launch {
+        jobs.remove(routeId)?.cancel()
+        val job = scope.launch {
             try {
-                dao.setEnrichState(routeId, EnrichState.RUNNING, null)
+                dao.setEnrichState(routeId, EnrichState.RUNNING, null, System.currentTimeMillis())
                 val loaded = load(routeId) ?: return@launch
                 val line = loaded.line
                 val bounds = loaded.segments.map { it.startM to it.endM }
@@ -106,11 +133,13 @@ class RouteRepository(
                 dao.updateSegments(updated)
                 dao.setEnrichState(routeId, EnrichState.DONE, null)
             } catch (e: CancellationException) {
-                throw e
+                throw e // a newer lookup for this route took over, and it set the state
             } catch (e: Exception) {
                 dao.setEnrichState(routeId, EnrichState.FAILED, e.message ?: e::class.simpleName)
             }
         }
+        jobs[routeId] = job
+        job.invokeOnCompletion { if (jobs[routeId] === job) jobs.remove(routeId) }
     }
 
     private companion object {

@@ -1,7 +1,9 @@
 package com.tegenwind.app.routes
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.io.IOException
@@ -68,11 +70,12 @@ class RouteEnricher {
 
     private fun fmt(v: Double) = "%.5f".format(Locale.ROOT, v)
 
-    /** Busy public servers answer 429/5xx now and then; wait and retry a few times. */
+    /** Busy public servers answer 429/5xx now and then; back off and retry a few times. */
     private suspend fun request(url: URL, post: String? = null): String {
         var attempt = 0
         while (true) {
             attempt++
+            currentCoroutineContext().ensureActive()
             val conn = (url.openConnection() as HttpURLConnection).apply {
                 connectTimeout = 15_000
                 readTimeout = 120_000
@@ -91,14 +94,24 @@ class RouteEnricher {
             } finally {
                 conn.disconnect()
             }
-            delay(15_000L * attempt)
+            delay(retryDelayMs(attempt))
         }
     }
 
     companion object {
         private const val USER_AGENT = "Tegenwind/1.0 (personal cycling app; github.com/Lewistrick/tegenwind)"
         private val RETRY_CODES = setOf(429, 502, 503, 504)
-        private const val MAX_ATTEMPTS = 3
+        const val MAX_ATTEMPTS = 4
+        private const val RETRY_BASE_MS = 20_000L
+        private const val RETRY_CAP_MS = 120_000L
+
+        /**
+         * Doubling wait after each rejected request: 20 s, 40 s, 80 s. Overpass and Open-Meteo are
+         * free servers that rate-limit when busy, and a longer pause is far likelier to get through
+         * than hammering them. Capped so a whole lookup still fails within a few minutes.
+         */
+        fun retryDelayMs(attempt: Int): Long =
+            (RETRY_BASE_MS shl (attempt - 1).coerceIn(0, 10)).coerceAtMost(RETRY_CAP_MS)
 
         /** Wind exposure from the building count: 0 buildings -> 1.0 (open field), 75+ -> ~0.2 (town). */
         fun exposureFromBuildings(count: Int): Double = 0.15 + 0.85 * exp(-count / 25.0)

@@ -91,9 +91,8 @@ fun RouteDetailScreen(routeId: Long, onBack: () -> Unit, onOpen: (Long) -> Unit)
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(onClick = { scope.launch { onOpen(repo.createReverse(routeId)) } }) { Text("Add reverse route") }
-            if (r.enrichState == EnrichState.FAILED || r.enrichState == EnrichState.DONE) {
-                OutlinedButton(onClick = { repo.enrich(routeId) }) { Text("Look up again") }
-            }
+            // Also while it's running: that's exactly when a stalled lookup needs restarting.
+            OutlinedButton(onClick = { repo.enrich(routeId) }) { Text("Look up again") }
         }
 
         if (segments.isNotEmpty()) {

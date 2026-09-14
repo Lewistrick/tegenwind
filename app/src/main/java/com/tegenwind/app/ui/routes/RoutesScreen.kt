@@ -26,7 +26,9 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -41,7 +43,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.tegenwind.app.appContainer
 import com.tegenwind.app.data.EnrichState
 import com.tegenwind.app.data.RouteEntity
+import com.tegenwind.app.ride.formatElapsed
+import com.tegenwind.app.routes.EnrichProgress
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 const val DATA_ATTRIBUTION =
@@ -176,20 +181,45 @@ private fun RouteRow(route: RouteEntity, onClick: () -> Unit, onEditName: () -> 
 
 @Composable
 fun EnrichStatus(route: RouteEntity) {
+    val repo = LocalContext.current.appContainer.routes
     when (route.enrichState) {
-        EnrichState.PENDING, EnrichState.RUNNING -> Row(verticalAlignment = Alignment.CenterVertically) {
-            CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp)
-            Text(
-                "  Looking up elevation, buildings and traffic lights…",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+        EnrichState.PENDING, EnrichState.RUNNING -> {
+            var now by remember(route.id) { mutableLongStateOf(System.currentTimeMillis()) }
+            LaunchedEffect(route.id) {
+                while (true) {
+                    delay(1_000)
+                    now = System.currentTimeMillis()
+                }
+            }
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp)
+                    Text(
+                        "  Looking up elevation, buildings and traffic lights…" +
+                            (route.enrichStartedAtMs?.let { " ${formatElapsed(now - it)}" } ?: ""),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                if (EnrichProgress.looksStuck(route.enrichStartedAtMs, now)) {
+                    Text(
+                        "Taking longer than usual. The free map servers are busy, or the lookup stopped " +
+                            "when Android closed the app. A route this size normally takes a few seconds.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                    TextButton(onClick = { repo.enrich(route.id) }) { Text("Start the lookup again") }
+                }
+            }
         }
-        EnrichState.FAILED -> Text(
-            "Couldn't look up map data: ${route.enrichError}",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.error,
-        )
+        EnrichState.FAILED -> Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(
+                "Couldn't look up map data: ${route.enrichError}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+            )
+            TextButton(onClick = { repo.enrich(route.id) }) { Text("Try again") }
+        }
         else -> Unit
     }
 }

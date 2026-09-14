@@ -31,6 +31,10 @@ class AppContainer(app: Application) {
     val healthConnect = HealthConnectHr(app)
     val routes = RouteRepository(db.routes(), RouteEnricher(), appScope)
     val weather = WeatherRepository()
+
+    init {
+        routes.resumeStalledEnrichment()
+    }
 }
 
 val Context.appContainer: AppContainer
