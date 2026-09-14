@@ -26,6 +26,17 @@ object EnrichProgress {
         startedAtMs == null || nowMs - startedAtMs >= SLOW_AFTER_MS
 }
 
+/** Shortest route worth keeping; below this a track is a few metres of GPS wobble, not a ride. */
+const val MIN_ROUTE_LENGTH_M = 200.0
+
+/** The line a ride actually followed: standing still and GPS wobble removed, then thinned out. */
+fun lineFromTrack(track: List<GeoPoint>): Polyline {
+    val points = simplify(cleanPoints(track, minStepM = 3.0), toleranceM = 5.0)
+    val line = if (points.size >= 2) Polyline(points) else null
+    require(line != null && line.lengthM >= MIN_ROUTE_LENGTH_M) { "This ride is too short for a route" }
+    return line
+}
+
 /** A route ready for riding: its line plus the per-segment data. */
 data class LoadedRoute(val route: RouteEntity, val line: Polyline, val segments: List<RouteSegmentEntity>) {
     val signalsAtM: List<Double>
@@ -50,10 +61,23 @@ class RouteRepository(
     }
 
     /** Turns a recorded ride's GPS track into a route. Standing still and GPS wobble are filtered out. */
-    suspend fun createFromTrack(name: String, track: List<GeoPoint>): Long {
-        val points = simplify(cleanPoints(track, minStepM = 3.0), toleranceM = 5.0)
-        if (points.size < 2 || Polyline(points).lengthM < 200) throw IllegalArgumentException("This ride is too short for a route")
-        return save(name, Polyline(points))
+    suspend fun createFromTrack(name: String, track: List<GeoPoint>): Long = save(name, lineFromTrack(track))
+
+    /**
+     * Gives an existing route the line this ride actually followed, for a road that changed for good:
+     * road works, a one-way street, or a way back that isn't the mirror image of the way out.
+     * The route keeps its id and name, so every ride on it stays attached, but its stored segment
+     * times are dropped: they were measured on the old line. The map lookup runs again.
+     */
+    suspend fun replaceFromTrack(routeId: Long, track: List<GeoPoint>) {
+        val route = dao.route(routeId) ?: throw IllegalArgumentException("Route not found")
+        val line = lineFromTrack(track)
+        dao.replaceGeometry(
+            route.copy(lengthM = line.lengthM, enrichState = EnrichState.PENDING, enrichError = null, enrichStartedAtMs = null),
+            line.points.mapIndexed { i, p -> RoutePointEntity(routeId, i, p.lat, p.lon) },
+            segmentsFor(line),
+        )
+        enrich(routeId)
     }
 
     /** Creates the same route in the other direction, e.g. "werk-woon" from "woon-werk". */
@@ -74,16 +98,10 @@ class RouteRepository(
     }
 
     private suspend fun save(name: String, line: Polyline): Long {
-        val segments = segmentBounds(line.lengthM).mapIndexed { i, (start, end) ->
-            RouteSegmentEntity(
-                routeId = 0, idx = i, startM = start, endM = end,
-                bearingDeg = bearingDeg(line.pointAt(start), line.pointAt(end)),
-            )
-        }
         val id = dao.insertFull(
             RouteEntity(name = name.trim(), lengthM = line.lengthM, createdAtMs = System.currentTimeMillis()),
             line.points.mapIndexed { i, p -> RoutePointEntity(0, i, p.lat, p.lon) },
-            segments,
+            segmentsFor(line),
         )
         enrich(id)
         return id
@@ -141,6 +159,14 @@ class RouteRepository(
         jobs[routeId] = job
         job.invokeOnCompletion { if (jobs[routeId] === job) jobs.remove(routeId) }
     }
+
+    private fun segmentsFor(line: Polyline): List<RouteSegmentEntity> =
+        segmentBounds(line.lengthM).mapIndexed { i, (start, end) ->
+            RouteSegmentEntity(
+                routeId = 0, idx = i, startM = start, endM = end,
+                bearingDeg = bearingDeg(line.pointAt(start), line.pointAt(end)),
+            )
+        }
 
     private companion object {
         const val ELEVATION_STEP_M = 50.0

@@ -70,6 +70,7 @@ fun RideDetailScreen(rideId: Long, onBack: () -> Unit) {
     var routeMessage by remember { mutableStateOf<String?>(null) }
     var rideRouteName by remember { mutableStateOf<String?>(null) }
     var editingRoute by remember { mutableStateOf(false) }
+    var confirmReplaceRoute by remember { mutableStateOf(false) }
 
     LaunchedEffect(rideId) {
         val loaded = dao.ride(rideId)
@@ -162,6 +163,16 @@ fun RideDetailScreen(rideId: Long, onBack: () -> Unit) {
             )
         }
 
+        if (!r.simulated && rideRouteName != null) {
+            OutlinedButton(onClick = { confirmReplaceRoute = true }) { Text("Update route from this ride") }
+            Text(
+                "For a road that changed for good: gives \"$rideRouteName\" the line you rode today, " +
+                    "keeping its rides and its name.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+
         TextButton(onClick = { confirmDelete = true }) {
             Text("Delete ride", color = MaterialTheme.colorScheme.error)
         }
@@ -211,6 +222,41 @@ fun RideDetailScreen(rideId: Long, onBack: () -> Unit) {
                 }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
             },
             dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } },
+        )
+    }
+
+    val replacedRouteId = r?.routeId
+    if (confirmReplaceRoute && replacedRouteId != null) {
+        AlertDialog(
+            onDismissRequest = { confirmReplaceRoute = false },
+            title = { Text("Update \"$rideRouteName\"?") },
+            text = {
+                Text(
+                    "The route starts following the track you rode today. It keeps its name and all " +
+                        "its rides, and elevation, buildings and traffic lights are looked up again.\n\n" +
+                        "The segment times measured on the old line are dropped: they belong to roads " +
+                        "this route no longer follows. Your rides themselves, and your form, stay as they are.",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmReplaceRoute = false
+                    scope.launch {
+                        routeMessage = try {
+                            val track = dao.points(rideId)
+                                .filter { (it.accuracyM ?: 0.0) <= RideTracker.MAX_ACCURACY_M }
+                                .map { GeoPoint(it.lat, it.lon) }
+                            container.routes.replaceFromTrack(replacedRouteId, track)
+                            "\"$rideRouteName\" now follows this ride. Looking up the map data again."
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (e: Exception) {
+                            "Couldn't update the route: ${e.message ?: e::class.simpleName}"
+                        }
+                    }
+                }) { Text("Update route") }
+            },
+            dismissButton = { TextButton(onClick = { confirmReplaceRoute = false }) { Text("Cancel") } },
         )
     }
 

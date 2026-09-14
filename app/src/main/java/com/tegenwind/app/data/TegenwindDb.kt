@@ -204,12 +204,36 @@ interface RouteDao {
     @Query("DELETE FROM routes WHERE id = :id")
     suspend fun delete(id: Long)
 
+    @Query("DELETE FROM route_points WHERE routeId = :routeId")
+    suspend fun deletePoints(routeId: Long)
+
+    @Query("DELETE FROM route_segments WHERE routeId = :routeId")
+    suspend fun deleteSegments(routeId: Long)
+
+    /**
+     * Segment times are keyed by segment index, so they only mean anything for the line they were
+     * ridden on. Changing a route's line makes them point at other stretches of road.
+     */
+    @Query("DELETE FROM segment_traversals WHERE routeId = :routeId")
+    suspend fun deleteTraversals(routeId: Long)
+
     @Transaction
     suspend fun insertFull(route: RouteEntity, points: List<RoutePointEntity>, segments: List<RouteSegmentEntity>): Long {
         val id = insertRoute(route)
         insertPoints(points.map { it.copy(routeId = id) })
         insertSegments(segments.map { it.copy(routeId = id) })
         return id
+    }
+
+    /** Gives a route a new line, keeping its id so the rides ridden on it stay attached. */
+    @Transaction
+    suspend fun replaceGeometry(route: RouteEntity, points: List<RoutePointEntity>, segments: List<RouteSegmentEntity>) {
+        deletePoints(route.id)
+        deleteSegments(route.id)
+        deleteTraversals(route.id)
+        updateRoute(route)
+        insertPoints(points.map { it.copy(routeId = route.id) })
+        insertSegments(segments.map { it.copy(routeId = route.id) })
     }
 }
 
