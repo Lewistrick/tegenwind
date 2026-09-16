@@ -248,8 +248,8 @@ table.segs td small{display:block;color:var(--muted);font-size:11.5px}
           <div class="ch"><strong>Heart rate</strong><span class="key" style="--c:var(--hr)"><span><i class="kd"></i>raw</span><span><i class="kl"></i>2-min avg</span><span class="win">10 min</span></span></div>
           <canvas id="hrCanvas"></canvas>
         </button>
-        <button class="chart" id="spdChartBtn" aria-label="Speed chart, tap to switch between last 10 minutes and full ride">
-          <div class="ch"><strong>Speed</strong><span class="key" style="--c:var(--spd)"><span><i class="kd"></i>GPS</span><span><i class="kl"></i>2-min avg</span><span class="win">10 min</span></span></div>
+        <button class="chart" id="spdChartBtn" aria-label="Speed chart, tap to switch between last 2 minutes and full ride">
+          <div class="ch"><strong>Speed</strong><span class="key" style="--c:var(--spd)"><span><i class="kd"></i>GPS</span><span><i class="kl"></i>2-min avg</span><span class="win">2 min</span></span></div>
           <canvas id="spdCanvas"></canvas>
         </button>
 
@@ -411,7 +411,7 @@ const headwind=(s,w)=>w.w*.55*s.exp*Math.cos((w.from-s.b)*Math.PI/180);
 const vPred=(s,t,w)=>Math.min(VMAX,solveV(P_MODEL,s.grade,headwind(s,w||windAt(t))))*TRAFFIC[s.kind];
 
 /* ---------- state ---------- */
-const state={playing:true,mult:5,wind:"head",hr:"hc",mode:"night",tab:"ride",win:{hr:600,spd:600},route:"hw"};
+const state={playing:true,mult:5,wind:"head",hr:"hc",mode:"night",tab:"ride",win:{hr:600,spd:120},route:"hw"};
 let rng,sim,speed,hrAll,est,segLog,predStart,etaStartT;
 
 function reset(seed){
@@ -481,23 +481,60 @@ function hrVisible(){
 const appEl=$("#app");
 const tok=n=>getComputedStyle(appEl).getPropertyValue(n).trim();
 function rolling(arr){const out=new Array(arr.length);let j=0,sum=0;for(let i=0;i<arr.length;i++){sum+=arr[i].v;while(arr[j].t<=arr[i].t-120){sum-=arr[j].v;j++}out[i]=sum/(i-j+1)}return out}
-function drawChart(cv,data,color,winSec,yFix,nowT){
+function drawChart(cv,data,color,winSec,yFix,nowT,opts={}){
   const dpr=window.devicePixelRatio||1,W=cv.clientWidth,H=cv.clientHeight;if(!W)return;
   if(cv.width!==Math.round(W*dpr)){cv.width=Math.round(W*dpr);cv.height=Math.round(H*dpr)}
   const c=cv.getContext("2d");c.setTransform(dpr,0,0,dpr,0,0);c.clearRect(0,0,W,H);
   const t1=Math.max(nowT,winSec?0:60),t0=winSec?t1-winSec:0;
   const L=30,R=6,T=6,B=17,pw=W-L-R,ph=H-T-B;
   const inWin=data.filter(p=>p.t>=t0);
-  let lo,hi;
-  if(yFix){lo=yFix[0];hi=yFix[1]}else{let mn=1e9,mx=-1e9;inWin.forEach(p=>{mn=Math.min(mn,p.v);mx=Math.max(mx,p.v)});if(mn>mx){mn=90;mx=160}lo=Math.floor((mn-6)/10)*10;hi=Math.ceil((mx+6)/10)*10;if(hi-lo<40){hi=lo+40}}
-  const X=t=>L+(t-t0)/(t1-t0)*pw,Y=v=>T+(1-(v-lo)/(hi-lo))*ph;
+  let lo,hi,step;
+  if(yFix){lo=yFix[0];hi=yFix[1];step=(hi-lo)>60?20:10}
+  else if(opts.intY){
+    let mn=1e9,mx=-1e9;inWin.forEach(p=>{mn=Math.min(mn,p.v);mx=Math.max(mx,p.v)});
+    if(mn>mx){mn=15;mx=30}
+    const rawStep=Math.max(mx-mn,2)/4,mag=Math.pow(10,Math.floor(Math.log10(rawStep)));
+    step=10*mag;for(const m of[1,2,5,10]){if(rawStep<=m*mag){step=m*mag;break}}
+    step=Math.max(1,Math.round(step));
+    lo=Math.floor(mn/step)*step;hi=Math.ceil(mx/step)*step;
+    if(hi-lo<step*3)hi=lo+step*3;
+  }
+  else{let mn=1e9,mx=-1e9;inWin.forEach(p=>{mn=Math.min(mn,p.v);mx=Math.max(mx,p.v)});if(mn>mx){mn=90;mx=160}lo=Math.floor((mn-6)/10)*10;hi=Math.ceil((mx+6)/10)*10;if(hi-lo<40){hi=lo+40};step=(hi-lo)>60?20:10}
+  let X;
+  if(!winSec&&opts.logX){
+    const LM=10,t1L=Math.max(t1,LM*3);
+    X=t=>{const ago=Math.max(t1-t,LM);return L+(1-(Math.log(ago)-Math.log(LM))/(Math.log(t1L)-Math.log(LM)))*pw};
+  }else{
+    X=t=>L+(t-t0)/(t1-t0)*pw;
+  }
+  const Y=v=>T+(1-(v-lo)/(hi-lo))*ph;
   const muted=tok("--muted"),line=tok("--line"),bg=tok("--surf");
   c.font='500 10px "IBM Plex Mono", ui-monospace, monospace';c.textBaseline="middle";c.textAlign="right";
-  const step=(hi-lo)>60?20:10;
-  for(let v=lo;v<=hi;v+=step){const y=Math.round(Y(v))+.5;c.strokeStyle=line;c.lineWidth=1;c.beginPath();c.moveTo(L,y);c.lineTo(W-R,y);c.stroke();c.fillStyle=muted;c.fillText(v,L-5,y)}
+  for(let v=lo;v<=hi;v+=step){const y=Math.round(Y(v))+.5;c.strokeStyle=line;c.lineWidth=1;c.beginPath();c.moveTo(L,y);c.lineTo(W-R,y);c.stroke();c.fillStyle=muted;c.fillText(Math.round(v),L-5,y)}
   c.textBaseline="alphabetic";
-  const xl=winSec?[[t0,"−10 min","left"],[t0+winSec/2,"−5","center"],[t1,"now","right"]]:[[0,"0","left"],[t1/2,Math.round(t1/120)+" min","center"],[t1,Math.round(t1/60)+" min","right"]];
-  xl.forEach(([t,s,a])=>{c.textAlign=a;c.fillStyle=muted;c.fillText(s,X(t)+(a==="left"?0:a==="right"?0:0),H-3)});
+  let xl;
+  if(winSec){
+    xl=[[t0,"−"+Math.round(winSec/60)+" min","left"],[t0+winSec/2,"−"+Math.round(winSec/120),"center"],[t1,"now","right"]];
+  }else if(opts.logX){
+    const LM=10,t1L=Math.max(t1,LM*3);
+    const logAgoX=ago=>(1-(Math.log(Math.max(ago,LM))-Math.log(LM))/(Math.log(t1L)-Math.log(LM)))*pw;
+    const NICE=[1,2,5,10,20,30,45,60,90,120,180,240,360,480,600],maxMin=t1L/60;
+    const cands=NICE.filter(m=>m<=maxMin+0.01).sort((a,b)=>b-a).map(m=>[Math.max(t1-m*60,0),"−"+m+" min"]);
+    if(!cands.length)cands.push([0,"−"+Math.max(1,Math.round(maxMin))+" min"]);
+    cands.push([t1,"now"]);
+    // Ticks bunch up in the compressed (early-ride) end of this reversed-log axis; drop
+    // whichever would overlap its neighbor, working outward from "now" so detail near
+    // the end is kept first.
+    const minGap=48,kept=[];let lastX=Infinity;
+    for(let i=cands.length-1;i>=0;i--){
+      const x=logAgoX(t1-cands[i][0]);
+      if(lastX-x>=minGap){kept.unshift(cands[i]);lastX=x}
+    }
+    xl=kept.map(([t,s],i)=>[t,s,i===kept.length-1?"right":i===0?"left":"center"]);
+  }else{
+    xl=[[0,"0","left"],[t1/2,Math.round(t1/120)+" min","center"],[t1,Math.round(t1/60)+" min","right"]];
+  }
+  xl.forEach(([t,s,a])=>{c.textAlign=a;c.fillStyle=muted;c.fillText(s,X(t),H-3)});
   c.save();c.beginPath();c.rect(L,0,pw+R,H-B+2);c.clip();
   c.fillStyle=color;c.globalAlpha=.42;
   const r=inWin.length>900?1.2:1.7;
@@ -558,7 +595,7 @@ function renderRide(){
   const wd=windDesc(s,t);$("#windLbl").textContent=wd.lbl;$("#windSub").textContent=wd.kmh+" km/h · "+wd.shelter;
   $("#windArrow").setAttribute("transform","rotate("+wd.rot.toFixed(1)+")");
   drawChart($("#hrCanvas"),hv,tok("--hr"),state.win.hr,null,t);
-  drawChart($("#spdCanvas"),speed,tok("--spd"),state.win.spd,[0,45],t);
+  drawChart($("#spdCanvas"),speed,tok("--spd"),state.win.spd,state.win.spd?null:[0,45],t,{intY:true,logX:true});
 }
 function onArrive(){
   $("#arrTitle").textContent="Arrived "+fmtClock(START+sim.arrT);
@@ -702,7 +739,8 @@ $("#restartBtn").addEventListener("click",()=>{reset(Math.floor(Math.random()*1e
 $$("#windCtl button").forEach(b=>b.addEventListener("click",()=>{state.wind=b.dataset.wind;press("#windCtl",b);render(true)}));
 $$("#hrCtl button").forEach(b=>b.addEventListener("click",()=>{state.hr=b.dataset.hr;press("#hrCtl",b);render(true)}));
 $$("#modeCtl button").forEach(b=>b.addEventListener("click",()=>{state.mode=b.dataset.mode;appEl.dataset.mode=state.mode;press("#modeCtl",b);if(state.tab==="stats")renderStats();render(true)}));
-[["#hrChartBtn","hr"],["#spdChartBtn","spd"]].forEach(([id,k])=>$(id).addEventListener("click",()=>{state.win[k]=state.win[k]?0:600;$(id+" .win").textContent=state.win[k]?"10 min":"full ride";render(true)}));
+const ZOOM={hr:600,spd:120},ZLABEL={hr:"10 min",spd:"2 min"};
+[["#hrChartBtn","hr"],["#spdChartBtn","spd"]].forEach(([id,k])=>$(id).addEventListener("click",()=>{state.win[k]=state.win[k]?0:ZOOM[k];$(id+" .win").textContent=state.win[k]?ZLABEL[k]:"full ride";render(true)}));
 $$(".seg button").forEach(b=>b.addEventListener("click",()=>{state.route=b.dataset.route;$$(".seg button").forEach(x=>x.setAttribute("aria-pressed",x===b?"true":"false"));renderStats()}));
 let toastT;$$("[data-toast]").forEach(b=>b.addEventListener("click",()=>{const t=$("#toast");t.textContent=b.dataset.toast;t.hidden=false;clearTimeout(toastT);toastT=setTimeout(()=>t.hidden=true,4200)}));
 $("#arrAgain").addEventListener("click",()=>{reset(Math.floor(Math.random()*1e6));render(true)});

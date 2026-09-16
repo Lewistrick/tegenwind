@@ -19,6 +19,8 @@ data class Fix(
 data class RideSnapshot(
     val startedAtMs: Long,
     val lastFixMs: Long?,
+    val lastLat: Double? = null,
+    val lastLon: Double? = null,
     val distanceM: Double,
     val movingMs: Long,
     val paused: Boolean,
@@ -79,6 +81,8 @@ class RideTracker(private val startedAtMs: Long) {
     fun snapshot() = RideSnapshot(
         startedAtMs = startedAtMs,
         lastFixMs = last?.timeMs,
+        lastLat = last?.lat,
+        lastLon = last?.lon,
         distanceM = distanceM,
         movingMs = movingMs,
         paused = paused,

@@ -157,6 +157,10 @@ interface RideDao {
     /** Recent end-of-ride form factors, newest first: the starting guess for the next ride. */
     @Query("SELECT formFactor FROM rides WHERE formFactor IS NOT NULL AND simulated = 0 ORDER BY startedAtMs DESC LIMIT 10")
     suspend fun recentForms(): List<Double>
+
+    /** Finished, real (non-simulated) rides on one route, oldest first: the raw material for its stats page. */
+    @Query("SELECT * FROM rides WHERE routeId = :routeId AND endedAtMs IS NOT NULL AND simulated = 0 ORDER BY startedAtMs")
+    fun ridesForRoute(routeId: Long): Flow<List<RideEntity>>
 }
 
 @Dao
@@ -178,6 +182,10 @@ interface RouteDao {
 
     @Query("SELECT * FROM route_segments WHERE routeId = :routeId ORDER BY idx")
     fun segmentsFlow(routeId: Long): Flow<List<RouteSegmentEntity>>
+
+    /** Every traversal of every segment of this route, across all rides: the raw material for the slowest-segments table. */
+    @Query("SELECT * FROM segment_traversals WHERE routeId = :routeId")
+    fun traversalsFlow(routeId: Long): Flow<List<SegmentTraversalEntity>>
 
     @Insert
     suspend fun insertRoute(route: RouteEntity): Long

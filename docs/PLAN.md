@@ -169,16 +169,22 @@ The **clickable HTML prototype** is the first deliverable after approval. It liv
 
 ## 7. Roadmap
 
-| Phase | Deliverable |
-|---|---|
-| 0 | Clickable HTML prototype; **Health Connect latency spike** with the Steel HR (decision gate) |
-| 1 | Android project skeleton, theme, navigation; foreground `RideService`; live GPS speed with scatter and rolling chart; ride recording to Room |
-| 2 | `HealthConnectHrSource`: permissions, including the required privacy-rationale activity; polling, freshness badge, post-ride backfill |
-| 3 | Routes: record or import GPX, segmentation, elevation and OSM enrichment, map screen, route tracking |
-| 4 | ETA v1: physics plus Open-Meteo wind plus live pace, shown on the Ride screen |
-| 5 | Stats dashboard |
-| 6 | ETA v2: Bayesian segment learning, Kalman form, fatigue and fitness, uncertainty band, "what I learned" card |
-| 7 | Optional: BLE strap source, voice announcements, CSV export plus Jupyter backtest notebook |
+| Phase | Deliverable | Status |
+|---|---|---|
+| 0 | Clickable HTML prototype; **Health Connect latency spike** with the Steel HR (decision gate) | ✅ done |
+| 1 | Android project skeleton, theme, navigation; foreground `RideService`; live GPS speed with scatter and rolling chart; ride recording to Room | ✅ done |
+| 2 | `HealthConnectHrSource`: permissions, including the required privacy-rationale activity; polling, freshness badge, post-ride backfill | ✅ done |
+| 3 | Routes: record or import GPX, segmentation, elevation and OSM enrichment, map screen, route tracking | ✅ done (map screen is a lightweight Canvas schematic, not MapLibre) |
+| 4 | ETA v1: physics plus Open-Meteo wind plus live pace, shown on the Ride screen | ✅ done |
+| 5 | Stats dashboard | ✅ done |
+| 6 | ETA v2: Bayesian segment learning, Kalman form, fatigue and fitness, uncertainty band, "what I learned" card | ◐ partial — the Kalman "today's form" filter and a simple ± uncertainty band already run on every ride; still missing: learned per-segment corrections (Layer 2) and long-term fitness/fatigue (Banister model) |
+| 7 | Optional: BLE strap source, voice announcements, CSV export plus Jupyter backtest notebook | not started |
+
+### Status (16 Sep 2026)
+
+- **Phase 2 loose end closed:** the original permission-request UI lived in a one-off "HR test" debug tab (`hrprobe/`), built for the Phase 0 spike. That tab and its dead code were removed; requesting Health Connect access now happens inline on the ride detail screen (an "Allow access" button when heart rate can't be read yet), so there's no dependency on a debug-only screen any more.
+- **Phase 5 built:** a Stats tab with a route picker, KPI tiles (fastest/slowest/average/median duration), a duration trend chart (fastest/slowest highlighted), a duration histogram, a headwind-vs-duration scatter, and a slowest-segments table (actual vs modeled time, from `SegmentTraversalEntity`).
+- **Distribution today:** there's no CI/APK pipeline yet (no `.github/workflows`) despite it being in the tool choices above. The app reaches the phone by building locally and running `./gradlew installDebug` (or Android Studio's Run button) over a USB connection to the phone — this has been the deployment path since Phase 1, not something tied to a specific phase.
 
 **Project layout**
 ```

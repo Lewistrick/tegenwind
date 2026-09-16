@@ -1,5 +1,6 @@
 package com.tegenwind.app.ui.rides
 
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -42,6 +43,7 @@ import com.tegenwind.app.ride.formatElapsed
 import com.tegenwind.app.ui.TimeSeriesChart
 import com.tegenwind.app.ui.theme.HeartColor
 import com.tegenwind.app.ui.theme.SpeedColor
+import androidx.health.connect.client.PermissionController
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import java.time.Instant
@@ -71,6 +73,9 @@ fun RideDetailScreen(rideId: Long, onBack: () -> Unit) {
     var rideRouteName by remember { mutableStateOf<String?>(null) }
     var editingRoute by remember { mutableStateOf(false) }
     var confirmReplaceRoute by remember { mutableStateOf(false) }
+    val hrPermissionLauncher = rememberLauncherForActivityResult(
+        PermissionController.createRequestPermissionResultContract()
+    ) { hrRefresh++ }
 
     LaunchedEffect(rideId) {
         val loaded = dao.ride(rideId)
@@ -132,14 +137,18 @@ fun RideDetailScreen(rideId: Long, onBack: () -> Unit) {
                     Text("Heart rate", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, color = HeartColor)
                     Text(
                         when (state) {
-                            HrState.NoPermission -> "Allow heart-rate access first: open the HR test tab and tap Allow access."
+                            HrState.NoPermission -> "Allow Tegenwind to read heart rate and workouts from Health Connect."
                             HrState.NotYet -> "No heart rate yet. End the workout on your watch and open the Withings app so it syncs, then refresh."
                             is HrState.Failed -> state.message
                             else -> ""
                         },
                         style = MaterialTheme.typography.bodyMedium,
                     )
-                    OutlinedButton(onClick = { hrRefresh++ }) { Text("Refresh") }
+                    if (state == HrState.NoPermission) {
+                        OutlinedButton(onClick = { hrPermissionLauncher.launch(container.healthConnect.permissions) }) { Text("Allow access") }
+                    } else {
+                        OutlinedButton(onClick = { hrRefresh++ }) { Text("Refresh") }
+                    }
                 }
             }
         }

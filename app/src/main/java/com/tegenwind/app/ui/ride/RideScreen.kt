@@ -2,6 +2,7 @@ package com.tegenwind.app.ui.ride
 
 import android.Manifest
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -252,7 +253,7 @@ private fun LiveView(ride: LiveRide, onStop: () -> Unit) {
             )
         }
 
-        ride.route?.let { EtaCard(it, ride.eta) }
+        ride.route?.let { EtaCard(it, ride.eta, s.lastLat, s.lastLon) }
 
         Card(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
@@ -420,7 +421,8 @@ private fun PausedBar(stoppedMs: Long) {
 
 /** Arrival time, route progress and the wind as you feel it: the heart of the ride screen. */
 @Composable
-private fun EtaCard(r: RideRoute, live: LiveEta?) {
+private fun EtaCard(r: RideRoute, live: LiveEta?, lat: Double?, lon: Double?) {
+    val context = LocalContext.current
     val p = r.progress
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -461,8 +463,29 @@ private fun EtaCard(r: RideRoute, live: LiveEta?) {
                     )
                 }
             }
+            live?.let {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    OutlinedButton(onClick = { shareEta(context, r.name, it, p.remainingM, lat, lon) }) { Text("Share ETA") }
+                }
+            }
         }
     }
+}
+
+/** "On my way (werk-woon) — arriving around 19:34 (± 6 min), 3.2 km to go." plus a maps link, if we know where we are. */
+private fun shareEta(context: Context, routeName: String, live: LiveEta, remainingM: Double, lat: Double?, lon: Double?) {
+    val text = buildString {
+        append("On my way")
+        if (routeName.isNotBlank()) append(" ($routeName)")
+        append(" — arriving around ${formatClock(live.eta.arrivalMs)} (± ${formatMargin(1.28 * live.eta.sigmaS)}), ")
+        append("%.1f km to go.".format(remainingM / 1000))
+        if (lat != null && lon != null) append("\nhttps://maps.google.com/?q=%.5f,%.5f".format(lat, lon))
+    }
+    val send = Intent(Intent.ACTION_SEND).apply {
+        type = "text/plain"
+        putExtra(Intent.EXTRA_TEXT, text)
+    }
+    context.startActivity(Intent.createChooser(send, "Share ETA"))
 }
 
 /** Arrow showing where the wind pushes you (up = from behind), with head/tail/cross label. */

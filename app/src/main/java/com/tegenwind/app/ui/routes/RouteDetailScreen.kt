@@ -152,7 +152,7 @@ private fun ExposureStrip(segments: List<RouteSegmentEntity>, lengthM: Double, m
 @Composable
 private fun SegmentHeader() {
     Row(Modifier.padding(vertical = 6.dp)) {
-        listOf("km" to 70, "dir" to 44, "grade" to 64, "open" to 60, "lights" to 50).forEach { (t, w) ->
+        listOf("km" to 70, "dir" to 44, "slope" to 64, "open" to 60, "lights" to 50).forEach { (t, w) ->
             Text(t, Modifier.width(w.dp), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
