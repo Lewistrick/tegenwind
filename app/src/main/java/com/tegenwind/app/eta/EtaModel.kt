@@ -12,6 +12,8 @@ data class EtaSegment(
     val gradePct: Double,
     val exposure: Double,
     val signals: Int,
+    /** What riding it has taught us on top of the physics; see [SegmentLearner]. */
+    val learned: SegmentCorrection = SegmentCorrection(),
 ) {
     val lengthM: Double get() = endM - startM
 }
@@ -26,17 +28,20 @@ data class Eta(
 )
 
 /**
- * ETA v1: physics per segment with the wind forecast for the moment you reach it,
- * scaled by today's form, plus expected waits at traffic lights.
+ * ETA v2: physics per segment with the wind forecast for the moment you reach it, corrected by
+ * what each segment has taught us, scaled by today's form, plus expected waits at traffic lights.
  */
 class EtaModel(private val segments: List<EtaSegment>, private val params: RiderParams = RiderParams()) {
 
-    /** Predicted riding speed (m/s) on [s] at form 1.0; [wind] null means no wind. */
+    /** Predicted riding speed (m/s) on [s] at form 1.0, physics only; [wind] null means no wind. */
     fun speedMps(s: EtaSegment, wind: WindSample?): Double {
         val head = if (wind == null) 0.0 else Physics.headwindMps(wind.speedMps, wind.fromDeg, s.bearingDeg, s.exposure)
         val rho = Physics.airDensity(wind?.tempC)
         return Physics.speedMps(params.powerW, s.gradePct, head, rho, params).coerceAtLeast(MIN_SPEED_MPS)
     }
+
+    /** The same speed with the segment's learned correction applied: what to actually expect. */
+    fun correctedSpeedMps(s: EtaSegment, wind: WindSample?): Double = speedMps(s, wind) / s.learned.timeFactor
 
     fun segmentAt(progressM: Double): EtaSegment? = segments.firstOrNull { progressM < it.endM } ?: segments.lastOrNull()
 
@@ -46,21 +51,27 @@ class EtaModel(private val segments: List<EtaSegment>, private val params: Rider
         var calm = 0.0
         var stops = 0.0
         var stopVar = 0.0
+        var segVar = 0.0
         for (s in segments) {
             if (s.endM <= progressM) continue
             val dist = s.endM - maxOf(s.startM, progressM)
             val wind = forecast?.at(clockMs.toLong())
-            val t = dist / (speedMps(s, wind) * form.mean)
+            val t = dist / (correctedSpeedMps(s, wind) * form.mean)
             moving += t
-            calm += dist / (speedMps(s, null) * form.mean)
+            calm += dist / (correctedSpeedMps(s, null) * form.mean)
             clockMs += t * 1000
+            // How sure we are of this segment's own correction. Segments are unrelated to each
+            // other, so unlike form these errors partly cancel out over a long route.
+            segVar += t * t * s.learned.logVar
             // Signals are counted at the end of their segment.
             stops += s.signals * STOP_MEAN_S
             stopVar += s.signals * STOP_VAR_S2
             clockMs += s.signals * STOP_MEAN_S * 1000
         }
         val formSd = sqrt(form.variance) / form.mean
-        val sigma = sqrt((moving * formSd).let { it * it } + stopVar + (moving * BASE_SD).let { it * it })
+        val sigma = sqrt(
+            (moving * formSd).let { it * it } + stopVar + segVar + (moving * BASE_SD).let { it * it }
+        )
         return Eta(
             arrivalMs = (nowMs + (moving + stops) * 1000).toLong(),
             remainingS = moving + stops,

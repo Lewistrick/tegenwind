@@ -34,9 +34,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.Alignment
 import com.tegenwind.app.appContainer
 import com.tegenwind.app.data.RideEntity
+import com.tegenwind.app.data.RouteSegmentEntity
+import com.tegenwind.app.data.SegmentTraversalEntity
+import com.tegenwind.app.eta.Banister
 import com.tegenwind.app.health.HealthConnectHr
+import com.tegenwind.app.ui.theme.GoodColor
+import kotlin.math.roundToInt
 import com.tegenwind.app.ride.RideTracker
 import com.tegenwind.app.ride.Sample
 import com.tegenwind.app.ride.formatElapsed
@@ -73,6 +79,7 @@ fun RideDetailScreen(rideId: Long, onBack: () -> Unit) {
     var rideRouteName by remember { mutableStateOf<String?>(null) }
     var editingRoute by remember { mutableStateOf(false) }
     var confirmReplaceRoute by remember { mutableStateOf(false) }
+    var lessons by remember { mutableStateOf<List<Lesson>>(emptyList()) }
     val hrPermissionLauncher = rememberLauncherForActivityResult(
         PermissionController.createRequestPermissionResultContract()
     ) { hrRefresh++ }
@@ -84,6 +91,9 @@ fun RideDetailScreen(rideId: Long, onBack: () -> Unit) {
         speeds = dao.points(rideId)
             .filter { (it.accuracyM ?: 0.0) <= RideTracker.MAX_ACCURACY_M && it.speedMps != null }
             .map { Sample(it.timeMs, it.speedMps!! * 3.6) }
+        lessons = loaded?.routeId?.let { routeId ->
+            lessonsFrom(dao.traversals(rideId), container.db.routes().segments(routeId))
+        }.orEmpty()
     }
     val r = ride
     LaunchedEffect(r, hrRefresh) {
@@ -91,6 +101,14 @@ fun RideDetailScreen(rideId: Long, onBack: () -> Unit) {
             hr = HrState.Loading
             hr = loadHeartRate(container.healthConnect, r)
         }
+    }
+    // Heart rate gives a better training load than pace does, so store it once it arrives.
+    LaunchedEffect(hr, r) {
+        val samples = (hr as? HrState.Loaded)?.samples ?: return@LaunchedEffect
+        val current = r ?: return@LaunchedEffect
+        if (current.simulated) return@LaunchedEffect
+        val trimp = Banister.loadFromHeartRate(samples.map { it.value }, current.movingMs)
+        if (trimp > 0 && trimp != current.loadTss) dao.updateRide(current.copy(loadTss = trimp))
     }
 
     Column(
@@ -152,6 +170,8 @@ fun RideDetailScreen(rideId: Long, onBack: () -> Unit) {
                 }
             }
         }
+
+        if (lessons.isNotEmpty()) WhatILearnedCard(lessons)
 
         if (!r.simulated) {
             OutlinedButton(onClick = { routeName = "" }) { Text("Save as route") }
@@ -310,6 +330,73 @@ private suspend fun loadHeartRate(hc: HealthConnectHr, ride: RideEntity): HrStat
 } catch (e: Exception) {
     if (e is CancellationException) throw e
     HrState.Failed("Couldn't read Health Connect: ${e.message ?: e::class.simpleName}")
+}
+
+/** One segment of this ride that went differently than the model expected. */
+private data class Lesson(
+    val startM: Double,
+    val endM: Double,
+    val deltaS: Double,
+    val signals: Int,
+    val passes: Int,
+)
+
+/**
+ * The segments this ride disagreed with the model about most, biggest first. The comparison is
+ * against the physics baseline, so a segment that is always slow keeps showing up until enough
+ * passes have taught it, which is exactly what [com.tegenwind.app.eta.SegmentLearner] is folding in.
+ */
+private fun lessonsFrom(
+    traversals: List<SegmentTraversalEntity>,
+    segments: List<RouteSegmentEntity>,
+): List<Lesson> {
+    val bySegIdx = segments.associateBy { it.idx }
+    return traversals.mapNotNull { t ->
+        val seg = bySegIdx[t.segIdx] ?: return@mapNotNull null
+        Lesson(
+            startM = seg.startM,
+            endM = seg.endM,
+            deltaS = (t.movingMs - t.predictedMovingMs) / 1000.0,
+            signals = seg.signals ?: 0,
+            passes = seg.learnedPasses,
+        )
+    }
+        .filter { kotlin.math.abs(it.deltaS) >= 5 }
+        .sortedByDescending { kotlin.math.abs(it.deltaS) }
+        .take(3)
+}
+
+@Composable
+private fun WhatILearnedCard(lessons: List<Lesson>) {
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("What the model learned", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Text(
+                "Where this ride differed most from the prediction. Every pass nudges the ETA for next time.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            lessons.forEach { l ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("%.1f–%.1f km".format(l.startM / 1000, l.endM / 1000), fontWeight = FontWeight.SemiBold)
+                        Text(
+                            (if (l.signals > 0) "${l.signals} light${if (l.signals == 1) "" else "s"} · " else "") +
+                                "known from ${l.passes} pass${if (l.passes == 1) "" else "es"}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Text(
+                        "%+d s".format(l.deltaS.roundToInt()),
+                        style = MaterialTheme.typography.titleMedium.copy(fontFeatureSettings = "tnum"),
+                        fontWeight = FontWeight.SemiBold,
+                        color = if (l.deltaS > 0) MaterialTheme.colorScheme.error else GoodColor,
+                    )
+                }
+            }
+        }
+    }
 }
 
 @Composable

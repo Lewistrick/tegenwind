@@ -177,7 +177,7 @@ The **clickable HTML prototype** is the first deliverable after approval. It liv
 | 3 | Routes: record or import GPX, segmentation, elevation and OSM enrichment, map screen, route tracking | ✅ done (map screen is a lightweight Canvas schematic, not MapLibre) |
 | 4 | ETA v1: physics plus Open-Meteo wind plus live pace, shown on the Ride screen | ✅ done |
 | 5 | Stats dashboard | ✅ done |
-| 6 | ETA v2: Bayesian segment learning, Kalman form, fatigue and fitness, uncertainty band, "what I learned" card | ◐ partial — the Kalman "today's form" filter and a simple ± uncertainty band already run on every ride; still missing: learned per-segment corrections (Layer 2) and long-term fitness/fatigue (Banister model) |
+| 6 | ETA v2: Bayesian segment learning, Kalman form, fatigue and fitness, uncertainty band, "what I learned" card | ✅ done (segment learning is a per-segment offset, not the full multi-feature model — see below) |
 | 7 | Optional: BLE strap source, voice announcements, CSV export plus Jupyter backtest notebook | not started |
 
 ### Status (16 Sep 2026)
@@ -185,6 +185,16 @@ The **clickable HTML prototype** is the first deliverable after approval. It liv
 - **Phase 2 loose end closed:** the original permission-request UI lived in a one-off "HR test" debug tab (`hrprobe/`), built for the Phase 0 spike. That tab and its dead code were removed; requesting Health Connect access now happens inline on the ride detail screen (an "Allow access" button when heart rate can't be read yet), so there's no dependency on a debug-only screen any more.
 - **Phase 5 built:** a Stats tab with a route picker, KPI tiles (fastest/slowest/average/median duration), a duration trend chart (fastest/slowest highlighted), a duration histogram, a headwind-vs-duration scatter, and a slowest-segments table (actual vs modeled time, from `SegmentTraversalEntity`).
 - **Distribution today:** there's no CI/APK pipeline yet (no `.github/workflows`) despite it being in the tool choices above. The app reaches the phone by building locally and running `./gradlew installDebug` (or Android Studio's Run button) over a USB connection to the phone — this has been the deployment path since Phase 1, not something tied to a specific phase.
+
+### Phase 6 result (17 Sep 2026): the ETA learns the road and the rider
+
+- **Layer 2 (`SegmentLearner`)**: every clean pass folds `log(actual / physics)` into that segment with the same conjugate Normal step the form filter uses, stored on `route_segments` (`learnedLogMean`, `learnedLogVar`, `learnedPasses`) and applied by `EtaModel.correctedSpeedMps`. A forgetting factor of 0.98 lets it follow road works. Simulated rides never teach it anything.
+  - **Simplified against the original plan:** this is a single per-segment offset, not a multi-feature linear model. The rush-hour flag, learned exposure multiplier and uphill/downhill residual are *not* separate features. With one commute ridden a few times a day, each segment only gathers a handful of observations, so four features per segment would be badly under-determined; the offset carries almost all of the signal. Worth revisiting only if backtesting says otherwise.
+- **Layer 3 long term (`Banister`)**: 42-day fitness and 7-day fatigue from each ride's load, shown on the Stats tab. Load is TRIMP once Health Connect has the ride's heart rate (upgraded when you open a ride), otherwise estimated from duration and pace. Old rides were backfilled on first launch.
+  - Freshness only *modulates* the recent-form median rather than replacing it, so it cannot double-count what `priorForm` already knows, and it is clamped to ±5%.
+  - Both averages start at the average day instead of zero. Starting at zero, the 42-day average spends months catching up to the 7-day one, and every new rider reads as permanently tired — a bug the unit tests caught.
+- **Uncertainty band**: now adds each remaining segment's own posterior variance, treated as independent between segments (they are separate parameters), so the band tightens as the route gets learned instead of sitting at a flat 4%.
+- **"What the model learned" card** on a finished ride: the three segments that differed most from the prediction, with how many passes that segment has behind it.
 
 **Project layout**
 ```

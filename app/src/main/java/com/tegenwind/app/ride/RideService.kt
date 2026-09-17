@@ -22,7 +22,8 @@ import com.google.android.gms.location.Priority
 import com.tegenwind.app.MainActivity
 import com.tegenwind.app.R
 import com.tegenwind.app.appContainer
-import com.tegenwind.app.eta.priorForm
+import com.tegenwind.app.eta.Banister
+import com.tegenwind.app.eta.startingForm
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -77,7 +78,13 @@ class RideService : Service() {
         scope.launch {
             val container = appContainer
             val route = routeId?.let { container.routes.load(it) }
-            recorder.start(simulated, route, priorForm(container.db.rides().recentForms()))
+            val rides = container.db.rides()
+            val now = System.currentTimeMillis()
+            recorder.start(
+                simulated,
+                route,
+                startingForm(rides.recentForms(), rides.loadsSince(now - Banister.WINDOW_DAYS * 86_400_000L), now),
+            )
             if (route != null) {
                 // Wind forecast for the middle of the route, refreshed every 15 minutes.
                 launch {

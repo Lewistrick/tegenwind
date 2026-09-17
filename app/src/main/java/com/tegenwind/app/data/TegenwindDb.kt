@@ -1,6 +1,7 @@
 package com.tegenwind.app.data
 
 import androidx.room.AutoMigration
+import androidx.room.ColumnInfo
 import androidx.room.Dao
 import androidx.room.Database
 import androidx.room.Entity
@@ -12,6 +13,7 @@ import androidx.room.Query
 import androidx.room.RoomDatabase
 import androidx.room.Transaction
 import androidx.room.Update
+import com.tegenwind.app.eta.RideLoad
 import kotlinx.coroutines.flow.Flow
 
 @Entity(tableName = "rides")
@@ -29,6 +31,11 @@ data class RideEntity(
     val windFromDeg: Double? = null,
     /** Speed relative to the physics model at the end of the ride (1.0 = as predicted). */
     val formFactor: Double? = null,
+    /**
+     * Training load for the fitness model: TRIMP once heart rate has been read for this ride,
+     * otherwise estimated from how long and how hard you rode.
+     */
+    val loadTss: Double? = null,
 )
 
 /** How long one ride took over one route segment: the raw material for stats and learning. */
@@ -120,6 +127,18 @@ data class RouteSegmentEntity(
     /** 1 = open field, fully exposed to wind; ~0.15 = sheltered between buildings. */
     val exposure: Double? = null,
     val signals: Int? = null,
+    /**
+     * What this segment costs beyond the physics baseline, learned from every pass:
+     * the posterior mean of log(actual / predicted moving time). Positive = slower than physics says.
+     */
+    @ColumnInfo(defaultValue = "0.0")
+    val learnedLogMean: Double = 0.0,
+    /** Posterior variance of [learnedLogMean]; starts wide and narrows with every pass. */
+    @ColumnInfo(defaultValue = "0.0324")
+    val learnedLogVar: Double = 0.18 * 0.18,
+    /** Clean passes that went into the correction, for the "what I learned" card. */
+    @ColumnInfo(defaultValue = "0")
+    val learnedPasses: Int = 0,
 )
 
 @Dao
@@ -161,6 +180,24 @@ interface RideDao {
     /** Finished, real (non-simulated) rides on one route, oldest first: the raw material for its stats page. */
     @Query("SELECT * FROM rides WHERE routeId = :routeId AND endedAtMs IS NOT NULL AND simulated = 0 ORDER BY startedAtMs")
     fun ridesForRoute(routeId: Long): Flow<List<RideEntity>>
+
+    /** Training load per ride since [sinceMs], oldest first: what the fitness and fatigue model runs on. */
+    @Query(
+        "SELECT startedAtMs, loadTss FROM rides " +
+            "WHERE loadTss IS NOT NULL AND simulated = 0 AND startedAtMs >= :sinceMs ORDER BY startedAtMs"
+    )
+    suspend fun loadsSince(sinceMs: Long): List<RideLoad>
+
+    /** What each segment of this ride actually cost, against what was predicted when riding it. */
+    @Query("SELECT * FROM segment_traversals WHERE rideId = :rideId ORDER BY segIdx")
+    suspend fun traversals(rideId: Long): List<SegmentTraversalEntity>
+
+    /** Rides recorded before the fitness model existed, so their load can be filled in once. */
+    @Query("SELECT * FROM rides WHERE loadTss IS NULL AND endedAtMs IS NOT NULL AND simulated = 0")
+    suspend fun ridesWithoutLoad(): List<RideEntity>
+
+    @Update
+    suspend fun updateRides(rides: List<RideEntity>)
 }
 
 @Dao
@@ -250,9 +287,12 @@ interface RouteDao {
         RideEntity::class, TrackPointEntity::class, RouteEntity::class, RoutePointEntity::class,
         RouteSegmentEntity::class, SegmentTraversalEntity::class,
     ],
-    version = 4,
+    version = 5,
     exportSchema = true,
-    autoMigrations = [AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3), AutoMigration(from = 3, to = 4)],
+    autoMigrations = [
+        AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3),
+        AutoMigration(from = 3, to = 4), AutoMigration(from = 4, to = 5),
+    ],
 )
 abstract class TegenwindDb : RoomDatabase() {
     abstract fun rides(): RideDao

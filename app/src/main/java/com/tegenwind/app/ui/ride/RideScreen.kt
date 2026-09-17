@@ -68,7 +68,8 @@ import com.tegenwind.app.eta.FormEstimate
 import com.tegenwind.app.eta.LiveEta
 import com.tegenwind.app.eta.WindNow
 import com.tegenwind.app.eta.etaModel
-import com.tegenwind.app.eta.priorForm
+import com.tegenwind.app.eta.Banister
+import com.tegenwind.app.eta.startingForm
 import com.tegenwind.app.ride.AutoFinish
 import com.tegenwind.app.ride.LiveRide
 import com.tegenwind.app.ride.RideRoute
@@ -331,7 +332,12 @@ private fun LeaveNowPreview(routeId: Long) {
     val preview by produceState<Preview?>(null, routeId) {
         val route = container.routes.load(routeId) ?: return@produceState
         val model = route.etaModel()
-        val form = FormEstimate(priorForm(container.db.rides().recentForms()), 0.01)
+        val rides = container.db.rides()
+        val since = System.currentTimeMillis() - Banister.WINDOW_DAYS * 86_400_000L
+        val form = FormEstimate(
+            startingForm(rides.recentForms(), rides.loadsSince(since), System.currentTimeMillis()),
+            0.01,
+        )
         while (true) {
             val forecast = container.weather.forecast(route.line.pointAt(route.line.lengthM / 2))
             val now = System.currentTimeMillis()

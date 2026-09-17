@@ -34,6 +34,7 @@ fun LoadedRoute.etaModel(params: RiderParams = RiderParams()) = EtaModel(
             gradePct = s.gradePct ?: 0.0,
             exposure = s.exposure ?: 0.6,
             signals = s.signals ?: 0,
+            learned = SegmentCorrection(s.learnedLogMean, s.learnedLogVar, s.learnedPasses),
         )
     },
     params,

@@ -2,12 +2,16 @@ package com.tegenwind.app.ride
 
 import com.tegenwind.app.data.RideDao
 import com.tegenwind.app.data.RideEntity
+import com.tegenwind.app.data.RouteDao
 import com.tegenwind.app.data.SegmentTraversalEntity
 import com.tegenwind.app.data.TrackPointEntity
+import com.tegenwind.app.eta.Banister
 import com.tegenwind.app.eta.EtaModel
 import com.tegenwind.app.eta.FormEstimator
 import com.tegenwind.app.eta.LiveEta
 import com.tegenwind.app.eta.Physics
+import com.tegenwind.app.eta.SegmentCorrection
+import com.tegenwind.app.eta.SegmentLearner
 import com.tegenwind.app.eta.etaModel
 import com.tegenwind.app.eta.windNow
 import com.tegenwind.app.routes.GeoPoint
@@ -45,7 +49,11 @@ data class LiveRide(
  * keeps the ETA up to date, times each route segment, and writes everything to the database.
  * All calls are expected on the main thread.
  */
-class RideRecorder(private val dao: RideDao, private val scope: CoroutineScope) {
+class RideRecorder(
+    private val dao: RideDao,
+    private val routeDao: RouteDao,
+    private val scope: CoroutineScope,
+) {
 
     private val _live = MutableStateFlow<LiveRide?>(null)
     val live: StateFlow<LiveRide?> = _live.asStateFlow()
@@ -172,8 +180,11 @@ class RideRecorder(private val dao: RideDao, private val scope: CoroutineScope) 
                 windSpeedMps = startWind?.speedMps,
                 windFromDeg = startWind?.fromDeg,
                 formFactor = form.estimate().mean.takeIf { formObservations >= MIN_FORM_OBSERVATIONS },
+                loadTss = if (ride.simulated) null else Banister.loadFromRide(snap.movingMs, snap.distanceM),
             )
         )
+        // A made-up ride must not teach the model anything about the real road.
+        if (!ride.simulated) learnFromTraversals(route, traversals)
         tracker = null
         routeTracker = null
         route = null
@@ -232,7 +243,10 @@ class RideRecorder(private val dao: RideDao, private val scope: CoroutineScope) 
                     headwindMps = wind?.let { Physics.headwindMps(it.speedMps, it.fromDeg, etaSeg.bearingDeg, etaSeg.exposure) },
                     predictedMovingMs = predictedMs,
                 )
-                if (moved >= MIN_MOVING_MS && form.observe(predictedMs.toDouble() / moved)) formObservations++
+                // Form measures how today differs from what this segment normally costs, so it is
+                // compared against the corrected time: a permanently slow corner is not bad form.
+                val expectedMs = predictedMs * etaSeg.learned.timeFactor
+                if (moved >= MIN_MOVING_MS && form.observe(expectedMs / moved)) formObservations++
             }
             segIdx++
             segEnterMs = nowMs
@@ -240,6 +254,30 @@ class RideRecorder(private val dao: RideDao, private val scope: CoroutineScope) 
             // Skipping segments in one go (GPS gap) means the next one wasn't entered at its start.
             segClean = idx == segIdx
         }
+    }
+
+    /**
+     * Layer 2 learning: each segment ridden cleanly this ride folds its actual time into what that
+     * segment knows, so the next ETA over this road starts from experience instead of from physics.
+     */
+    private suspend fun learnFromTraversals(loaded: LoadedRoute?, ridden: List<SegmentTraversalEntity>) {
+        if (loaded == null || ridden.isEmpty()) return
+        val bySegIdx = loaded.segments.associateBy { it.idx }
+        val updated = ridden.mapNotNull { t ->
+            val seg = bySegIdx[t.segIdx] ?: return@mapNotNull null
+            val learned = SegmentLearner.update(
+                SegmentCorrection(seg.learnedLogMean, seg.learnedLogVar, seg.learnedPasses),
+                t.movingMs,
+                t.predictedMovingMs,
+            )
+            if (learned.passes == seg.learnedPasses) null
+            else seg.copy(
+                learnedLogMean = learned.logMean,
+                learnedLogVar = learned.logVar,
+                learnedPasses = learned.passes,
+            )
+        }
+        if (updated.isNotEmpty()) routeDao.updateSegments(updated)
     }
 
     private fun flush() {

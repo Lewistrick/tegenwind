@@ -42,6 +42,8 @@ import com.tegenwind.app.appContainer
 import com.tegenwind.app.data.RideEntity
 import com.tegenwind.app.data.RouteSegmentEntity
 import com.tegenwind.app.data.SegmentTraversalEntity
+import com.tegenwind.app.eta.Banister
+import com.tegenwind.app.eta.RiderState
 import com.tegenwind.app.ride.formatElapsed
 import com.tegenwind.app.ui.theme.Danger
 import com.tegenwind.app.ui.theme.GoodColor
@@ -80,9 +82,19 @@ fun StatsScreen() {
     }.collectAsStateWithLifecycle(emptyList())
     val headwindPoints = remember(rides, traversals) { headwindDurationPoints(rides, traversals) }
     val slowRows = remember(traversals, segments) { slowestSegments(traversals, segments) }
+    var riderState by remember { mutableStateOf<RiderState?>(null) }
+    LaunchedEffect(rides) {
+        val now = System.currentTimeMillis()
+        riderState = Banister.evaluate(
+            container.db.rides().loadsSince(now - Banister.WINDOW_DAYS * 86_400_000L),
+            now,
+        )
+    }
 
     LazyColumn(contentPadding = PaddingValues(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item { Text("Stats", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.SemiBold) }
+
+        riderState?.takeIf { it.rideDays > 0 }?.let { item { FitnessCard(it) } }
 
         if (routes.isEmpty()) {
             item {
@@ -147,6 +159,32 @@ fun StatsScreen() {
 }
 
 private fun durationMs(ride: RideEntity): Long = (ride.endedAtMs ?: ride.startedAtMs) - ride.startedAtMs
+
+/** Fitness and fatigue across every route, and what they currently do to the ETA. */
+@Composable
+private fun FitnessCard(state: RiderState) {
+    val effectPct = (Banister.freshnessFactor(state) - 1) * 100
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Fitness", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Stat("Fitness · 6 wk", "%.0f".format(state.fitness), Modifier.weight(1f))
+                Stat("Fatigue · 1 wk", "%.0f".format(state.fatigue), Modifier.weight(1f))
+                Stat("Today", "%+.1f%%".format(effectPct), Modifier.weight(1f))
+            }
+            Text(
+                when {
+                    state.rideDays < 10 -> "Ride on ${10 - state.rideDays} more days before this starts nudging the ETA."
+                    effectPct > 0.3 -> "Fresher than your recent average, so the ETA expects a little more of you."
+                    effectPct < -0.3 -> "Still carrying the last few rides, so the ETA gives you a little more time."
+                    else -> "Training and recovery are in balance; the ETA takes you at your usual pace."
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
 
 @Composable
 private fun KpiRow(rides: List<RideEntity>) {
