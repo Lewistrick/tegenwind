@@ -294,7 +294,9 @@ private fun LiveView(ride: LiveRide, onStop: () -> Unit) {
                     modifier = Modifier.fillMaxWidth().height(140.dp).padding(top = 6.dp),
                     windowMs = if (fullRide) null else TWO_MINUTES_MS,
                     endMs = if (fullRide) null else now,
-                    yRange = 0.0..45.0,
+                    yRange = if (fullRide) 0.0..45.0 else null,
+                    niceY = true,
+                    logXWhenFull = true,
                     emptyText = "Waiting for GPS…",
                 )
             }

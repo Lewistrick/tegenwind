@@ -22,6 +22,24 @@ import com.tegenwind.app.ride.TWO_MINUTES_MS
 import com.tegenwind.app.ride.rollingAverage
 import kotlin.math.ceil
 import kotlin.math.floor
+import kotlin.math.ln
+import kotlin.math.log10
+import kotlin.math.pow
+import kotlin.math.roundToInt
+
+/** A "nice" grid step (1/2/5 × a power of ten, at least 1) so ticks land on round numbers. */
+private fun niceIntStep(mn: Double, mx: Double): Double {
+    val rawStep = maxOf(mx - mn, 2.0) / 4.0
+    val mag = 10.0.pow(floor(log10(rawStep)))
+    var step = 10 * mag
+    for (m in intArrayOf(1, 2, 5, 10)) {
+        if (rawStep <= m * mag) {
+            step = m * mag
+            break
+        }
+    }
+    return maxOf(1.0, step.roundToInt().toDouble())
+}
 
 /**
  * Raw measurements as faint dots plus a 2-minute rolling average as a line.
@@ -29,6 +47,11 @@ import kotlin.math.floor
  *
  * @param windowMs show only the last [windowMs] before [endMs]; null shows everything.
  * @param yRange fixed axis range, or null to fit the data.
+ * @param niceY when fitting the data (yRange null), round to a step that keeps ticks legible on a
+ *   narrow range (e.g. speed over a 2-minute window) instead of the coarser default used for HR.
+ * @param logXWhenFull when showing the whole ride (windowMs null), lay out time on a log scale so
+ *   the most recent stretch gets more room than the start, with "−N min" ticks instead of evenly
+ *   spaced ones.
  */
 @Composable
 fun TimeSeriesChart(
@@ -38,6 +61,8 @@ fun TimeSeriesChart(
     windowMs: Long? = null,
     endMs: Long? = null,
     yRange: ClosedFloatingPointRange<Double>? = null,
+    niceY: Boolean = false,
+    logXWhenFull: Boolean = false,
     gapMs: Long = 30_000,
     emptyText: String = "No data yet",
 ) {
@@ -58,13 +83,24 @@ fun TimeSeriesChart(
         val span = (right - left).coerceAtLeast(60_000L).toFloat()
         val firstVisible = samples.indexOfFirst { it.timeMs >= left }.coerceAtLeast(0)
 
-        val (lo, hi) = yRange?.let { it.start to it.endInclusive } ?: run {
+        val (lo, hi, yStep) = yRange?.let {
+            val s = if (it.endInclusive - it.start > 60) 20.0 else 10.0
+            Triple(it.start, it.endInclusive, s)
+        } ?: run {
             val visible = samples.subList(firstVisible, samples.size)
             val mn = visible.minOf { it.value }
             val mx = visible.maxOf { it.value }
-            val l = floor((mn - 5) / 10) * 10
-            val h = ceil((mx + 5) / 10) * 10
-            l to maxOf(h, l + 40)
+            if (niceY) {
+                val s = niceIntStep(mn, mx)
+                val l = floor(mn / s) * s
+                val h = ceil(mx / s) * s
+                Triple(l, maxOf(h, l + s * 3), s)
+            } else {
+                val l = floor((mn - 5) / 10) * 10
+                val h = ceil((mx + 5) / 10) * 10
+                val hh = maxOf(h, l + 40)
+                Triple(l, hh, if (hh - l > 60) 20.0 else 10.0)
+            }
         }
 
         val padL = 30.dp.toPx()
@@ -73,33 +109,72 @@ fun TimeSeriesChart(
         val padB = 16.dp.toPx()
         val plotW = size.width - padL - padR
         val plotH = size.height - padT - padB
-        fun x(t: Long) = padL + (t - left) / span * plotW
+
+        val useLogX = logXWhenFull && windowMs == null
+        val logMinMs = 10_000L
+        val logSpanMs = maxOf(right - left, logMinMs * 3)
+        fun logX(t: Long): Float {
+            val ago = maxOf(right - t, logMinMs).toDouble()
+            val frac = (ln(ago) - ln(logMinMs.toDouble())) / (ln(logSpanMs.toDouble()) - ln(logMinMs.toDouble()))
+            return padL + (1 - frac).toFloat() * plotW
+        }
+        fun x(t: Long) = if (useLogX) logX(t) else padL + (t - left) / span * plotW
         fun y(v: Double) = padT + (1 - ((v - lo) / (hi - lo))).toFloat() * plotH
 
         // Horizontal grid with value labels
-        val step = if (hi - lo > 60) 20.0 else 10.0
         var v = lo
         while (v <= hi + 0.001) {
             val yy = y(v)
             drawLine(gridColor, Offset(padL, yy), Offset(size.width - padR, yy), strokeWidth = 1f)
             val layout = measurer.measure(v.toInt().toString(), labelStyle)
             drawText(layout, topLeft = Offset(padL - 5.dp.toPx() - layout.size.width, yy - layout.size.height / 2))
-            v += step
+            v += yStep
         }
 
         // Time labels
-        val minutes = ((right - left) / 60_000).toInt()
-        val labels = if (windowMs != null) listOf("−$minutes min", "−${minutes / 2}", "now")
-        else listOf("0", "${minutes / 2} min", "$minutes min")
-        labels.forEachIndexed { i, text ->
-            val layout = measurer.measure(text, labelStyle)
-            val cx = padL + plotW * i / 2f
-            val lx = when (i) {
-                0 -> cx
-                2 -> cx - layout.size.width
-                else -> cx - layout.size.width / 2
+        if (useLogX) {
+            val niceMinutes = intArrayOf(1, 2, 5, 10, 20, 30, 45, 60, 90, 120, 180, 240, 360, 480, 600)
+            val maxMin = logSpanMs / 60_000.0
+            var candidates = niceMinutes.filter { it <= maxMin + 0.01 }
+                .sortedDescending()
+                .map { m -> maxOf(right - m * 60_000L, left) to "−$m min" }
+            if (candidates.isEmpty()) candidates = listOf(left to "−${maxOf(1, maxMin.roundToInt())} min")
+            candidates = candidates + (right to "now")
+
+            val minGapPx = 48f
+            val kept = ArrayList<Pair<Long, String>>()
+            var lastX = Float.POSITIVE_INFINITY
+            for (i in candidates.indices.reversed()) {
+                val xx = logX(candidates[i].first)
+                if (lastX - xx >= minGapPx) {
+                    kept.add(0, candidates[i])
+                    lastX = xx
+                }
             }
-            drawText(layout, topLeft = Offset(lx, size.height - layout.size.height))
+            kept.forEachIndexed { i, (t, text) ->
+                val layout = measurer.measure(text, labelStyle)
+                val cx = x(t)
+                val lx = when (i) {
+                    0 -> cx
+                    kept.size - 1 -> cx - layout.size.width
+                    else -> cx - layout.size.width / 2
+                }
+                drawText(layout, topLeft = Offset(lx, size.height - layout.size.height))
+            }
+        } else {
+            val minutes = ((right - left) / 60_000).toInt()
+            val labels = if (windowMs != null) listOf("−$minutes min", "−${minutes / 2}", "now")
+            else listOf("0", "${minutes / 2} min", "$minutes min")
+            labels.forEachIndexed { i, text ->
+                val layout = measurer.measure(text, labelStyle)
+                val cx = padL + plotW * i / 2f
+                val lx = when (i) {
+                    0 -> cx
+                    2 -> cx - layout.size.width
+                    else -> cx - layout.size.width / 2
+                }
+                drawText(layout, topLeft = Offset(lx, size.height - layout.size.height))
+            }
         }
 
         clipRect(left = padL, top = 0f, right = size.width, bottom = size.height - padB + 2.dp.toPx()) {
