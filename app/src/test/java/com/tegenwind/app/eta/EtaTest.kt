@@ -1,5 +1,6 @@
 package com.tegenwind.app.eta
 
+import com.tegenwind.app.weather.RouteWeather
 import com.tegenwind.app.weather.WindForecast
 import com.tegenwind.app.weather.WindSample
 import com.tegenwind.app.weather.beaufort
@@ -68,7 +69,7 @@ class EtaTest {
     fun etaWithoutWindIsDistanceOverSpeed() {
         val model = EtaModel(flatRoute(90.0))
         val v = model.speedMps(flatRoute(90.0)[0], null)
-        val eta = model.predict(progressM = 1000.0, nowMs = 0, forecast = null, form = FormEstimate(1.0, 0.0))
+        val eta = model.predict(progressM = 1000.0, nowMs = 0, weather = null, form = FormEstimate(1.0, 0.0))
         assertEquals(1500.0 / v, eta.remainingS, 0.01)
         assertEquals(0.0, eta.windCostS, 1e-9)
     }
@@ -77,7 +78,7 @@ class EtaTest {
     fun headwindCostsTimeTailwindSavesIt() {
         val route = flatRoute(90.0) // riding east
         val model = EtaModel(route)
-        fun windFrom(deg: Double) = WindForecast(listOf(WindSample(0, 8.0, deg, 15.0)))
+        fun windFrom(deg: Double) = RouteWeather.everywhere(WindForecast(listOf(WindSample(0, 8.0, deg, 15.0))))
         val form = FormEstimate(1.0, 0.01)
         val head = model.predict(0.0, 0, windFrom(90.0), form)
         val tail = model.predict(0.0, 0, windFrom(270.0), form)
@@ -95,6 +96,94 @@ class EtaTest {
         val some = EtaModel(flatRoute(0.0, signals = 1)).predict(0.0, 0, null, form)
         assertEquals(10 * EtaModel.STOP_MEAN_S, some.remainingS - none.remainingS, 1e-6)
         assertTrue(some.sigmaS > none.sigmaS)
+    }
+
+    @Test
+    fun skyIsInterpolatedLikeTheWind() {
+        val f = WindForecast(
+            listOf(
+                WindSample(0, 4.0, 270.0, 15.0, cloudPct = 20.0, rainMmH = 0.0),
+                WindSample(900_000, 4.0, 270.0, 15.0, cloudPct = 100.0, rainMmH = 2.0),
+            )
+        )
+        val mid = f.at(450_000).sky!!
+        assertEquals(60.0, mid.cloudPct, 1e-9)
+        assertEquals(1.0, mid.rainMmH, 1e-9)
+        // Without cloud or rain data there is no sky to colour by, only wind.
+        assertEquals(null, WindSample(0, 4.0, 270.0, 15.0).sky)
+    }
+
+    @Test
+    fun samplesARouteAboutEveryTwoKilometres() {
+        val commute = RouteWeather.sampleDistances(13_500.0)
+        assertEquals(7, commute.size)
+        assertEquals(13_500.0 / 14, commute.first(), 1e-6) // middle of the first stretch
+        assertTrue(commute.zipWithNext { a, b -> b - a }.all { it <= RouteWeather.SPACING_M })
+        assertEquals(listOf(250.0), RouteWeather.sampleDistances(500.0))
+    }
+
+    @Test
+    fun eachPlaceTakesTheNearestForecast() {
+        fun wind(speed: Double) = WindForecast(listOf(WindSample(0, speed, 0.0, 15.0)))
+        val w = RouteWeather(listOf(3_000.0 to wind(3.0), 1_000.0 to wind(1.0), 5_000.0 to wind(5.0)))
+        assertEquals(1.0, w.at(0.0, 0).speedMps, 1e-9)
+        assertEquals(1.0, w.at(1_900.0, 0).speedMps, 1e-9)
+        assertEquals(3.0, w.at(2_100.0, 0).speedMps, 1e-9)
+        assertEquals(5.0, w.at(20_000.0, 0).speedMps, 1e-9)
+    }
+
+    @Test
+    fun etaUsesTheWindWhereEachSegmentIs() {
+        val model = EtaModel(flatRoute(90.0)) // 2.5 km riding east
+        val form = FormEstimate(1.0, 0.0)
+        fun from(deg: Double) = WindForecast(listOf(WindSample(0, 8.0, deg, 15.0)))
+        val allHead = model.predict(0.0, 0, RouteWeather.everywhere(from(90.0)), form)
+        val allTail = model.predict(0.0, 0, RouteWeather.everywhere(from(270.0)), form)
+        // Headwind over the first half, tailwind over the second.
+        val turning = model.predict(0.0, 0, RouteWeather(listOf(625.0 to from(90.0), 1_875.0 to from(270.0))), form)
+        assertTrue(turning.windCostS < allHead.windCostS)
+        assertTrue(turning.windCostS > allTail.windCostS)
+    }
+
+    @Test
+    fun windImpactFollowsBearingAndOpenness() {
+        val open = EtaSegment(0.0, 250.0, 90.0, 0.0, 1.0, 0) // riding east, in the open
+        val sheltered = open.copy(exposure = 0.15)
+        val model = EtaModel(listOf(open))
+        fun from(deg: Double) = WindSample(0, 8.0, deg, 15.0)
+
+        val head = model.windImpact(open, from(90.0))
+        val tail = model.windImpact(open, from(270.0))
+        assertTrue("head $head", head < -0.1)
+        assertTrue("tail $tail", tail > 0.1)
+        // In time, a headwind costs more than the same tailwind gives back.
+        assertTrue("head $head tail $tail", -head > tail)
+        assertEquals(0.0, model.windImpact(open, from(0.0)), 1e-6) // straight across
+        assertTrue(kotlin.math.abs(model.windImpact(sheltered, from(90.0))) < kotlin.math.abs(head) / 2)
+    }
+
+    @Test
+    fun coldStillAirIsNotBlamedOnTheWind() {
+        val model = EtaModel(flatRoute(90.0))
+        val stillAndCold = WindSample(0, 0.0, 90.0, -5.0)
+        assertEquals(0.0, model.windImpact(flatRoute(90.0)[0], stillAndCold), 1e-9)
+        val eta = model.predict(0.0, 0, RouteWeather.everywhere(WindForecast(listOf(stillAndCold))), FormEstimate(1.0, 0.0))
+        assertEquals(0.0, eta.windCostS, 1e-6)
+    }
+
+    @Test
+    fun knowsWhenYouReachEachSegmentAhead() {
+        val model = EtaModel(flatRoute(90.0))
+        val eta = model.predict(progressM = 600.0, nowMs = 1_000_000, weather = null, form = FormEstimate(1.0, 0.0))
+        assertEquals(10, eta.segmentMidMs.size)
+        // Behind you: segments 0 and 1 end at 250 m and 500 m.
+        assertEquals(null, eta.segmentMidMs[0])
+        assertEquals(null, eta.segmentMidMs[1])
+        // Ahead: each one reached later than the last, the last one before you arrive.
+        val ahead = eta.segmentMidMs.drop(2).map { it!! }
+        assertTrue(ahead.first() >= 1_000_000)
+        assertEquals(ahead, ahead.sorted())
+        assertTrue(ahead.last() < eta.arrivalMs)
     }
 
     @Test

@@ -25,6 +25,7 @@ import com.tegenwind.app.appContainer
 import com.tegenwind.app.eta.Banister
 import com.tegenwind.app.eta.startingForm
 import com.tegenwind.app.routes.GeoPoint
+import com.tegenwind.app.weather.RouteWeather
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -86,17 +87,21 @@ class RideService : Service() {
                 route,
                 startingForm(rides.recentForms(), rides.loadsSince(now - Banister.WINDOW_DAYS * 86_400_000L), now),
             )
-            // Wind forecast refreshed every 15 minutes: for the middle of the route, or on a free ride
-            // for wherever you are by then (which also means waiting for the first GPS fix).
+            // Forecast refreshed every 15 minutes: every ~2 km along the route, or on a free ride for
+            // wherever you are by then (which also means waiting for the first GPS fix).
             launch {
                 while (isActive) {
-                    val point = route?.line?.pointAt(route.line.lengthM / 2) ?: recorder.live.value?.snapshot
-                        ?.let { s -> if (s.lastLat != null && s.lastLon != null) GeoPoint(s.lastLat, s.lastLon) else null }
-                    if (point == null) {
-                        delay(5_000)
-                        continue
+                    val weather = if (route != null) container.weather.alongRoute(route.line)
+                    else {
+                        val here = recorder.live.value?.snapshot
+                            ?.let { s -> if (s.lastLat != null && s.lastLon != null) GeoPoint(s.lastLat, s.lastLon) else null }
+                        if (here == null) {
+                            delay(5_000)
+                            continue
+                        }
+                        container.weather.forecast(here)?.let(RouteWeather::everywhere)
                     }
-                    container.weather.forecast(point)?.let(recorder::setForecast)
+                    weather?.let(recorder::setWeather)
                     delay(15 * 60_000L)
                 }
             }

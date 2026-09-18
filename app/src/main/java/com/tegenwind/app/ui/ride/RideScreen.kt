@@ -46,8 +46,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -75,6 +79,7 @@ import com.tegenwind.app.ride.AutoFinish
 import com.tegenwind.app.ride.LiveRide
 import com.tegenwind.app.ride.RideRoute
 import com.tegenwind.app.ride.RideService
+import com.tegenwind.app.ride.SegmentWeather
 import com.tegenwind.app.ride.TWO_MINUTES_MS
 import com.tegenwind.app.ride.formatClock
 import com.tegenwind.app.ride.formatElapsed
@@ -85,6 +90,7 @@ import com.tegenwind.app.ui.theme.Danger
 import com.tegenwind.app.ui.theme.GoodColor
 import com.tegenwind.app.ui.theme.HeartColor
 import com.tegenwind.app.ui.theme.SpeedColor
+import com.tegenwind.app.weather.Sky
 import com.tegenwind.app.weather.WindSample
 import com.tegenwind.app.weather.beaufort
 import com.tegenwind.app.weather.compassPoint
@@ -354,9 +360,10 @@ private fun LeaveNowPreview(routeId: Long) {
             0.01,
         )
         while (true) {
-            val forecast = container.weather.forecast(route.line.pointAt(route.line.lengthM / 2))
+            val weather = container.weather.alongRoute(route.line)
             val now = System.currentTimeMillis()
-            value = Preview(model.predict(0.0, now, forecast, form), forecast?.at(now))
+            // The headline wind is the one halfway along: a fair summary of the whole route.
+            value = Preview(model.predict(0.0, now, weather, form), weather?.at(route.line.lengthM / 2, now))
             delay(60_000)
         }
     }
@@ -491,7 +498,7 @@ private fun EtaCard(r: RideRoute, live: LiveEta?, lat: Double?, lon: Double?) {
                 }
                 live?.wind?.let { WindBadge(it) }
             }
-            ProgressTrack(r, Modifier.fillMaxWidth().height(14.dp))
+            ProgressTrack(r, Modifier.fillMaxWidth().height(28.dp))
             Row {
                 Text(
                     when {
@@ -624,26 +631,73 @@ fun windEffect(windCostS: Double): String {
     }
 }
 
-/** Route progress bar with segment boundaries, traffic lights (red dots) and your position. */
+private val SunColor = Color(0xFFFFD233)
+private val RainColor = Color(0xFF2F6FFF)
+
+/** From this much rain a segment is fully blue: by then you're soaked whatever the exact number. */
+private const val FULL_RAIN_MM_H = 4.0
+
+/** Yellow under a clear sky, fading to white as it clouds over, then towards blue as it rains. */
+private fun skyColor(s: Sky): Color {
+    val clearToCloudy = lerp(SunColor, Color.White, (s.cloudPct / 100).toFloat().coerceIn(0f, 1f))
+    return lerp(clearToCloudy, RainColor, (s.rainMmH / FULL_RAIN_MM_H).toFloat().coerceIn(0f, 1f))
+}
+
+private val WindHurts = Color(0xFFFF3B30)
+private val WindNeutral = Color(0xFFFFD60A)
+private val WindHelps = Color(0xFF30D158)
+
+/** From a fifth of the time lost or saved, a segment is fully red or green: a strong wind in the open. */
+private const val FULL_WIND_IMPACT = 0.2
+
+/** Red where the wind slows you, green where it pushes you, yellow where it makes no difference. */
+private fun windColor(impact: Double): Color {
+    val strength = (kotlin.math.abs(impact) / FULL_WIND_IMPACT).toFloat().coerceIn(0f, 1f)
+    return lerp(WindNeutral, if (impact < 0) WindHurts else WindHelps, strength)
+}
+
+/**
+ * The whole route, one block per segment in two bars: the sky, and below it what the wind does to
+ * you. A red triangle underneath points at where you are.
+ */
 @Composable
 private fun ProgressTrack(r: RideRoute, modifier: Modifier) {
-    val track = MaterialTheme.colorScheme.surfaceVariant
-    val fill = MaterialTheme.colorScheme.primary
-    val tick = MaterialTheme.colorScheme.surfaceContainer
-    val me = MaterialTheme.colorScheme.onSurface
+    val unknown = MaterialTheme.colorScheme.surfaceVariant
     Canvas(modifier) {
         val len = r.progress.lengthM.toFloat()
-        val barTop = 4.dp.toPx()
-        val barH = size.height - 2 * barTop
-        val done = (r.progress.progressM.toFloat() / len).coerceIn(0f, 1f) * size.width
-        drawRoundRect(track, Offset(0f, barTop), Size(size.width, barH), CornerRadius(barH / 2))
-        drawRoundRect(fill, Offset(0f, barTop), Size(done, barH), CornerRadius(barH / 2))
-        r.segmentStartsM.drop(1).forEach { m ->
-            val x = m.toFloat() / len * size.width
-            drawLine(tick, Offset(x, barTop), Offset(x, barTop + barH), strokeWidth = 1.dp.toPx())
+        fun x(m: Double) = (m.toFloat() / len).coerceIn(0f, 1f) * size.width
+        val barH = 8.dp.toPx()
+        val gap = 1.dp.toPx()
+
+        fun bar(top: Float, colorOf: (SegmentWeather) -> Color) {
+            val shape = Path().apply {
+                addRoundRect(RoundRect(0f, top, size.width, top + barH, CornerRadius(barH / 2)))
+            }
+            clipPath(shape) {
+                r.segmentStartsM.forEachIndexed { i, startM ->
+                    val x0 = x(startM)
+                    val x1 = x(r.segmentStartsM.getOrNull(i + 1) ?: r.progress.lengthM)
+                    val color = r.weather.getOrNull(i)?.let(colorOf) ?: unknown
+                    drawRect(color, Offset(x0, top), Size((x1 - x0 - gap).coerceAtLeast(1f), barH))
+                }
+            }
         }
-        r.signalsAtM.forEach { m -> drawCircle(Danger, 2.5.dp.toPx(), Offset(m.toFloat() / len * size.width, 2.5.dp.toPx())) }
-        drawCircle(me, 6.dp.toPx(), Offset(done, size.height / 2))
+        bar(0f) { w -> w.sky?.let(::skyColor) ?: unknown }
+        val windTop = barH + 2.dp.toPx()
+        bar(windTop) { w -> windColor(w.windImpact) }
+
+        val half = 5.dp.toPx()
+        val at = x(r.progress.progressM).coerceIn(half, size.width - half)
+        val apex = windTop + barH + 1.dp.toPx()
+        drawPath(
+            Path().apply {
+                moveTo(at, apex)
+                lineTo(at - half, apex + 8.dp.toPx())
+                lineTo(at + half, apex + 8.dp.toPx())
+                close()
+            },
+            Danger,
+        )
     }
 }
 

@@ -1,6 +1,6 @@
 package com.tegenwind.app.eta
 
-import com.tegenwind.app.weather.WindForecast
+import com.tegenwind.app.weather.RouteWeather
 import com.tegenwind.app.weather.WindSample
 import kotlin.math.sqrt
 
@@ -16,6 +16,7 @@ data class EtaSegment(
     val learned: SegmentCorrection = SegmentCorrection(),
 ) {
     val lengthM: Double get() = endM - startM
+    val midM: Double get() = (startM + endM) / 2
 }
 
 data class Eta(
@@ -25,6 +26,8 @@ data class Eta(
     val sigmaS: Double,
     /** Extra time the wind costs (positive) or saves (negative) compared to no wind. */
     val windCostS: Double,
+    /** When you're expected halfway along each segment still ahead; null for segments already behind you. */
+    val segmentMidMs: List<Long?> = emptyList(),
 ) {
     /** The "±" shown to the rider: half the P10–P90 range. */
     val bandS: Double get() = 1.28 * sigmaS
@@ -39,7 +42,7 @@ data class Eta(
  * ETA v2: physics per segment with the wind forecast for the moment you reach it, corrected by
  * what each segment has taught us, scaled by today's form, plus expected waits at traffic lights.
  */
-class EtaModel(private val segments: List<EtaSegment>, private val params: RiderParams = RiderParams()) {
+class EtaModel(val segments: List<EtaSegment>, private val params: RiderParams = RiderParams()) {
 
     /** Predicted riding speed (m/s) on [s] at form 1.0, physics only; [wind] null means no wind. */
     fun speedMps(s: EtaSegment, wind: WindSample?): Double {
@@ -51,22 +54,39 @@ class EtaModel(private val segments: List<EtaSegment>, private val params: Rider
     /** The same speed with the segment's learned correction applied: what to actually expect. */
     fun correctedSpeedMps(s: EtaSegment, wind: WindSample?): Double = speedMps(s, wind) / s.learned.timeFactor
 
+    /**
+     * What the wind does to your time on [s], given its direction against your bearing and how open
+     * the segment is: +0.1 saves 10% of the time it would take in still air, -0.1 costs 10% more.
+     * Measured in time rather than speed because that's what a commute feels, and because in time a
+     * headwind costs more than the same tailwind gives back.
+     */
+    fun windImpact(s: EtaSegment, wind: WindSample): Double = 1 - speedMps(s, calm(wind)) / speedMps(s, wind)
+
+    /**
+     * The same air without the wind: the temperature stays, so cold dense air on a still day
+     * isn't blamed on the wind.
+     */
+    private fun calm(wind: WindSample?): WindSample? = wind?.copy(speedMps = 0.0)
+
     fun segmentAt(progressM: Double): EtaSegment? = segments.firstOrNull { progressM < it.endM } ?: segments.lastOrNull()
 
-    fun predict(progressM: Double, nowMs: Long, forecast: WindForecast?, form: FormEstimate): Eta {
+    /** [weather] gives each segment the forecast nearest to it, for the moment you're expected there. */
+    fun predict(progressM: Double, nowMs: Long, weather: RouteWeather?, form: FormEstimate): Eta {
         var clockMs = nowMs.toDouble()
         var moving = 0.0
         var calm = 0.0
         var stops = 0.0
         var stopVar = 0.0
         var segVar = 0.0
-        for (s in segments) {
+        val midMs = arrayOfNulls<Long>(segments.size)
+        for ((i, s) in segments.withIndex()) {
             if (s.endM <= progressM) continue
             val dist = s.endM - maxOf(s.startM, progressM)
-            val wind = forecast?.at(clockMs.toLong())
+            val wind = weather?.at(s.midM, clockMs.toLong())
             val t = dist / (correctedSpeedMps(s, wind) * form.mean)
             moving += t
-            calm += dist / (correctedSpeedMps(s, null) * form.mean)
+            calm += dist / (correctedSpeedMps(s, calm(wind)) * form.mean)
+            midMs[i] = (clockMs + t * 500).toLong()
             clockMs += t * 1000
             // How sure we are of this segment's own correction. Segments are unrelated to each
             // other, so unlike form these errors partly cancel out over a long route.
@@ -85,6 +105,7 @@ class EtaModel(private val segments: List<EtaSegment>, private val params: Rider
             remainingS = moving + stops,
             sigmaS = sigma,
             windCostS = moving - calm,
+            segmentMidMs = midMs.toList(),
         )
     }
 

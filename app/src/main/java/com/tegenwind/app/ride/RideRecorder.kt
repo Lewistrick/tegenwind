@@ -21,7 +21,8 @@ import com.tegenwind.app.routes.GeoPoint
 import com.tegenwind.app.routes.LoadedRoute
 import com.tegenwind.app.routes.RouteProgress
 import com.tegenwind.app.routes.RouteTracker
-import com.tegenwind.app.weather.WindForecast
+import com.tegenwind.app.weather.RouteWeather
+import com.tegenwind.app.weather.Sky
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -33,9 +34,16 @@ data class RideRoute(
     val routeId: Long,
     val name: String,
     val segmentStartsM: List<Double>,
-    val signalsAtM: List<Double>,
     val progress: RouteProgress,
+    /**
+     * Per segment: as it was when you left the segments behind you, as forecast for when you'll
+     * reach the ones ahead. Null where it isn't known (no forecast yet, or never ridden).
+     */
+    val weather: List<SegmentWeather?> = emptyList(),
 )
+
+/** The sky over one segment, and what the wind there does to your speed (see [EtaModel.windImpact]). */
+data class SegmentWeather(val sky: Sky?, val windImpact: Double)
 
 data class LiveRide(
     val rideId: Long,
@@ -71,13 +79,16 @@ class RideRecorder(
     private var model: EtaModel? = null
     private var form = FormEstimator()
     private var formObservations = 0
-    private var forecast: WindForecast? = null
+    private var weather: RouteWeather? = null
     private val pending = ArrayList<TrackPointEntity>()
     private val traversals = ArrayList<SegmentTraversalEntity>()
     private var lastFlushMs = 0L
 
     private var autoFinishCancelled = false
     private var sharePromptAnswered = false
+
+    /** The weather on each segment when you left it, by position in the route's segment list. */
+    private val riddenWeather = HashMap<Int, SegmentWeather>()
 
     // The segment being timed right now.
     private var segIdx = -1
@@ -99,7 +110,8 @@ class RideRecorder(
         formObservations = 0
         autoFinishCancelled = false
         sharePromptAnswered = false
-        forecast = null
+        riddenWeather.clear()
+        weather = null
         traversals.clear()
         segIdx = -1
         lastFlushMs = now
@@ -112,7 +124,6 @@ class RideRecorder(
                     routeId = it.route.id,
                     name = it.route.name,
                     segmentStartsM = it.segments.map { s -> s.startM },
-                    signalsAtM = it.signalsAtM,
                     progress = routeTracker!!.progress(),
                 )
             },
@@ -120,8 +131,8 @@ class RideRecorder(
         refreshEta(now)
     }
 
-    fun setForecast(f: WindForecast) {
-        forecast = f
+    fun setWeather(w: RouteWeather) {
+        weather = w
         refreshEta(System.currentTimeMillis())
     }
 
@@ -171,7 +182,7 @@ class RideRecorder(
     fun simulatedSpeedAt(alongM: Double): Double? {
         val m = model ?: return null
         val seg = m.segmentAt(alongM) ?: return null
-        return m.speedMps(seg, forecast?.at(System.currentTimeMillis())) * 1.05
+        return m.speedMps(seg, weather?.at(alongM, System.currentTimeMillis())) * 1.05
     }
 
     /** Ends the ride and returns its id, or null if nothing was recording. */
@@ -182,7 +193,7 @@ class RideRecorder(
         pending.clear()
         if (batch.isNotEmpty()) dao.insertPoints(batch)
         if (traversals.isNotEmpty()) dao.insertTraversals(traversals.toList())
-        val startWind = forecast?.at(snap.startedAtMs)
+        val startWind = weather?.at(0.0, snap.startedAtMs)
         dao.updateRide(
             RideEntity(
                 id = ride.rideId,
@@ -214,19 +225,36 @@ class RideRecorder(
         val m = model
         if (m == null) {
             val heading = ride.snapshot.headingDeg ?: return
-            _live.value = ride.copy(freeWind = windAlong(heading, nowMs, forecast))
+            _live.value = ride.copy(freeWind = weather?.at(0.0, nowMs)?.let { windAlong(heading, it) })
             return
         }
-        val progress = ride.route?.progress ?: return
-        val eta = m.predict(progress.progressM, nowMs, forecast, form.estimate())
+        val rideRoute = ride.route ?: return
+        val progress = rideRoute.progress
+        val eta = m.predict(progress.progressM, nowMs, weather, form.estimate())
         val live = LiveEta(
             eta = eta,
             form = form.estimate().mean,
-            wind = windNow(m, progress.progressM, nowMs, forecast),
+            wind = windNow(m, progress.progressM, nowMs, weather),
         )
         // Once offered the prompt stays until answered, even if the band widens again (off route).
         val firm = progress.onRouteYet && !progress.offRoute && eta.bandS < Eta.FIRM_BAND_S
-        _live.value = ride.copy(eta = live, offerShare = !sharePromptAnswered && (ride.offerShare || firm))
+        _live.value = ride.copy(
+            eta = live,
+            offerShare = !sharePromptAnswered && (ride.offerShare || firm),
+            route = rideRoute.copy(weather = weatherAlongRoute(m, eta)),
+        )
+    }
+
+    /** Behind you: the weather as it was when you left. Ahead: the forecast for when you'll get there. */
+    private fun weatherAlongRoute(m: EtaModel, eta: Eta): List<SegmentWeather?> =
+        eta.segmentMidMs.mapIndexed { i, midMs ->
+            if (midMs == null) riddenWeather[i] else segmentWeather(m, i, midMs)
+        }
+
+    private fun segmentWeather(m: EtaModel, i: Int, atMs: Long): SegmentWeather? {
+        val s = m.segments.getOrNull(i) ?: return null
+        val w = weather?.at(s.midM, atMs) ?: return null
+        return SegmentWeather(w.sky, m.windImpact(s, w))
     }
 
     /**
@@ -253,7 +281,7 @@ class RideRecorder(
             if (segClean && segIdx in segs.indices) {
                 val s = segs[segIdx]
                 val etaSeg = m.segmentAt((s.startM + s.endM) / 2)!!
-                val wind = forecast?.at(segEnterMs)
+                val wind = weather?.at(etaSeg.midM, segEnterMs)
                 val moved = movingMs - segEnterMovingMs
                 val predictedMs = (etaSeg.lengthM / m.speedMps(etaSeg, wind) * 1000).toLong()
                 traversals += SegmentTraversalEntity(
@@ -271,6 +299,8 @@ class RideRecorder(
                 val expectedMs = predictedMs * etaSeg.learned.timeFactor
                 if (moved >= MIN_MOVING_MS && form.observe(expectedMs / moved)) formObservations++
             }
+            // Behind you now, so its colours stop following the forecast.
+            segmentWeather(m, segIdx, nowMs)?.let { riddenWeather[segIdx] = it }
             segIdx++
             segEnterMs = nowMs
             segEnterMovingMs = movingMs
