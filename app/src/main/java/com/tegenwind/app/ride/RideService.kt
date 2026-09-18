@@ -24,6 +24,7 @@ import com.tegenwind.app.R
 import com.tegenwind.app.appContainer
 import com.tegenwind.app.eta.Banister
 import com.tegenwind.app.eta.startingForm
+import com.tegenwind.app.routes.GeoPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -85,13 +86,18 @@ class RideService : Service() {
                 route,
                 startingForm(rides.recentForms(), rides.loadsSince(now - Banister.WINDOW_DAYS * 86_400_000L), now),
             )
-            if (route != null) {
-                // Wind forecast for the middle of the route, refreshed every 15 minutes.
-                launch {
-                    while (isActive) {
-                        container.weather.forecast(route.line.pointAt(route.line.lengthM / 2))?.let(recorder::setForecast)
-                        delay(15 * 60_000L)
+            // Wind forecast refreshed every 15 minutes: for the middle of the route, or on a free ride
+            // for wherever you are by then (which also means waiting for the first GPS fix).
+            launch {
+                while (isActive) {
+                    val point = route?.line?.pointAt(route.line.lengthM / 2) ?: recorder.live.value?.snapshot
+                        ?.let { s -> if (s.lastLat != null && s.lastLon != null) GeoPoint(s.lastLat, s.lastLon) else null }
+                    if (point == null) {
+                        delay(5_000)
+                        continue
                     }
+                    container.weather.forecast(point)?.let(recorder::setForecast)
+                    delay(15 * 60_000L)
                 }
             }
             if (simulated) {

@@ -255,6 +255,7 @@ private fun LiveView(ride: LiveRide, onStop: () -> Unit) {
         }
 
         ride.route?.let { EtaCard(it, ride.eta, s.lastLat, s.lastLon) }
+        if (ride.route == null) ride.freeWind?.let { FreeWindCard(it) }
 
         Card(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
@@ -496,9 +497,35 @@ private fun shareEta(context: Context, routeName: String, live: LiveEta, remaini
     context.startActivity(Intent.createChooser(send, "Share ETA"))
 }
 
-/** Arrow showing where the wind pushes you (up = from behind), with head/tail/cross label. */
+/** A free ride has no arrival time, but the wind along your heading still matters. */
 @Composable
-private fun WindBadge(w: WindNow) {
+private fun FreeWindCard(w: WindNow) {
+    Card(Modifier.fillMaxWidth()) {
+        Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Label("Wind")
+                Text(
+                    "%s %d Bft".format(compassPoint(w.fromDeg), beaufort(w.speed10Mps)),
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    "Direction from your last stretch of road",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            WindBadge(w, exposureKnown = false)
+        }
+    }
+}
+
+/**
+ * Arrow showing where the wind pushes you (up = from behind), with head/tail/cross label.
+ * Without map data ([exposureKnown] false) it doesn't claim to know how sheltered you are.
+ */
+@Composable
+private fun WindBadge(w: WindNow, exposureKnown: Boolean = true) {
     val arrowColor = MaterialTheme.colorScheme.primary
     val ring = MaterialTheme.colorScheme.outline
     Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(96.dp)) {
@@ -519,8 +546,10 @@ private fun WindBadge(w: WindNow) {
             }
         }
         Text(w.label, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+        val kmh = (kotlin.math.abs(w.headwindMps) * 3.6).roundToInt()
+        val shelter = if (w.exposure >= 0.7) "open" else if (w.exposure >= 0.4) "partly open" else "sheltered"
         Text(
-            "%d km/h · %s".format((kotlin.math.abs(w.headwindMps) * 3.6).roundToInt(), if (w.exposure >= 0.7) "open" else if (w.exposure >= 0.4) "partly open" else "sheltered"),
+            if (exposureKnown) "%d km/h · %s".format(kmh, shelter) else "~%d km/h".format(kmh),
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

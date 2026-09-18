@@ -32,7 +32,7 @@ fun LoadedRoute.etaModel(params: RiderParams = RiderParams()) = EtaModel(
             bearingDeg = s.bearingDeg,
             // Until the lookup has finished: flat, half-sheltered, no lights.
             gradePct = s.gradePct ?: 0.0,
-            exposure = s.exposure ?: 0.6,
+            exposure = s.exposure ?: UNKNOWN_EXPOSURE,
             signals = s.signals ?: 0,
             learned = SegmentCorrection(s.learnedLogMean, s.learnedLogVar, s.learnedPasses),
         )
@@ -42,15 +42,25 @@ fun LoadedRoute.etaModel(params: RiderParams = RiderParams()) = EtaModel(
 
 fun windNow(model: EtaModel, progressM: Double, nowMs: Long, forecast: WindForecast?): WindNow? {
     val seg = model.segmentAt(progressM) ?: return null
+    return windAlong(seg.bearingDeg, nowMs, forecast, seg.exposure)
+}
+
+/**
+ * The wind as it meets you riding along [headingDeg]. Without a route there's no map data to say how
+ * sheltered you are, so [exposure] defaults to the same half-open guess used before a route's lookup.
+ */
+fun windAlong(headingDeg: Double, nowMs: Long, forecast: WindForecast?, exposure: Double = UNKNOWN_EXPOSURE): WindNow? {
     val w = forecast?.at(nowMs) ?: return null
     return WindNow(
         speed10Mps = w.speedMps,
         fromDeg = w.fromDeg,
-        headwindMps = Physics.headwindMps(w.speedMps, w.fromDeg, seg.bearingDeg, seg.exposure),
-        relativeDeg = ((w.fromDeg + 180 - seg.bearingDeg) % 360 + 360) % 360,
-        exposure = seg.exposure,
+        headwindMps = Physics.headwindMps(w.speedMps, w.fromDeg, headingDeg, exposure),
+        relativeDeg = ((w.fromDeg + 180 - headingDeg) % 360 + 360) % 360,
+        exposure = exposure,
     )
 }
+
+const val UNKNOWN_EXPOSURE = 0.6
 
 /** Starting guess for today's form: the median of recent rides, or 1.0 without history. */
 fun priorForm(recent: List<Double>): Double =

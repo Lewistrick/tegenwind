@@ -14,6 +14,42 @@ class RideTrackerTest {
     private fun fixAt(sec: Long, northM: Double, speedMps: Double?, accuracy: Double = 5.0) =
         Fix(sec * 1000, lat0 + northM / metersPerDegLat, lon0, speedMps, accuracy)
 
+    private fun fixAtXY(sec: Long, eastM: Double, northM: Double, speedMps: Double) =
+        Fix(
+            sec * 1000,
+            lat0 + northM / metersPerDegLat,
+            lon0 + eastM / (metersPerDegLat * kotlin.math.cos(Math.toRadians(lat0))),
+            speedMps,
+            5.0,
+        )
+
+    @Test
+    fun headingNeedsSomeGroundThenFollowsTheRoad() {
+        val t = RideTracker(0)
+        t.add(fixAtXY(0, 0.0, 0.0, 5.0))
+        t.add(fixAtXY(1, 0.0, 5.0, 5.0))
+        assertEquals(null, t.snapshot().headingDeg) // 5 m is too little to trust
+
+        for (s in 2L..10L) t.add(fixAtXY(s, 0.0, s * 5.0, 5.0))
+        assertEquals(0.0, t.snapshot().headingDeg!!, 1.0) // riding north
+
+        // Turn east.
+        for (s in 11L..20L) t.add(fixAtXY(s, (s - 10) * 5.0, 50.0, 5.0))
+        assertEquals(90.0, t.snapshot().headingDeg!!, 1.0)
+    }
+
+    @Test
+    fun standingAtALightKeepsTheLastHeadingInsteadOfSpinning() {
+        val t = RideTracker(0)
+        for (s in 0L..10L) t.add(fixAtXY(s, s * 5.0, 0.0, 5.0)) // riding east
+        // A minute at a red light, GPS wobbling a few metres in every direction.
+        for (s in 11L..70L) {
+            val wobble = if (s % 2 == 0L) 3.0 else -3.0
+            t.add(fixAtXY(s, 50.0 + wobble, -wobble, 0.2))
+        }
+        assertEquals(90.0, t.snapshot().headingDeg!!, 15.0)
+    }
+
     @Test
     fun countsDistanceAndMovingTimeWhileRiding() {
         val t = RideTracker(0)

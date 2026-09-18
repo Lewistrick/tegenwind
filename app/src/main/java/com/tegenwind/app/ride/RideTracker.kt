@@ -1,5 +1,7 @@
 package com.tegenwind.app.ride
 
+import com.tegenwind.app.routes.GeoPoint
+import com.tegenwind.app.routes.bearingDeg
 import kotlin.math.asin
 import kotlin.math.cos
 import kotlin.math.pow
@@ -29,6 +31,8 @@ data class RideSnapshot(
     val speedKmh: Double?,
     val avg2MinKmh: Double?,
     val speeds: List<Sample>,
+    /** Direction of travel, degrees clockwise from north; null until you've covered a little ground. */
+    val headingDeg: Double? = null,
 )
 
 /**
@@ -45,6 +49,8 @@ class RideTracker(private val startedAtMs: Long) {
     private var paused = false
     private var speedKmh: Double? = null
     private var avgKmh: Double? = null
+    private val recent = ArrayDeque<Fix>()
+    private var headingDeg: Double? = null
 
     /** Returns false when the fix was too inaccurate or out of order to use. */
     fun add(fix: Fix): Boolean {
@@ -75,7 +81,22 @@ class RideTracker(private val startedAtMs: Long) {
         speedKmh = kmh
         avgKmh = window.add(fix.timeMs, kmh)
         last = fix
+        updateHeading(fix)
         return true
+    }
+
+    /**
+     * Heading from here back to the last fix at least [HEADING_BASE_M] away. A fixed number of fixes
+     * would not do: at a red light the last few are a metre apart and their direction is pure jitter.
+     * Over 25 m, a few metres of GPS error costs about 10°. Standing still, no fix is far enough back
+     * any more, so the last heading simply stays.
+     */
+    private fun updateHeading(fix: Fix) {
+        recent.addLast(fix)
+        while (recent.size > HEADING_WINDOW) recent.removeFirst()
+        val here = GeoPoint(fix.lat, fix.lon)
+        val back = recent.lastOrNull { haversineM(it.lat, it.lon, fix.lat, fix.lon) >= HEADING_BASE_M } ?: return
+        headingDeg = bearingDeg(GeoPoint(back.lat, back.lon), here)
     }
 
     fun snapshot() = RideSnapshot(
@@ -90,10 +111,14 @@ class RideTracker(private val startedAtMs: Long) {
         speedKmh = speedKmh,
         avg2MinKmh = avgKmh,
         speeds = speeds.toList(),
+        headingDeg = headingDeg,
     )
 
     companion object {
         const val MAX_ACCURACY_M = 20.0
+        const val HEADING_BASE_M = 25.0
+        /** 30 s of fixes: enough to find 25 m of travel even at walking pace. */
+        const val HEADING_WINDOW = 30
         const val STOP_SPEED_MPS = 1.5 / 3.6
         const val PAUSE_AFTER_MS = 5_000L
         /** A longer GPS gap (tunnel, underpass) adds at most this much moving time. */

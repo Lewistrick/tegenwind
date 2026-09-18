@@ -135,7 +135,7 @@ fun RideDetailScreen(rideId: Long, onBack: () -> Unit) {
             Stat("Avg speed", avgSpeedText(r), Modifier.weight(1f))
             Stat("Form", formPercent(r.formFactor) ?: "–", Modifier.weight(1f))
             val hrSamples = (hr as? HrState.Loaded)?.samples
-            Stat("Avg heart rate", hrSamples?.let { "${it.map { s -> s.value }.average().toInt()} bpm" } ?: "--", Modifier.weight(1f))
+            Stat("Avg HR", hrSamples?.let { "${it.map { s -> s.value }.average().toInt()} bpm" } ?: "--", Modifier.weight(1f))
         }
 
         ChartCard("Speed", "dots GPS · line 2-min avg") {

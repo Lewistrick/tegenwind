@@ -12,7 +12,9 @@ import com.tegenwind.app.eta.LiveEta
 import com.tegenwind.app.eta.Physics
 import com.tegenwind.app.eta.SegmentCorrection
 import com.tegenwind.app.eta.SegmentLearner
+import com.tegenwind.app.eta.WindNow
 import com.tegenwind.app.eta.etaModel
+import com.tegenwind.app.eta.windAlong
 import com.tegenwind.app.eta.windNow
 import com.tegenwind.app.routes.GeoPoint
 import com.tegenwind.app.routes.LoadedRoute
@@ -42,6 +44,8 @@ data class LiveRide(
     val eta: LiveEta? = null,
     /** Set when the end of the route is reached; the ride then finishes by itself. */
     val arrivedAtMs: Long? = null,
+    /** The wind along your heading on a free ride. On a route it's part of [eta] instead. */
+    val freeWind: WindNow? = null,
 )
 
 /**
@@ -196,7 +200,12 @@ class RideRecorder(
 
     private fun refreshEta(nowMs: Long) {
         val ride = _live.value ?: return
-        val m = model ?: return
+        val m = model
+        if (m == null) {
+            val heading = ride.snapshot.headingDeg ?: return
+            _live.value = ride.copy(freeWind = windAlong(heading, nowMs, forecast))
+            return
+        }
         val progress = ride.route?.progress ?: return
         val live = LiveEta(
             eta = m.predict(progress.progressM, nowMs, forecast, form.estimate()),
