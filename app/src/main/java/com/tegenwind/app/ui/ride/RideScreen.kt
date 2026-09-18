@@ -1,6 +1,7 @@
 package com.tegenwind.app.ui.ride
 
 import android.Manifest
+import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -254,6 +255,19 @@ private fun LiveView(ride: LiveRide, onStop: () -> Unit) {
             )
         }
 
+        val context = LocalContext.current
+        val eta = ride.eta
+        val route = ride.route
+        if (ride.offerShare && ride.arrivedAtMs == null && eta != null && route != null) {
+            AlmostThereBar(
+                onYes = {
+                    recorder.answerSharePrompt()
+                    shareViaWhatsApp(context, etaMessage("I'm almost there!", eta, route.progress.remainingM, s.lastLat, s.lastLon))
+                },
+                onNo = { recorder.answerSharePrompt() },
+            )
+        }
+
         ride.route?.let { EtaCard(it, ride.eta, s.lastLat, s.lastLon) }
         if (ride.route == null) ride.freeWind?.let { FreeWindCard(it) }
 
@@ -361,7 +375,7 @@ private fun LeaveNowPreview(routeId: Long) {
             )
             Text(formatClock(p.eta.arrivalMs), style = etaNumber, textAlign = TextAlign.Center)
             Text(
-                "%s ride · ± %s".format(formatElapsed((p.eta.remainingS * 1000).toLong()), formatMargin(1.28 * p.eta.sigmaS)),
+                "%s ride · ± %s".format(formatElapsed((p.eta.remainingS * 1000).toLong()), formatMargin(p.eta.bandS)),
                 style = MaterialTheme.typography.bodyMedium.copy(fontFeatureSettings = "tnum"),
                 textAlign = TextAlign.Center,
             )
@@ -394,6 +408,32 @@ private fun ArrivedBar(secondsLeft: Int, onKeepRiding: () -> Unit) {
             }
             TextButton(onClick = onKeepRiding, colors = ButtonDefaults.textButtonColors(contentColor = Asphalt)) {
                 Text("Keep riding", fontWeight = FontWeight.SemiBold)
+            }
+        }
+    }
+}
+
+/** Shown once per ride when the ETA turns firm: tell someone you're almost there, in three taps. */
+@Composable
+private fun AlmostThereBar(onYes: () -> Unit, onNo: () -> Unit) {
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        shape = RoundedCornerShape(12.dp),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("Share ETA via WhatsApp?", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Button(
+                    onClick = onYes,
+                    modifier = Modifier.weight(1f).height(64.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = GoodColor, contentColor = Asphalt),
+                ) { Text("YES", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
+                Button(
+                    onClick = onNo,
+                    modifier = Modifier.weight(1f).height(64.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Danger, contentColor = Asphalt),
+                ) { Text("NO", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
             }
         }
     }
@@ -442,7 +482,7 @@ private fun EtaCard(r: RideRoute, live: LiveEta?, lat: Double?, lon: Double?) {
                         Text(live?.let { formatClock(it.eta.arrivalMs) } ?: "--:--", style = etaNumber)
                         live?.let {
                             Text(
-                                "  ± " + formatMargin(1.28 * it.eta.sigmaS),
+                                "  ± " + formatMargin(it.eta.bandS),
                                 style = MaterialTheme.typography.titleMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -474,27 +514,40 @@ private fun EtaCard(r: RideRoute, live: LiveEta?, lat: Double?, lon: Double?) {
             }
             live?.let {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                    OutlinedButton(onClick = { shareEta(context, r.name, it, p.remainingM, lat, lon) }) { Text("Share ETA") }
+                    OutlinedButton(onClick = {
+                        context.startActivity(Intent.createChooser(etaIntent(etaMessage("On my way!", it, p.remainingM, lat, lon)), "Share ETA"))
+                    }) { Text("Share ETA") }
                 }
             }
         }
     }
 }
 
-/** "On my way (werk-woon) — arriving around 19:34 (± 6 min), 3.2 km to go." plus a maps link, if we know where we are. */
-private fun shareEta(context: Context, routeName: String, live: LiveEta, remainingM: Double, lat: Double?, lon: Double?) {
-    val text = buildString {
-        append("On my way")
-        if (routeName.isNotBlank()) append(" ($routeName)")
-        append(" — arriving around ${formatClock(live.eta.arrivalMs)} (± ${formatMargin(1.28 * live.eta.sigmaS)}), ")
+/** "On my way! Arriving around 19:34 (± 6 min), 3.2 km to go." plus a maps link, if we know where we are. */
+private fun etaMessage(opening: String, live: LiveEta, remainingM: Double, lat: Double?, lon: Double?): String =
+    buildString {
+        append("$opening Arriving around ${formatClock(live.eta.arrivalMs)} (± ${formatMargin(live.eta.bandS)}), ")
         append("%.1f km to go.".format(remainingM / 1000))
         if (lat != null && lon != null) append("\nhttps://maps.google.com/?q=%.5f,%.5f".format(lat, lon))
     }
-    val send = Intent(Intent.ACTION_SEND).apply {
-        type = "text/plain"
-        putExtra(Intent.EXTRA_TEXT, text)
+
+private fun etaIntent(text: String): Intent =
+    Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text)
+
+/**
+ * Straight into WhatsApp's own contact picker with the text filled in, skipping Android's app
+ * chooser: YES, the contact, send. Falls back to the chooser only if WhatsApp isn't installed.
+ */
+private fun shareViaWhatsApp(context: Context, text: String) {
+    for (pkg in listOf("com.whatsapp", "com.whatsapp.w4b")) {
+        try {
+            context.startActivity(etaIntent(text).setPackage(pkg))
+            return
+        } catch (_: ActivityNotFoundException) {
+            // Not this edition of WhatsApp; try the next.
+        }
     }
-    context.startActivity(Intent.createChooser(send, "Share ETA"))
+    context.startActivity(Intent.createChooser(etaIntent(text), "Share ETA"))
 }
 
 /** A free ride has no arrival time, but the wind along your heading still matters. */
@@ -558,7 +611,7 @@ private fun WindBadge(w: WindNow, exposureKnown: Boolean = true) {
 
 /** 42 s -> "40 s", 95 s -> "2 min" */
 private fun formatMargin(seconds: Double): String =
-    if (seconds < 50) "${maxOf(5, (seconds / 5).roundToInt() * 5)} s" else "${(seconds / 60).roundToInt()} min"
+    if (seconds < Eta.FIRM_BAND_S) "${maxOf(5, (seconds / 5).roundToInt() * 5)} s" else "${(seconds / 60).roundToInt()} min"
 
 /** Positive = wind slows you down: "wind costs 1:40"; negative: "wind gains 0:55". */
 fun windEffect(windCostS: Double): String {

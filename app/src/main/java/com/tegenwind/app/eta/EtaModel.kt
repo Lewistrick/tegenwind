@@ -25,7 +25,15 @@ data class Eta(
     val sigmaS: Double,
     /** Extra time the wind costs (positive) or saves (negative) compared to no wind. */
     val windCostS: Double,
-)
+) {
+    /** The "±" shown to the rider: half the P10–P90 range. */
+    val bandS: Double get() = 1.28 * sigmaS
+
+    companion object {
+        /** Below this the band is shown in seconds rather than minutes: the ETA counts as firm. */
+        const val FIRM_BAND_S = 50.0
+    }
+}
 
 /**
  * ETA v2: physics per segment with the wind forecast for the moment you reach it, corrected by

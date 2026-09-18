@@ -6,6 +6,7 @@ import com.tegenwind.app.data.RouteDao
 import com.tegenwind.app.data.SegmentTraversalEntity
 import com.tegenwind.app.data.TrackPointEntity
 import com.tegenwind.app.eta.Banister
+import com.tegenwind.app.eta.Eta
 import com.tegenwind.app.eta.EtaModel
 import com.tegenwind.app.eta.FormEstimator
 import com.tegenwind.app.eta.LiveEta
@@ -46,6 +47,8 @@ data class LiveRide(
     val arrivedAtMs: Long? = null,
     /** The wind along your heading on a free ride. On a route it's part of [eta] instead. */
     val freeWind: WindNow? = null,
+    /** The ETA has become firm: offer to tell someone you're almost there, until answered. */
+    val offerShare: Boolean = false,
 )
 
 /**
@@ -74,6 +77,7 @@ class RideRecorder(
     private var lastFlushMs = 0L
 
     private var autoFinishCancelled = false
+    private var sharePromptAnswered = false
 
     // The segment being timed right now.
     private var segIdx = -1
@@ -94,6 +98,7 @@ class RideRecorder(
         form = FormEstimator(prior = priorForm)
         formObservations = 0
         autoFinishCancelled = false
+        sharePromptAnswered = false
         forecast = null
         traversals.clear()
         segIdx = -1
@@ -156,6 +161,12 @@ class RideRecorder(
         _live.value = _live.value?.copy(arrivedAtMs = null)
     }
 
+    /** Yes or no, the "almost there" prompt has been answered and won't come back this ride. */
+    fun answerSharePrompt() {
+        sharePromptAnswered = true
+        _live.value = _live.value?.copy(offerShare = false)
+    }
+
     /** Target speed for the simulator: what the model predicts on this stretch, ridden a bit briskly. */
     fun simulatedSpeedAt(alongM: Double): Double? {
         val m = model ?: return null
@@ -207,12 +218,15 @@ class RideRecorder(
             return
         }
         val progress = ride.route?.progress ?: return
+        val eta = m.predict(progress.progressM, nowMs, forecast, form.estimate())
         val live = LiveEta(
-            eta = m.predict(progress.progressM, nowMs, forecast, form.estimate()),
+            eta = eta,
             form = form.estimate().mean,
             wind = windNow(m, progress.progressM, nowMs, forecast),
         )
-        _live.value = ride.copy(eta = live)
+        // Once offered the prompt stays until answered, even if the band widens again (off route).
+        val firm = progress.onRouteYet && !progress.offRoute && eta.bandS < Eta.FIRM_BAND_S
+        _live.value = ride.copy(eta = live, offerShare = !sharePromptAnswered && (ride.offerShare || firm))
     }
 
     /**
