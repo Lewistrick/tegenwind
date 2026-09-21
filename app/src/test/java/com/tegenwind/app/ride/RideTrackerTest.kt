@@ -94,14 +94,38 @@ class RideTrackerTest {
     }
 
     @Test
-    fun rollingAverageUsesTimeWindow() {
+    fun rollingBandsUseTimeWindow() {
         val samples = listOf(Sample(0, 10.0), Sample(60_000, 20.0), Sample(130_000, 30.0))
-        val avg = rollingAverage(samples, TWO_MINUTES_MS)
-        assertEquals(10.0, avg[0], 1e-9)
-        assertEquals(15.0, avg[1], 1e-9)
-        assertEquals(25.0, avg[2], 1e-9) // the 0 s sample fell out of the 2-minute window
+        val bands = rollingBands(samples, TWO_MINUTES_MS)
+        assertEquals(10.0, bands.median[0], 1e-9)
+        assertEquals(15.0, bands.median[1], 1e-9)
+        assertEquals(25.0, bands.median[2], 1e-9) // the 0 s sample fell out of the 2-minute window
+        assertEquals(22.5, bands.p25[2], 1e-9)
+        assertEquals(27.5, bands.p75[2], 1e-9)
 
-        val window = RollingWindow(TWO_MINUTES_MS)
-        samples.forEachIndexed { i, s -> assertEquals(avg[i], window.add(s.timeMs, s.value), 1e-9) }
+        val window = RollingMedian(TWO_MINUTES_MS)
+        samples.forEachIndexed { i, s -> assertEquals(bands.median[i], window.add(s.timeMs, s.value), 1e-9) }
+    }
+
+    @Test
+    fun theMedianIgnoresASingleGpsSpike() {
+        val steady = (0L..20L).map { Sample(it * 1000, 20.0) }
+        val spiked = steady.toMutableList().also { it[10] = Sample(10_000, 90.0) }
+        val bands = rollingBands(spiked, TWO_MINUTES_MS)
+        assertEquals(20.0, bands.median.last(), 1e-9)
+        assertTrue(bands.p75.last() >= 20.0)
+        assertTrue(bands.p25.last() <= 20.0)
+    }
+
+    @Test
+    fun quartilesBracketTheMiddle() {
+        val samples = (0L..100L).map { Sample(it * 1000, it.toDouble()) }
+        val bands = rollingBands(samples, TWO_MINUTES_MS)
+        val last = samples.size - 1
+        assertTrue(bands.p25[last] < bands.median[last])
+        assertTrue(bands.median[last] < bands.p75[last])
+        assertEquals(50.0, bands.median[last], 1e-9)
+        assertEquals(25.0, bands.p25[last], 1e-9)
+        assertEquals(75.0, bands.p75[last], 1e-9)
     }
 }

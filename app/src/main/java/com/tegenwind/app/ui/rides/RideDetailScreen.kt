@@ -63,7 +63,7 @@ private sealed interface HrState {
 }
 
 @Composable
-fun RideDetailScreen(rideId: Long, onBack: () -> Unit) {
+fun RideDetailScreen(rideId: Long, onBack: () -> Unit, backLabel: String = "Rides") {
     val container = LocalContext.current.appContainer
     val dao = container.db.rides()
     val scope = rememberCoroutineScope()
@@ -115,7 +115,7 @@ fun RideDetailScreen(rideId: Long, onBack: () -> Unit) {
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        TextButton(onClick = onBack) { Text("‹ Rides") }
+        TextButton(onClick = onBack) { Text("‹ $backLabel") }
         if (r == null) {
             Text("Loading…")
             return@Column
@@ -138,7 +138,7 @@ fun RideDetailScreen(rideId: Long, onBack: () -> Unit) {
             Stat("Avg HR", hrSamples?.let { "${it.map { s -> s.value }.average().toInt()} bpm" } ?: "--", Modifier.weight(1f))
         }
 
-        ChartCard("Speed", "dots GPS · line 2-min avg") {
+        ChartCard("Speed", "dots GPS · line 2-min median, thin 25/75%") {
             TimeSeriesChart(speeds, SpeedColor, Modifier.fillMaxWidth().height(150.dp), yRange = 0.0..45.0)
         }
 
@@ -146,7 +146,7 @@ fun RideDetailScreen(rideId: Long, onBack: () -> Unit) {
             HrState.Loading -> ChartCard("Heart rate", "loading…") { }
             is HrState.Loaded -> ChartCard(
                 "Heart rate",
-                "max ${state.samples.maxOf { it.value }.toInt()} bpm · line 2-min avg",
+                "max ${state.samples.maxOf { it.value }.toInt()} bpm · line 2-min median",
             ) {
                 TimeSeriesChart(state.samples, HeartColor, Modifier.fillMaxWidth().height(150.dp), gapMs = 120_000)
             }
@@ -342,26 +342,32 @@ private data class Lesson(
 )
 
 /**
- * The segments this ride disagreed with the model about most, biggest first. The comparison is
- * against the physics baseline, so a segment that is always slow keeps showing up until enough
- * passes have taught it, which is exactly what [com.tegenwind.app.eta.SegmentLearner] is folding in.
+ * The segments that stood out on this ride, biggest first.
+ *
+ * Each one is measured against the pace you actually rode at, not against the physics baseline.
+ * Riding 10% below the baseline all day is form, and would otherwise make every segment look
+ * equally remarkable while none of them said anything about the road.
  */
 private fun lessonsFrom(
     traversals: List<SegmentTraversalEntity>,
     segments: List<RouteSegmentEntity>,
 ): List<Lesson> {
     val bySegIdx = segments.associateBy { it.idx }
-    return traversals.mapNotNull { t ->
-        val seg = bySegIdx[t.segIdx] ?: return@mapNotNull null
+    val ridden = traversals.filter { it.predictedMovingMs > 0 && bySegIdx.containsKey(it.segIdx) }
+    if (ridden.isEmpty()) return emptyList()
+    val ratios = ridden.map { it.movingMs.toDouble() / it.predictedMovingMs }.sorted()
+    val todaysPace = ratios[ratios.size / 2]
+    return ridden.map { t ->
+        val seg = bySegIdx.getValue(t.segIdx)
         Lesson(
             startM = seg.startM,
             endM = seg.endM,
-            deltaS = (t.movingMs - t.predictedMovingMs) / 1000.0,
+            deltaS = (t.movingMs - t.predictedMovingMs * todaysPace) / 1000.0,
             signals = seg.signals ?: 0,
             passes = seg.learnedPasses,
         )
     }
-        .filter { kotlin.math.abs(it.deltaS) >= 5 }
+        .filter { kotlin.math.abs(it.deltaS) >= 3 }
         .sortedByDescending { kotlin.math.abs(it.deltaS) }
         .take(3)
 }
@@ -372,7 +378,7 @@ private fun WhatILearnedCard(lessons: List<Lesson>) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("What the model learned", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             Text(
-                "Where this ride differed most from the prediction. Every pass nudges the ETA for next time.",
+                "Where this ride stood out from the pace you were riding at. Every pass nudges the ETA for next time.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

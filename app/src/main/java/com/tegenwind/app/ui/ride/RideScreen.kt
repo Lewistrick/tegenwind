@@ -5,12 +5,14 @@ import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -84,6 +86,7 @@ import com.tegenwind.app.ride.TWO_MINUTES_MS
 import com.tegenwind.app.ride.formatClock
 import com.tegenwind.app.ride.formatElapsed
 import com.tegenwind.app.ui.TimeSeriesChart
+import com.tegenwind.app.ui.rides.RideDetailScreen
 import com.tegenwind.app.ui.theme.AmberInk
 import com.tegenwind.app.ui.theme.Asphalt
 import com.tegenwind.app.ui.theme.Danger
@@ -130,13 +133,19 @@ fun RideScreen() {
 
     val routes by remember { context.appContainer.routes.routes() }.collectAsStateWithLifecycle(emptyList())
     val prefs = remember { context.getSharedPreferences("tegenwind", Context.MODE_PRIVATE) }
-    var routeId by remember { mutableStateOf(prefs.getLong(PREF_ROUTE, -1L).takeIf { it >= 0 }) }
+    var routeId by remember { mutableStateOf(prefs.getLong(PREF_ROUTE, -1L).takeIf { it >= 0 || it == RideService.AUTO_ROUTE }) }
+    val justFinished by recorder.justFinished.collectAsStateWithLifecycle()
 
     val ride = live
-    if (ride == null) {
+    val finished = justFinished
+    if (finished != null) {
+        // A ride just ended: show what it was rather than dropping back to the start screen.
+        BackHandler { recorder.clearJustFinished() }
+        RideDetailScreen(rideId = finished, onBack = { recorder.clearJustFinished() }, backLabel = "Ride")
+    } else if (ride == null) {
         IdleView(
             routes = routes,
-            selectedRouteId = routeId?.takeIf { id -> routes.any { it.id == id } },
+            selectedRouteId = routeId?.takeIf { id -> id == RideService.AUTO_ROUTE || routes.any { it.id == id } },
             onSelectRoute = { id ->
                 routeId = id
                 prefs.edit().putLong(PREF_ROUTE, id ?: -1L).apply()
@@ -152,7 +161,7 @@ fun RideScreen() {
                 )
             },
             onStart = { simulated ->
-                RideService.start(context, simulated, routeId?.takeIf { id -> routes.any { it.id == id } })
+                RideService.start(context, simulated, routeId?.takeIf { id -> id == RideService.AUTO_ROUTE || routes.any { it.id == id } })
             },
         )
     } else {
@@ -177,12 +186,20 @@ private fun IdleView(
         Text("Tegenwind", style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold)
         if (routes.isNotEmpty()) {
             var routeDropdownOpen by remember { mutableStateOf(false) }
-            val selectedName = selectedRouteId?.let { id -> routes.find { it.id == id }?.name } ?: "Free ride"
+            val selectedName = when (selectedRouteId) {
+                null -> "Free ride"
+                RideService.AUTO_ROUTE -> "Auto-select"
+                else -> routes.find { it.id == selectedRouteId }?.name ?: "Free ride"
+            }
             Column {
                 OutlinedButton(onClick = { routeDropdownOpen = true }, modifier = Modifier.fillMaxWidth()) {
                     Text(selectedName)
                 }
                 DropdownMenu(expanded = routeDropdownOpen, onDismissRequest = { routeDropdownOpen = false }, modifier = Modifier.fillMaxWidth(0.9f)) {
+                    DropdownMenuItem(
+                        text = { Text("Auto-select") },
+                        onClick = { onSelectRoute(RideService.AUTO_ROUTE); routeDropdownOpen = false },
+                    )
                     DropdownMenuItem(text = { Text("Free ride") }, onClick = { onSelectRoute(null); routeDropdownOpen = false })
                     routes.forEach { r ->
                         DropdownMenuItem(text = { Text(r.name) }, onClick = { onSelectRoute(r.id); routeDropdownOpen = false })
@@ -190,7 +207,16 @@ private fun IdleView(
                 }
             }
         }
-        selectedRouteId?.let { LeaveNowPreview(it) }
+        if (selectedRouteId == RideService.AUTO_ROUTE) {
+            Text(
+                "The route is worked out as you ride, from where you set off and which way you go.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+            )
+        } else {
+            selectedRouteId?.let { LeaveNowPreview(it) }
+        }
         if (!locationOk) {
             Text(
                 "Tegenwind needs your location to measure speed and distance. It stays on this phone.",
@@ -233,39 +259,115 @@ private fun LiveView(ride: LiveRide, onStop: () -> Unit) {
     }
     val gpsLost = s.lastFixMs == null || now - s.lastFixMs > 10_000
 
-    Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 14.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            val state = when {
-                gpsLost -> "Waiting for GPS"
-                s.paused -> "Paused"
-                else -> "Recording"
+    val context = LocalContext.current
+    Box(Modifier.fillMaxSize()) {
+        Column(
+            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 14.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                val state = when {
+                    !ride.started -> "Waiting for you to set off"
+                    gpsLost -> "Waiting for GPS"
+                    s.paused -> "Paused"
+                    else -> "Recording"
+                }
+                Text(
+                    "● " + (if (ride.simulated) "Simulated · " else "") + state,
+                    color = if (!ride.started || gpsLost || s.paused) MaterialTheme.colorScheme.onSurfaceVariant else GoodColor,
+                    style = MaterialTheme.typography.labelLarge,
+                )
+                Spacer(Modifier.weight(1f))
+                Text(
+                    formatElapsed(if (ride.started) now - s.startedAtMs else 0L),
+                    style = MaterialTheme.typography.titleLarge.copy(fontFeatureSettings = "tnum"),
+                )
             }
-            Text(
-                "● " + (if (ride.simulated) "Simulated · " else "") + state,
-                color = if (gpsLost || s.paused) MaterialTheme.colorScheme.onSurfaceVariant else GoodColor,
-                style = MaterialTheme.typography.labelLarge,
-            )
-            Spacer(Modifier.weight(1f))
-            Text(formatElapsed(now - s.startedAtMs), style = MaterialTheme.typography.titleLarge.copy(fontFeatureSettings = "tnum"))
+
+            s.pausedSinceMs?.let { since -> if (ride.started && ride.arrivedAtMs == null) PausedBar(stoppedMs = now - since) }
+
+            ride.arrivedAtMs?.let { at ->
+                ArrivedBar(
+                    secondsLeft = AutoFinish.secondsLeft(at, now),
+                    onKeepRiding = { recorder.cancelAutoFinish() },
+                )
+            }
+
+            ride.route?.let { EtaCard(it, ride.eta, s.lastLat, s.lastLon) }
+            if (ride.route == null) ride.freeWind?.let { FreeWindCard(it) }
+
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                    Label("Speed")
+                    Row(verticalAlignment = Alignment.Bottom) {
+                        Text(s.speedKmh?.let { "%.1f".format(it) } ?: "--", style = bigNumber)
+                        Text(" km/h", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Spacer(Modifier.weight(1f))
+                        Column(horizontalAlignment = Alignment.End) {
+                            Label("2-min median")
+                            Text(s.median2MinKmh?.let { "%.1f".format(it) } ?: "--", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+                }
+            }
+
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                val avgMoving = if (s.movingMs > 0) s.distanceM / (s.movingMs / 1000.0) * 3.6 else null
+                Stat("Distance", "%.2f km".format(s.distanceM / 1000), Modifier.weight(1f))
+                Stat("Moving", formatElapsed(s.movingMs), Modifier.weight(1f))
+                Stat("Avg", avgMoving?.let { "%.1f".format(it) } ?: "--", Modifier.weight(1f))
+            }
+
+            Card(Modifier.fillMaxWidth().clickable { fullRide = !fullRide }) {
+                Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+                    Row {
+                        Text("Speed", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                        Spacer(Modifier.weight(1f))
+                        Text(
+                            "dots GPS · line 2-min median, thin 25/75% · ${if (fullRide) "full ride" else "last 2 min"}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    TimeSeriesChart(
+                        samples = s.speeds,
+                        color = SpeedColor,
+                        modifier = Modifier.fillMaxWidth().height(140.dp).padding(top = 6.dp),
+                        windowMs = if (fullRide) null else TWO_MINUTES_MS,
+                        endMs = if (fullRide) null else now,
+                        yRange = if (fullRide) 0.0..45.0 else null,
+                        niceY = true,
+                        logXWhenFull = true,
+                        emptyText = "Waiting for GPS…",
+                    )
+                }
+            }
+
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(12.dp)) {
+                    Text("Heart rate", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, color = HeartColor)
+                    Text(
+                        "Added after the ride. Your Steel HR sends workout data when the workout ends.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+
+            Button(
+                onClick = { if (confirmStop) onStop() else confirmStop = true },
+                modifier = Modifier.fillMaxWidth().height(60.dp),
+                colors = if (confirmStop) ButtonDefaults.buttonColors(containerColor = Danger)
+                else ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surfaceVariant, contentColor = MaterialTheme.colorScheme.onSurface),
+            ) { Text(if (confirmStop) "Tap again to stop" else "Stop ride", style = MaterialTheme.typography.titleMedium) }
         }
 
-        s.pausedSinceMs?.let { since -> if (ride.arrivedAtMs == null) PausedBar(stoppedMs = now - since) }
-
-        ride.arrivedAtMs?.let { at ->
-            ArrivedBar(
-                secondsLeft = AutoFinish.secondsLeft(at, now),
-                onKeepRiding = { recorder.cancelAutoFinish() },
-            )
-        }
-
-        val context = LocalContext.current
+        // Above the page rather than in it, so it can't be scrolled out of sight.
         val eta = ride.eta
         val route = ride.route
         if (ride.offerShare && ride.arrivedAtMs == null && eta != null && route != null) {
             AlmostThereBar(
+                modifier = Modifier.align(Alignment.TopCenter).padding(horizontal = 14.dp, vertical = 8.dp),
                 onYes = {
                     recorder.answerSharePrompt()
                     shareViaWhatsApp(context, etaMessage("I'm almost there!", eta, route.progress.remainingM, s.lastLat, s.lastLon))
@@ -273,74 +375,6 @@ private fun LiveView(ride: LiveRide, onStop: () -> Unit) {
                 onNo = { recorder.answerSharePrompt() },
             )
         }
-
-        ride.route?.let { EtaCard(it, ride.eta, s.lastLat, s.lastLon) }
-        if (ride.route == null) ride.freeWind?.let { FreeWindCard(it) }
-
-        Card(Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
-                Label("Speed")
-                Row(verticalAlignment = Alignment.Bottom) {
-                    Text(s.speedKmh?.let { "%.1f".format(it) } ?: "--", style = bigNumber)
-                    Text(" km/h", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Spacer(Modifier.weight(1f))
-                    Column(horizontalAlignment = Alignment.End) {
-                        Label("2-min avg")
-                        Text(s.avg2MinKmh?.let { "%.1f".format(it) } ?: "--", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
-                    }
-                }
-            }
-        }
-
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            val avgMoving = if (s.movingMs > 0) s.distanceM / (s.movingMs / 1000.0) * 3.6 else null
-            Stat("Distance", "%.2f km".format(s.distanceM / 1000), Modifier.weight(1f))
-            Stat("Moving", formatElapsed(s.movingMs), Modifier.weight(1f))
-            Stat("Avg", avgMoving?.let { "%.1f".format(it) } ?: "--", Modifier.weight(1f))
-        }
-
-        Card(Modifier.fillMaxWidth().clickable { fullRide = !fullRide }) {
-            Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
-                Row {
-                    Text("Speed", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    Spacer(Modifier.weight(1f))
-                    Text(
-                        "dots GPS · line 2-min avg · ${if (fullRide) "full ride" else "last 2 min"}",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                TimeSeriesChart(
-                    samples = s.speeds,
-                    color = SpeedColor,
-                    modifier = Modifier.fillMaxWidth().height(140.dp).padding(top = 6.dp),
-                    windowMs = if (fullRide) null else TWO_MINUTES_MS,
-                    endMs = if (fullRide) null else now,
-                    yRange = if (fullRide) 0.0..45.0 else null,
-                    niceY = true,
-                    logXWhenFull = true,
-                    emptyText = "Waiting for GPS…",
-                )
-            }
-        }
-
-        Card(Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(12.dp)) {
-                Text("Heart rate", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, color = HeartColor)
-                Text(
-                    "Added after the ride. Your Steel HR sends workout data when the workout ends.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-
-        Button(
-            onClick = { if (confirmStop) onStop() else confirmStop = true },
-            modifier = Modifier.fillMaxWidth().height(60.dp),
-            colors = if (confirmStop) ButtonDefaults.buttonColors(containerColor = Danger)
-            else ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surfaceVariant, contentColor = MaterialTheme.colorScheme.onSurface),
-        ) { Text(if (confirmStop) "Tap again to stop" else "Stop ride", style = MaterialTheme.typography.titleMedium) }
     }
 }
 
@@ -422,11 +456,12 @@ private fun ArrivedBar(secondsLeft: Int, onKeepRiding: () -> Unit) {
 
 /** Shown once per ride when the ETA turns firm: tell someone you're almost there, in three taps. */
 @Composable
-private fun AlmostThereBar(onYes: () -> Unit, onNo: () -> Unit) {
+private fun AlmostThereBar(onYes: () -> Unit, onNo: () -> Unit, modifier: Modifier = Modifier) {
     Surface(
         color = MaterialTheme.colorScheme.surfaceVariant,
         shape = RoundedCornerShape(12.dp),
-        modifier = Modifier.fillMaxWidth(),
+        shadowElevation = 8.dp,
+        modifier = modifier.fillMaxWidth(),
     ) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("Share ETA via WhatsApp?", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
@@ -475,16 +510,30 @@ private fun PausedBar(stoppedMs: Long) {
     }
 }
 
-/** Arrival time, route progress and the wind as you feel it: the heart of the ride screen. */
+/**
+ * Arrival time, route progress and the wind as you feel it: the heart of the ride screen.
+ * Tapping it shares the ETA, which keeps a button off a screen read at arm's length.
+ */
 @Composable
 private fun EtaCard(r: RideRoute, live: LiveEta?, lat: Double?, lon: Double?) {
     val context = LocalContext.current
     val p = r.progress
-    Card(Modifier.fillMaxWidth()) {
+    val share = Modifier.clickable(enabled = live != null) {
+        live?.let {
+            context.startActivity(
+                Intent.createChooser(etaIntent(etaMessage("On my way!", it, p.remainingM, lat, lon)), "Share ETA")
+            )
+        }
+    }
+    Card(Modifier.fillMaxWidth().then(share)) {
         Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("Arrival · ${r.name}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(
+                        "Arrival · ${r.name}" + if (r.provisional) " (still deciding)" else "",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                     Row(verticalAlignment = Alignment.Bottom) {
                         Text(live?.let { formatClock(it.eta.arrivalMs) } ?: "--:--", style = etaNumber)
                         live?.let {
@@ -517,13 +566,6 @@ private fun EtaCard(r: RideRoute, live: LiveEta?, lat: Double?, lon: Double?) {
                         style = MaterialTheme.typography.bodyMedium.copy(fontFeatureSettings = "tnum"),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                }
-            }
-            live?.let {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                    OutlinedButton(onClick = {
-                        context.startActivity(Intent.createChooser(etaIntent(etaMessage("On my way!", it, p.remainingM, lat, lon)), "Share ETA"))
-                    }) { Text("Share ETA") }
                 }
             }
         }

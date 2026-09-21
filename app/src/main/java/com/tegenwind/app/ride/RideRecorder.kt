@@ -19,6 +19,7 @@ import com.tegenwind.app.eta.windAlong
 import com.tegenwind.app.eta.windNow
 import com.tegenwind.app.routes.GeoPoint
 import com.tegenwind.app.routes.LoadedRoute
+import com.tegenwind.app.routes.RouteMatcher
 import com.tegenwind.app.routes.RouteProgress
 import com.tegenwind.app.routes.RouteTracker
 import com.tegenwind.app.weather.RouteWeather
@@ -40,6 +41,8 @@ data class RideRoute(
      * reach the ones ahead. Null where it isn't known (no forecast yet, or never ridden).
      */
     val weather: List<SegmentWeather?> = emptyList(),
+    /** True while auto-select is still choosing: this is the likeliest route, not a certain one. */
+    val provisional: Boolean = false,
 )
 
 /** The sky over one segment, and what the wind there does to your speed (see [EtaModel.windImpact]). */
@@ -53,6 +56,8 @@ data class LiveRide(
     val eta: LiveEta? = null,
     /** Set when the end of the route is reached; the ride then finishes by itself. */
     val arrivedAtMs: Long? = null,
+    /** False between tapping Start and setting off: nothing is being recorded yet. */
+    val started: Boolean = false,
     /** The wind along your heading on a free ride. On a route it's part of [eta] instead. */
     val freeWind: WindNow? = null,
     /** The ETA has become firm: offer to tell someone you're almost there, until answered. */
@@ -73,9 +78,22 @@ class RideRecorder(
     private val _live = MutableStateFlow<LiveRide?>(null)
     val live: StateFlow<LiveRide?> = _live.asStateFlow()
 
+    /** The ride that just finished, for the screen to open; cleared once it has. */
+    private val _justFinished = MutableStateFlow<Long?>(null)
+    val justFinished: StateFlow<Long?> = _justFinished.asStateFlow()
+
+    fun clearJustFinished() {
+        _justFinished.value = null
+    }
+
+    /** The route being ridden: with auto-select, the likeliest one so far. */
+    val ridingRoute: LoadedRoute? get() = route
+
     private var tracker: RideTracker? = null
     private var routeTracker: RouteTracker? = null
     private var route: LoadedRoute? = null
+    /** Set when the route wasn't chosen up front; null once one was, or for a free ride. */
+    private var matcher: RouteMatcher? = null
     private var model: EtaModel? = null
     private var form = FormEstimator()
     private var formObservations = 0
@@ -87,6 +105,9 @@ class RideRecorder(
     private var autoFinishCancelled = false
     private var sharePromptAnswered = false
 
+    /** The first fix seen while still standing at the start, to measure the first metres against. */
+    private var waitingSince: Fix? = null
+
     /** The weather on each segment when you left it, by position in the route's segment list. */
     private val riddenWeather = HashMap<Int, SegmentWeather>()
 
@@ -96,7 +117,17 @@ class RideRecorder(
     private var segEnterMovingMs = 0L
     private var segClean = false
 
-    suspend fun start(simulated: Boolean, route: LoadedRoute?, priorForm: Double) {
+    /**
+     * Starts recording. With [route] null and [candidates] given, the route is worked out while you
+     * ride: see [RouteMatcher]. [habit] is how often each route was ridden around this time of day.
+     */
+    suspend fun start(
+        simulated: Boolean,
+        route: LoadedRoute?,
+        priorForm: Double,
+        candidates: List<LoadedRoute> = emptyList(),
+        habit: Map<Long, Int> = emptyMap(),
+    ) {
         if (_live.value != null) return
         closeUnfinished()
         val now = System.currentTimeMillis()
@@ -104,12 +135,14 @@ class RideRecorder(
         val t = RideTracker(now)
         tracker = t
         this.route = route
+        matcher = if (route == null && candidates.isNotEmpty()) RouteMatcher(candidates, habit) else null
         routeTracker = route?.let { RouteTracker(it.line) }
         model = route?.etaModel()
         form = FormEstimator(prior = priorForm)
         formObservations = 0
         autoFinishCancelled = false
         sharePromptAnswered = false
+        waitingSince = null
         riddenWeather.clear()
         weather = null
         traversals.clear()
@@ -131,13 +164,33 @@ class RideRecorder(
         refreshEta(now)
     }
 
+    /**
+     * Nothing is recorded between tapping Start and actually setting off, so the time spent opening
+     * a maps app or starting a workout on the watch isn't part of the ride. Returns true once this
+     * fix says you're moving, from which moment the ride's clock, track and stats begin.
+     */
+    private fun setOff(fix: Fix): Boolean {
+        val from = waitingSince ?: fix.also { waitingSince = it }
+        val rolling = (fix.speedMps ?: 0.0) >= RideTracker.STOP_SPEED_MPS
+        val moved = haversineM(from.lat, from.lon, fix.lat, fix.lon) >= SET_OFF_M
+        if (!rolling && !moved) return false
+        tracker = RideTracker(fix.timeMs)
+        waitingSince = null
+        _live.value = _live.value?.copy(started = true, snapshot = tracker!!.snapshot())
+        return true
+    }
+
     fun setWeather(w: RouteWeather) {
         weather = w
         refreshEta(System.currentTimeMillis())
     }
 
     fun onFix(fix: Fix) {
-        val ride = _live.value ?: return
+        var ride = _live.value ?: return
+        if (!ride.started) {
+            if (!setOff(fix)) return
+            ride = _live.value!!
+        }
         val t = tracker ?: return
         pending += TrackPointEntity(
             rideId = ride.rideId, timeMs = fix.timeMs, lat = fix.lat, lon = fix.lon,
@@ -145,19 +198,29 @@ class RideRecorder(
         )
         if (t.add(fix)) {
             val snap = t.snapshot()
-            val progress = routeTracker?.update(GeoPoint(fix.lat, fix.lon))
-            if (progress != null) timeSegments(progress, fix.timeMs, snap.movingMs)
+            val progress = chooseRoute(GeoPoint(fix.lat, fix.lon), snap.headingDeg)
+                ?: routeTracker?.update(GeoPoint(fix.lat, fix.lon))
+            // Until one route is certain, nothing is timed: the times would belong to a guess.
+            if (progress != null && matcher?.locked != false) timeSegments(progress, fix.timeMs, snap.movingMs)
             val arrived = when {
                 ride.arrivedAtMs != null -> ride.arrivedAtMs
                 autoFinishCancelled || progress == null || !progress.onRouteYet -> null
+                // Don't finish a ride on a route that's still only the best guess.
+                matcher?.locked == false -> null
                 AutoFinish.arrived(progress.remainingM) -> fix.timeMs
                 else -> null
             }
-            _live.value = ride.copy(
-                snapshot = snap,
-                route = ride.route?.let { r -> progress?.let { r.copy(progress = it) } ?: r },
-                arrivedAtMs = arrived,
-            )
+            val loaded = route
+            val liveRoute = when {
+                matcher?.exhausted == true -> null
+                loaded == null -> ride.route
+                else -> {
+                    val base = ride.route?.takeIf { it.routeId == loaded.route.id } ?: rideRoute(loaded)
+                    if (progress == null) base
+                    else base.copy(progress = progress, provisional = matcher?.locked == false)
+                }
+            }
+            _live.value = ride.copy(snapshot = snap, route = liveRoute, arrivedAtMs = arrived)
             refreshEta(fix.timeMs)
         }
         if (fix.timeMs - lastFlushMs >= FLUSH_EVERY_MS) {
@@ -165,6 +228,45 @@ class RideRecorder(
             flush()
         }
     }
+
+    /**
+     * Auto-select: offers the fix to every route still in the running, then rides with the leader,
+     * adopting its tracker so the ETA on screen always belongs to the likeliest route. Returns that
+     * route's progress, or null when a route was chosen up front.
+     */
+    private fun chooseRoute(p: GeoPoint, headingDeg: Double?): RouteProgress? {
+        val m = matcher ?: return null
+        m.onFix(p, headingDeg)
+        val leader = m.leader
+        if (leader == null) {
+            // Not on any saved route: carry on as a free ride.
+            route = null
+            routeTracker = null
+            model = null
+            segIdx = -1
+            traversals.clear()
+            riddenWeather.clear()
+            return null
+        }
+        if (leader.route.route.id != route?.route?.id) {
+            route = leader.route
+            routeTracker = leader.tracker
+            model = leader.route.etaModel()
+            // Whatever was half-measured belongs to a route we turn out not to be on.
+            segIdx = -1
+            traversals.clear()
+            riddenWeather.clear()
+        }
+        return leader.progress
+    }
+
+    private fun rideRoute(loaded: LoadedRoute) = RideRoute(
+        routeId = loaded.route.id,
+        name = loaded.route.name,
+        segmentStartsM = loaded.segments.map { it.startM },
+        progress = routeTracker?.progress() ?: RouteProgress(0.0, loaded.line.lengthM, false, false),
+        provisional = matcher?.locked == false,
+    )
 
     /** Keeps a ride going that was about to finish on arrival; it won't ask again. */
     fun cancelAutoFinish() {
@@ -214,9 +316,12 @@ class RideRecorder(
         tracker = null
         routeTracker = null
         route = null
+        matcher = null
         model = null
         traversals.clear()
         _live.value = null
+        // Nothing to show for a ride that never set off (Start then Stop, or location denied).
+        if (ride.started) _justFinished.value = ride.rideId
         return ride.rideId
     }
 
@@ -353,5 +458,7 @@ class RideRecorder(
         const val CLEAN_ENTRY_M = 30.0
         const val MIN_MOVING_MS = 5_000L
         const val MIN_FORM_OBSERVATIONS = 3
+        /** Far enough from where you tapped Start to call it setting off, if GPS speed doesn't say so. */
+        const val SET_OFF_M = 25.0
     }
 }

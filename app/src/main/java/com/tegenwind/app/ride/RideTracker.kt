@@ -29,7 +29,7 @@ data class RideSnapshot(
     /** When the current stop began, while paused; null while moving. */
     val pausedSinceMs: Long?,
     val speedKmh: Double?,
-    val avg2MinKmh: Double?,
+    val median2MinKmh: Double?,
     val speeds: List<Sample>,
     /** Direction of travel, degrees clockwise from north; null until you've covered a little ground. */
     val headingDeg: Double? = null,
@@ -41,14 +41,14 @@ data class RideSnapshot(
  */
 class RideTracker(private val startedAtMs: Long) {
     private val speeds = ArrayList<Sample>()
-    private val window = RollingWindow(TWO_MINUTES_MS)
+    private val window = RollingMedian(TWO_MINUTES_MS)
     private var last: Fix? = null
     private var stoppedSinceMs: Long? = null
     private var distanceM = 0.0
     private var movingMs = 0L
     private var paused = false
     private var speedKmh: Double? = null
-    private var avgKmh: Double? = null
+    private var medianKmh: Double? = null
     private val recent = ArrayDeque<Fix>()
     private var headingDeg: Double? = null
 
@@ -79,7 +79,7 @@ class RideTracker(private val startedAtMs: Long) {
         val kmh = speedMps * 3.6
         speeds += Sample(fix.timeMs, kmh)
         speedKmh = kmh
-        avgKmh = window.add(fix.timeMs, kmh)
+        medianKmh = window.add(fix.timeMs, kmh)
         last = fix
         updateHeading(fix)
         return true
@@ -109,7 +109,7 @@ class RideTracker(private val startedAtMs: Long) {
         paused = paused,
         pausedSinceMs = if (paused) stoppedSinceMs else null,
         speedKmh = speedKmh,
-        avg2MinKmh = avgKmh,
+        median2MinKmh = medianKmh,
         speeds = speeds.toList(),
         headingDeg = headingDeg,
     )

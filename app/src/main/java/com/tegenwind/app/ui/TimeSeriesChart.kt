@@ -19,7 +19,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.tegenwind.app.ride.Sample
 import com.tegenwind.app.ride.TWO_MINUTES_MS
-import com.tegenwind.app.ride.rollingAverage
+import com.tegenwind.app.ride.rollingBands
 import kotlin.math.ceil
 import kotlin.math.floor
 import kotlin.math.ln
@@ -42,8 +42,9 @@ private fun niceIntStep(mn: Double, mx: Double): Double {
 }
 
 /**
- * Raw measurements as faint dots plus a 2-minute rolling average as a line.
- * The line breaks where there is no data for [gapMs], so gaps are never papered over.
+ * Raw measurements as faint dots, a 2-minute rolling median as a line, and thinner lines for the
+ * quartiles either side of it, so how spread out the riding was is visible too.
+ * The lines break where there is no data for [gapMs], so gaps are never papered over.
  *
  * @param windowMs show only the last [windowMs] before [endMs]; null shows everything.
  * @param yRange fixed axis range, or null to fit the data.
@@ -70,7 +71,7 @@ fun TimeSeriesChart(
     val labelStyle = TextStyle(color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
     val gridColor = MaterialTheme.colorScheme.outlineVariant
     val ringColor = MaterialTheme.colorScheme.surfaceContainer
-    val avg = remember(samples) { rollingAverage(samples, TWO_MINUTES_MS) }
+    val bands = remember(samples) { rollingBands(samples, TWO_MINUTES_MS) }
 
     Canvas(modifier) {
         if (samples.isEmpty()) {
@@ -184,19 +185,30 @@ fun TimeSeriesChart(
                 drawCircle(dot, r, Offset(x(samples[i].timeMs), y(samples[i].value)))
             }
 
-            val path = Path()
-            var prevT = Long.MIN_VALUE
-            // Start a little before the window so the line enters from the left edge.
-            for (i in (firstVisible - 1).coerceAtLeast(0) until samples.size) {
-                val s = samples[i]
-                val px = x(s.timeMs)
-                val py = y(avg[i])
-                if (prevT == Long.MIN_VALUE || s.timeMs - prevT > gapMs) path.moveTo(px, py) else path.lineTo(px, py)
-                prevT = s.timeMs
+            fun pathOf(values: DoubleArray): Path {
+                val path = Path()
+                var prevT = Long.MIN_VALUE
+                // Start a little before the window so the line enters from the left edge.
+                for (i in (firstVisible - 1).coerceAtLeast(0) until samples.size) {
+                    val s = samples[i]
+                    val px = x(s.timeMs)
+                    val py = y(values[i])
+                    if (prevT == Long.MIN_VALUE || s.timeMs - prevT > gapMs) path.moveTo(px, py) else path.lineTo(px, py)
+                    prevT = s.timeMs
+                }
+                return path
             }
-            drawPath(path, color, style = Stroke(width = 2.5.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
 
-            val end = Offset(x(samples.last().timeMs), y(avg.last()))
+            val thin = Stroke(width = 1.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
+            drawPath(pathOf(bands.p25), color.copy(alpha = 0.55f), style = thin)
+            drawPath(pathOf(bands.p75), color.copy(alpha = 0.55f), style = thin)
+            drawPath(
+                pathOf(bands.median),
+                color,
+                style = Stroke(width = 2.5.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round),
+            )
+
+            val end = Offset(x(samples.last().timeMs), y(bands.median.last()))
             drawCircle(ringColor, 6.dp.toPx(), end)
             drawCircle(color, 4.dp.toPx(), end)
         }

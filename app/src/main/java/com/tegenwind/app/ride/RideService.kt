@@ -25,6 +25,7 @@ import com.tegenwind.app.appContainer
 import com.tegenwind.app.eta.Banister
 import com.tegenwind.app.eta.startingForm
 import com.tegenwind.app.routes.GeoPoint
+import com.tegenwind.app.routes.habitByRoute
 import com.tegenwind.app.weather.RouteWeather
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -79,19 +80,32 @@ class RideService : Service() {
         startForeground(NOTIFICATION_ID, notification("Starting ride…"), ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION)
         scope.launch {
             val container = appContainer
-            val route = routeId?.let { container.routes.load(it) }
+            val route = routeId?.takeIf { it != AUTO_ROUTE }?.let { container.routes.load(it) }
             val rides = container.db.rides()
             val now = System.currentTimeMillis()
+            // Auto-select: every saved route is a candidate until riding rules it out.
+            val candidates = if (routeId == AUTO_ROUTE) container.routes.loadAll() else emptyList()
             recorder.start(
-                simulated,
-                route,
-                startingForm(rides.recentForms(), rides.loadsSince(now - Banister.WINDOW_DAYS * 86_400_000L), now),
+                simulated = simulated,
+                route = route,
+                priorForm = startingForm(rides.recentForms(), rides.loadsSince(now - Banister.WINDOW_DAYS * 86_400_000L), now),
+                candidates = candidates,
+                habit = habitByRoute(rides.recentRouteStarts(), now),
             )
-            // Forecast refreshed every 15 minutes: every ~2 km along the route, or on a free ride for
-            // wherever you are by then (which also means waiting for the first GPS fix).
+            // Forecast refreshed every 15 minutes: every ~2 km along the route being ridden, or on a
+            // free ride for wherever you are by then (which also means waiting for the first fix).
+            // With auto-select the route can still change, so it refetches when it does.
             launch {
+                var fetchedFor: Long? = null
+                var fetchedAtMs = 0L
                 while (isActive) {
-                    val weather = if (route != null) container.weather.alongRoute(route.line)
+                    val riding = recorder.ridingRoute
+                    val stale = System.currentTimeMillis() - fetchedAtMs >= 15 * 60_000L
+                    if (!stale && riding?.route?.id == fetchedFor) {
+                        delay(5_000)
+                        continue
+                    }
+                    val weather = if (riding != null) container.weather.alongRoute(riding.line)
                     else {
                         val here = recorder.live.value?.snapshot
                             ?.let { s -> if (s.lastLat != null && s.lastLon != null) GeoPoint(s.lastLat, s.lastLon) else null }
@@ -101,13 +115,19 @@ class RideService : Service() {
                         }
                         container.weather.forecast(here)?.let(RouteWeather::everywhere)
                     }
-                    weather?.let(recorder::setWeather)
-                    delay(15 * 60_000L)
+                    if (weather != null) {
+                        recorder.setWeather(weather)
+                        fetchedFor = riding?.route?.id
+                        fetchedAtMs = System.currentTimeMillis()
+                    }
+                    delay(5_000)
                 }
             }
             if (simulated) {
+                // Simulating auto-select: ride the first candidate and let the matcher find it.
+                val line = route ?: candidates.firstOrNull()
                 simulation = launch {
-                    RideSimulator.run(route?.line, route?.signalsAtM.orEmpty(), recorder::simulatedSpeedAt, recorder::onFix)
+                    RideSimulator.run(line?.line, line?.signalsAtM.orEmpty(), recorder::simulatedSpeedAt, recorder::onFix)
                 }
             } else startGps()
             // Finish by itself once the route's end is reached.
@@ -201,6 +221,9 @@ class RideService : Service() {
         private const val EXTRA_SIMULATE = "simulate"
         private const val EXTRA_ROUTE_ID = "routeId"
         private const val NO_ROUTE = -1L
+
+        /** Passed instead of a route id to let the ride work out the route as you go. */
+        const val AUTO_ROUTE = -2L
 
         fun start(context: Context, simulated: Boolean, routeId: Long?) {
             val intent = Intent(context, RideService::class.java)

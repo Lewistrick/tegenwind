@@ -14,6 +14,7 @@ import androidx.room.RoomDatabase
 import androidx.room.Transaction
 import androidx.room.Update
 import com.tegenwind.app.eta.RideLoad
+import com.tegenwind.app.routes.RouteStart
 import kotlinx.coroutines.flow.Flow
 
 @Entity(tableName = "rides")
@@ -192,6 +193,13 @@ interface RideDao {
     @Query("SELECT * FROM segment_traversals WHERE rideId = :rideId ORDER BY segIdx")
     suspend fun traversals(rideId: Long): List<SegmentTraversalEntity>
 
+    /** When recent rides on a route started, for guessing which route you're on at this hour. */
+    @Query(
+        "SELECT routeId, startedAtMs FROM rides " +
+            "WHERE routeId IS NOT NULL AND simulated = 0 AND endedAtMs IS NOT NULL ORDER BY startedAtMs DESC LIMIT 200"
+    )
+    suspend fun recentRouteStarts(): List<RouteStart>
+
     /** Rides recorded before the fitness model existed, so their load can be filled in once. */
     @Query("SELECT * FROM rides WHERE loadTss IS NULL AND endedAtMs IS NOT NULL AND simulated = 0")
     suspend fun ridesWithoutLoad(): List<RideEntity>
@@ -204,6 +212,9 @@ interface RideDao {
 interface RouteDao {
     @Query("SELECT * FROM routes ORDER BY name")
     fun routes(): Flow<List<RouteEntity>>
+
+    @Query("SELECT * FROM routes ORDER BY name")
+    suspend fun allRoutes(): List<RouteEntity>
 
     @Query("SELECT * FROM routes WHERE id = :id")
     suspend fun route(id: Long): RouteEntity?

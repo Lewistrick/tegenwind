@@ -6,6 +6,8 @@ data class RouteProgress(
     /** False until the first fix within reach of the route. */
     val onRouteYet: Boolean,
     val offRoute: Boolean,
+    /** How far the last fix was from the route's line. */
+    val offsetM: Double = 0.0,
 ) {
     val remainingM: Double get() = (lengthM - progressM).coerceAtLeast(0.0)
 }
@@ -18,6 +20,7 @@ class RouteTracker(private val line: Polyline) {
     private var progressM = 0.0
     private var acquired = false
     private var offRoute = false
+    private var offsetM = 0.0
 
     fun update(p: GeoPoint): RouteProgress {
         val proj = when {
@@ -38,10 +41,15 @@ class RouteTracker(private val line: Polyline) {
         } else {
             progressM = maxOf(progressM, proj.alongM)
         }
+        offsetM = proj.offsetM
         return progress()
     }
 
-    fun progress() = RouteProgress(progressM, line.lengthM, acquired, offRoute)
+    /** Where the route's line points at your position, or null before the first fix. */
+    fun bearingAt(segments: List<com.tegenwind.app.data.RouteSegmentEntity>): Double? =
+        if (!acquired) null else (segments.firstOrNull { progressM < it.endM } ?: segments.lastOrNull())?.bearingDeg
+
+    fun progress() = RouteProgress(progressM, line.lengthM, acquired, offRoute, offsetM)
 
     companion object {
         const val ACQUIRE_M = 40.0

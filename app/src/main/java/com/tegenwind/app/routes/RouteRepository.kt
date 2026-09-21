@@ -97,6 +97,9 @@ class RouteRepository(
         return LoadedRoute(route, line, dao.segments(routeId))
     }
 
+    /** Every saved route, for working out which one is being ridden. */
+    suspend fun loadAll(): List<LoadedRoute> = dao.allRoutes().mapNotNull { load(it.id) }
+
     private suspend fun save(name: String, line: Polyline): Long {
         val id = dao.insertFull(
             RouteEntity(name = name.trim(), lengthM = line.lengthM, createdAtMs = System.currentTimeMillis()),
