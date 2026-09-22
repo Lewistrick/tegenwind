@@ -81,11 +81,64 @@ class RouteMatcherTest {
         assertEquals("north", m.leader?.route?.route?.name)
     }
 
+    /** The whole ride, 25 m at a time, with an optional sideways wobble at a given distance. */
+    private fun rideEast(m: RouteMatcher, fromM: Int, toM: Int, offsetNorthM: Double = 0.0) {
+        for (east in fromM..toM step 25) m.onFix(at(east.toDouble(), offsetNorthM), 90.0)
+    }
+
+    @Test
+    fun arrivingAtTheEndKeepsTheRoute() {
+        val (out, back) = eastAndBack()
+        val m = RouteMatcher(listOf(out, back))
+        rideEast(m, 0, 2000)
+        assertEquals("woon-werk", m.leader?.route?.route?.name)
+        assertFalse("arriving is not a reason to stop believing the route", m.exhausted)
+        assertTrue(m.locked)
+    }
+
+    @Test
+    fun aBriefDetourDoesNotLoseTheRoute() {
+        val (out, back) = eastAndBack()
+        val m = RouteMatcher(listOf(out, back))
+        rideEast(m, 0, 500)
+        // A hundred metres off the line: roadworks, or GPS between tall buildings.
+        for (east in 500..600 step 25) m.onFix(at(east.toDouble(), 100.0), 90.0)
+        rideEast(m, 625, 1200)
+        assertEquals("woon-werk", m.leader?.route?.route?.name)
+        assertFalse(m.exhausted)
+    }
+
+    @Test
+    fun aSharpCornerDoesNotLoseTheRoute() {
+        val (out, back) = eastAndBack()
+        val m = RouteMatcher(listOf(out, back))
+        rideEast(m, 0, 500)
+        m.onFix(at(525.0, 0.0), 200.0) // one fix pointing back the way we came
+        rideEast(m, 550, 1000)
+        assertEquals("woon-werk", m.leader?.route?.route?.name)
+        assertFalse(m.exhausted)
+    }
+
+    @Test
+    fun aRouteDroppedOverALongDetourComesBackWhenYouRejoinIt() {
+        val (out, back) = eastAndBack()
+        val m = RouteMatcher(listOf(out, back))
+        rideEast(m, 0, 500)
+        // Far enough off, for long enough, to give up on it.
+        for (north in 100..600 step 50) m.onFix(at(500.0, north.toDouble()), 0.0)
+        assertTrue(m.exhausted)
+        // Back on the route and riding it again.
+        rideEast(m, 500, 1500)
+        assertFalse("rejoining the route should bring it back", m.exhausted)
+        assertEquals("woon-werk", m.leader?.route?.route?.name)
+    }
+
     @Test
     fun ridingSomewhereElseEntirelyMeansAFreeRide() {
         val (out, back) = eastAndBack()
         val m = RouteMatcher(listOf(out, back))
-        m.onFix(at(0.0, 5_000.0), 0.0) // five kilometres off both
+        // Riding somewhere five kilometres away from either of them.
+        for (east in 0..300 step 25) m.onFix(at(east.toDouble(), 5_000.0), 90.0)
         assertNull(m.leader)
         assertTrue(m.exhausted)
         assertFalse(m.locked)

@@ -236,7 +236,16 @@ class RideRecorder(
      */
     private fun chooseRoute(p: GeoPoint, headingDeg: Double?): RouteProgress? {
         val m = matcher ?: return null
+        val before = m.alive.map { it.route.route.name }
         m.onFix(p, headingDeg)
+        val left = m.alive.map { it.route.route.name }
+        if (left != before) {
+            android.util.Log.i(
+                "Tegenwind",
+                "Routes still possible: ${left.ifEmpty { listOf("none, riding free") }} " +
+                    "at %.5f,%.5f".format(p.lat, p.lon),
+            )
+        }
         val leader = m.leader
         if (leader == null) {
             // Not on any saved route: carry on as a free ride.
