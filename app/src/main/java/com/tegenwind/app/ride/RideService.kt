@@ -69,13 +69,14 @@ class RideService : Service() {
             ACTION_START -> startRide(
                 simulated = intent.getBooleanExtra(EXTRA_SIMULATE, false),
                 routeId = intent.getLongExtra(EXTRA_ROUTE_ID, NO_ROUTE).takeIf { it != NO_ROUTE },
+                shareLive = intent.getBooleanExtra(EXTRA_SHARE_LIVE, false),
             )
             ACTION_STOP -> stopRide()
         }
         return START_NOT_STICKY
     }
 
-    private fun startRide(simulated: Boolean, routeId: Long?) {
+    private fun startRide(simulated: Boolean, routeId: Long?, shareLive: Boolean) {
         createChannel()
         startForeground(NOTIFICATION_ID, notification("Starting ride…"), ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION)
         scope.launch {
@@ -123,6 +124,22 @@ class RideService : Service() {
                     delay(5_000)
                 }
             }
+            // Live sharing, when you asked for it before setting off. Nothing is sent until the ride
+            // has actually started, so waiting at the door doesn't broadcast where you live.
+            if (shareLive && container.liveShare.configured) {
+                container.liveShare.begin()
+                launch {
+                    while (isActive) {
+                        val live = recorder.live.value
+                        if (live == null || !live.started) {
+                            delay(2_000)
+                            continue
+                        }
+                        container.liveShare.push(live, recorder.ridingRoute)
+                        delay(if (live.snapshot.paused) 15_000L else 5_000L)
+                    }
+                }
+            }
             if (simulated) {
                 // Simulating auto-select: ride the first candidate and let the matcher find it.
                 val line = route ?: candidates.firstOrNull()
@@ -165,7 +182,11 @@ class RideService : Service() {
         gpsOn = false
         simulation?.cancel()
         scope.launch {
+            // Say goodbye before the ride is cleared, so the last thing shared is the arrival.
+            val last = recorder.live.value
+            val route = recorder.ridingRoute
             recorder.stop()
+            appContainer.liveShare.finish(last, route)
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
         }
@@ -220,16 +241,18 @@ class RideService : Service() {
         private const val ACTION_STOP = "com.tegenwind.app.STOP_RIDE"
         private const val EXTRA_SIMULATE = "simulate"
         private const val EXTRA_ROUTE_ID = "routeId"
+        private const val EXTRA_SHARE_LIVE = "shareLive"
         private const val NO_ROUTE = -1L
 
         /** Passed instead of a route id to let the ride work out the route as you go. */
         const val AUTO_ROUTE = -2L
 
-        fun start(context: Context, simulated: Boolean, routeId: Long?) {
+        fun start(context: Context, simulated: Boolean, routeId: Long?, shareLive: Boolean = false) {
             val intent = Intent(context, RideService::class.java)
                 .setAction(ACTION_START)
                 .putExtra(EXTRA_SIMULATE, simulated)
                 .putExtra(EXTRA_ROUTE_ID, routeId ?: NO_ROUTE)
+                .putExtra(EXTRA_SHARE_LIVE, shareLive)
             context.startForegroundService(intent)
         }
 

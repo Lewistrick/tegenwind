@@ -1,0 +1,10 @@
+{
+  "v": 1,
+  "routeVersion": 3,
+  "tMs": 1758531600000,
+  "pos": {"lat": 52.09512, "lon": 5.11881, "headingDeg": 118.0, "speedKmh": 24.3},
+  "ride": {"started": true, "paused": false, "finished": false, "distanceM": 8120.0},
+  "progress": {"progressM": 8210.0, "lengthM": 13500.0, "onRouteYet": true, "offRoute": false},
+  "eta": {"arrivalMs": 1758533040000, "bandS": 95.0, "windCostS": -140.0},
+  "wind": {"speed10Mps": 6.2, "fromDeg": 240.0, "headwindMps": -2.1, "relativeDeg": 302.0, "label": "Tailwind"}
+}

@@ -34,6 +34,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -101,6 +102,7 @@ import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 
 private const val PREF_ROUTE = "lastRouteId"
+private const val PREF_SHARE_LIVE = "shareLive"
 
 private val etaNumber = TextStyle(fontSize = 48.sp, fontWeight = FontWeight.Bold, fontFeatureSettings = "tnum", lineHeight = 50.sp)
 
@@ -134,6 +136,8 @@ fun RideScreen() {
     val routes by remember { context.appContainer.routes.routes() }.collectAsStateWithLifecycle(emptyList())
     val prefs = remember { context.getSharedPreferences("tegenwind", Context.MODE_PRIVATE) }
     var routeId by remember { mutableStateOf(prefs.getLong(PREF_ROUTE, -1L).takeIf { it >= 0 || it == RideService.AUTO_ROUTE }) }
+    val liveShare = remember { context.appContainer.liveShare }
+    var shareLive by remember { mutableStateOf(prefs.getBoolean(PREF_SHARE_LIVE, false)) }
     val justFinished by recorder.justFinished.collectAsStateWithLifecycle()
 
     val ride = live
@@ -150,6 +154,12 @@ fun RideScreen() {
                 routeId = id
                 prefs.edit().putLong(PREF_ROUTE, id ?: -1L).apply()
             },
+            canShareLive = liveShare.configured,
+            shareLive = shareLive,
+            onShareLive = {
+                shareLive = it
+                prefs.edit().putBoolean(PREF_SHARE_LIVE, it).apply()
+            },
             locationOk = locationOk,
             onAllow = {
                 permissionLauncher.launch(
@@ -161,7 +171,12 @@ fun RideScreen() {
                 )
             },
             onStart = { simulated ->
-                RideService.start(context, simulated, routeId?.takeIf { id -> id == RideService.AUTO_ROUTE || routes.any { it.id == id } })
+                RideService.start(
+                    context,
+                    simulated,
+                    routeId?.takeIf { id -> id == RideService.AUTO_ROUTE || routes.any { it.id == id } },
+                    shareLive = shareLive && liveShare.configured,
+                )
             },
         )
     } else {
@@ -174,6 +189,9 @@ private fun IdleView(
     routes: List<RouteEntity>,
     selectedRouteId: Long?,
     onSelectRoute: (Long?) -> Unit,
+    canShareLive: Boolean,
+    shareLive: Boolean,
+    onShareLive: (Boolean) -> Unit,
     locationOk: Boolean,
     onAllow: () -> Unit,
     onStart: (simulated: Boolean) -> Unit,
@@ -216,6 +234,20 @@ private fun IdleView(
             )
         } else {
             selectedRouteId?.let { LeaveNowPreview(it) }
+        }
+        if (canShareLive) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Share live", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        if (shareLive) "The link to follow along goes with your Share ETA message."
+                        else "Nothing leaves the phone.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Switch(checked = shareLive, onCheckedChange = onShareLive)
+            }
         }
         if (!locationOk) {
             Text(
@@ -260,6 +292,7 @@ private fun LiveView(ride: LiveRide, onStop: () -> Unit) {
     val gpsLost = s.lastFixMs == null || now - s.lastFixMs > 10_000
 
     val context = LocalContext.current
+    val liveLink by remember { context.appContainer.liveShare.link }.collectAsStateWithLifecycle()
     Box(Modifier.fillMaxSize()) {
         Column(
             Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 14.dp, vertical = 8.dp),
@@ -293,7 +326,7 @@ private fun LiveView(ride: LiveRide, onStop: () -> Unit) {
                 )
             }
 
-            ride.route?.let { EtaCard(it, ride.eta, s.lastLat, s.lastLon) }
+            ride.route?.let { EtaCard(it, ride.eta, s.lastLat, s.lastLon, liveLink) }
             if (ride.route == null) ride.freeWind?.let { FreeWindCard(it) }
 
             Card(Modifier.fillMaxWidth()) {
@@ -370,7 +403,10 @@ private fun LiveView(ride: LiveRide, onStop: () -> Unit) {
                 modifier = Modifier.align(Alignment.TopCenter).padding(horizontal = 14.dp, vertical = 8.dp),
                 onYes = {
                     recorder.answerSharePrompt()
-                    shareViaWhatsApp(context, etaMessage("I'm almost there!", eta, route.progress.remainingM, s.lastLat, s.lastLon))
+                    shareViaWhatsApp(
+                        context,
+                        etaMessage("I'm almost there!", eta, route.progress.remainingM, s.lastLat, s.lastLon, liveLink),
+                    )
                 },
                 onNo = { recorder.answerSharePrompt() },
             )
@@ -515,13 +551,13 @@ private fun PausedBar(stoppedMs: Long) {
  * Tapping it shares the ETA, which keeps a button off a screen read at arm's length.
  */
 @Composable
-private fun EtaCard(r: RideRoute, live: LiveEta?, lat: Double?, lon: Double?) {
+private fun EtaCard(r: RideRoute, live: LiveEta?, lat: Double?, lon: Double?, liveLink: String?) {
     val context = LocalContext.current
     val p = r.progress
     val share = Modifier.clickable(enabled = live != null) {
         live?.let {
             context.startActivity(
-                Intent.createChooser(etaIntent(etaMessage("On my way!", it, p.remainingM, lat, lon)), "Share ETA")
+                Intent.createChooser(etaIntent(etaMessage("On my way!", it, p.remainingM, lat, lon, liveLink)), "Share ETA")
             )
         }
     }
@@ -572,13 +608,25 @@ private fun EtaCard(r: RideRoute, live: LiveEta?, lat: Double?, lon: Double?) {
     }
 }
 
-/** "On my way! Arriving around 19:34 (± 6 min), 3.2 km to go." plus a maps link, if we know where we are. */
-private fun etaMessage(opening: String, live: LiveEta, remainingM: Double, lat: Double?, lon: Double?): String =
-    buildString {
-        append("$opening Arriving around ${formatClock(live.eta.arrivalMs)} (± ${formatMargin(live.eta.bandS)}), ")
-        append("%.1f km to go.".format(remainingM / 1000))
-        if (lat != null && lon != null) append("\nhttps://maps.google.com/?q=%.5f,%.5f".format(lat, lon))
+/**
+ * "On my way! Arriving around 19:34 (± 6 min), 3.2 km to go." plus somewhere to look: the live page
+ * while sharing, otherwise a pin where you were when you sent it.
+ */
+private fun etaMessage(
+    opening: String,
+    live: LiveEta,
+    remainingM: Double,
+    lat: Double?,
+    lon: Double?,
+    liveLink: String?,
+): String = buildString {
+    append("$opening Arriving around ${formatClock(live.eta.arrivalMs)} (± ${formatMargin(live.eta.bandS)}), ")
+    append("%.1f km to go.".format(remainingM / 1000))
+    when {
+        liveLink != null -> append("\nFollow me: $liveLink")
+        lat != null && lon != null -> append("\nhttps://maps.google.com/?q=%.5f,%.5f".format(lat, lon))
     }
+}
 
 private fun etaIntent(text: String): Intent =
     Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text)

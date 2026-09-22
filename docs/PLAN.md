@@ -186,6 +186,18 @@ The **clickable HTML prototype** is the first deliverable after approval. It liv
 - **Phase 5 built:** a Stats tab with a route picker, KPI tiles (fastest/slowest/average/median duration), a duration trend chart (fastest/slowest highlighted), a duration histogram, a headwind-vs-duration scatter, and a slowest-segments table (actual vs modeled time, from `SegmentTraversalEntity`).
 - **Distribution today:** there's no CI/APK pipeline yet (no `.github/workflows`) despite it being in the tool choices above. The app reaches the phone by building locally and running `./gradlew installDebug` (or Android Studio's Run button) over a USB connection to the phone — this has been the deployment path since Phase 1, not something tied to a specific phase.
 
+### Live sharing (22 Sep 2026): the app is no longer purely local
+
+Riding with "Share live" on, the phone posts its position, ETA, wind and per-segment corrections
+every 5 seconds to **meewind**, a small FastAPI service on your own server, and the link goes out
+with the Share ETA message. That link is good for one ride.
+
+This is the first internet-facing part of the project, so the boundaries are deliberate: nothing is
+sent until the ride has set off, the server keeps rides in memory only and forgets them within the
+day, the token never appears in a URL path, and the feature is switched off entirely unless
+`meewind.key` is set in `local.properties`. The JSON contract lives in `docs/CONTRACT.md` in both
+repos and is pinned by `LiveContractTest.kt` here and `tests/test_contract.py` there.
+
 ### Phase 6 result (17 Sep 2026): the ETA learns the road and the rider
 
 - **Layer 2 (`SegmentLearner`)**: every clean pass folds `log(actual / physics)` into that segment with the same conjugate Normal step the form filter uses, stored on `route_segments` (`learnedLogMean`, `learnedLogVar`, `learnedPasses`) and applied by `EtaModel.correctedSpeedMps`. A forgetting factor of 0.98 lets it follow road works. Simulated rides never teach it anything.

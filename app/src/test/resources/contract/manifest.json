@@ -1,0 +1,16 @@
+{
+  "v": 1,
+  "routeVersion": 3,
+  "simulated": false,
+  "route": {
+    "routeId": 7,
+    "name": "woon-werk",
+    "provisional": false,
+    "lengthM": 500.0,
+    "points": [[52.09123, 5.11034], [52.09123, 5.11400], [52.09123, 5.11766]],
+    "segments": [
+      {"i": 0, "startM": 0.0, "endM": 250.0, "timeFactor": 0.94, "passes": 12},
+      {"i": 1, "startM": 250.0, "endM": 500.0, "timeFactor": 1.18, "passes": 3}
+    ]
+  }
+}

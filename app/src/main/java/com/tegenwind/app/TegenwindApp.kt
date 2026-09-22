@@ -6,6 +6,7 @@ import androidx.room.Room
 import com.tegenwind.app.data.TegenwindDb
 import com.tegenwind.app.eta.Banister
 import com.tegenwind.app.health.HealthConnectHr
+import com.tegenwind.app.live.LiveShare
 import com.tegenwind.app.ride.RideRecorder
 import com.tegenwind.app.routes.RouteEnricher
 import com.tegenwind.app.routes.RouteRepository
@@ -31,6 +32,7 @@ class AppContainer(app: Application) {
     val db: TegenwindDb = Room.databaseBuilder(app, TegenwindDb::class.java, "tegenwind.db").build()
     val recorder = RideRecorder(db.rides(), db.routes(), appScope)
     val healthConnect = HealthConnectHr(app)
+    val liveShare = LiveShare()
     val routes = RouteRepository(db.routes(), RouteEnricher(), appScope)
     val weather = WeatherRepository()
 
