@@ -52,7 +52,6 @@ class LiveContractTest {
             paused = false,
             pausedSinceMs = null,
             speedKmh = 24.3,
-            median2MinKmh = 23.0,
             speeds = emptyList(),
             headingDeg = 118.0,
         ),

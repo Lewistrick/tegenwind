@@ -19,7 +19,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.tegenwind.app.ride.Sample
 import com.tegenwind.app.ride.TWO_MINUTES_MS
-import com.tegenwind.app.ride.rollingBands
+import com.tegenwind.app.ride.rollingMedian
 import kotlin.math.ceil
 import kotlin.math.floor
 import kotlin.math.ln
@@ -42,8 +42,7 @@ private fun niceIntStep(mn: Double, mx: Double): Double {
 }
 
 /**
- * Raw measurements as faint dots, a 2-minute rolling median as a line, and thinner lines for the
- * quartiles either side of it, so how spread out the riding was is visible too.
+ * Raw measurements as faint dots and a 2-minute rolling median as a line.
  * The lines break where there is no data for [gapMs], so gaps are never papered over.
  *
  * @param windowMs show only the last [windowMs] before [endMs]; null shows everything.
@@ -71,7 +70,7 @@ fun TimeSeriesChart(
     val labelStyle = TextStyle(color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
     val gridColor = MaterialTheme.colorScheme.outlineVariant
     val ringColor = MaterialTheme.colorScheme.surfaceContainer
-    val bands = remember(samples) { rollingBands(samples, TWO_MINUTES_MS) }
+    val median = remember(samples) { rollingMedian(samples, TWO_MINUTES_MS) }
 
     Canvas(modifier) {
         if (samples.isEmpty()) {
@@ -199,16 +198,13 @@ fun TimeSeriesChart(
                 return path
             }
 
-            val thin = Stroke(width = 1.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
-            drawPath(pathOf(bands.p25), color.copy(alpha = 0.55f), style = thin)
-            drawPath(pathOf(bands.p75), color.copy(alpha = 0.55f), style = thin)
             drawPath(
-                pathOf(bands.median),
+                pathOf(median),
                 color,
                 style = Stroke(width = 2.5.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round),
             )
 
-            val end = Offset(x(samples.last().timeMs), y(bands.median.last()))
+            val end = Offset(x(samples.last().timeMs), y(median.last()))
             drawCircle(ringColor, 6.dp.toPx(), end)
             drawCircle(color, 4.dp.toPx(), end)
         }

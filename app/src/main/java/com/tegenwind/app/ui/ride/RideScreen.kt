@@ -337,18 +337,11 @@ private fun LiveView(ride: LiveRide, onStop: () -> Unit) {
                         Text(" km/h", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Spacer(Modifier.weight(1f))
                         Column(horizontalAlignment = Alignment.End) {
-                            Label("2-min median")
-                            Text(s.median2MinKmh?.let { "%.1f".format(it) } ?: "--", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+                            Label("Distance")
+                            Text("%.2f km".format(s.distanceM / 1000), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
                         }
                     }
                 }
-            }
-
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                val avgMoving = if (s.movingMs > 0) s.distanceM / (s.movingMs / 1000.0) * 3.6 else null
-                Stat("Distance", "%.2f km".format(s.distanceM / 1000), Modifier.weight(1f))
-                Stat("Moving", formatElapsed(s.movingMs), Modifier.weight(1f))
-                Stat("Avg", avgMoving?.let { "%.1f".format(it) } ?: "--", Modifier.weight(1f))
             }
 
             Card(Modifier.fillMaxWidth().clickable { fullRide = !fullRide }) {
@@ -357,7 +350,7 @@ private fun LiveView(ride: LiveRide, onStop: () -> Unit) {
                         Text("Speed", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                         Spacer(Modifier.weight(1f))
                         Text(
-                            "dots GPS · line 2-min median, thin 25/75% · ${if (fullRide) "full ride" else "last 2 min"}",
+                            "dots GPS · line 2-min median · ${if (fullRide) "full ride" else "last 2 min"}",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
