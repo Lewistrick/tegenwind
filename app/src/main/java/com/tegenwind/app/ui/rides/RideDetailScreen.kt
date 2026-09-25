@@ -79,7 +79,7 @@ fun RideDetailScreen(rideId: Long, onBack: () -> Unit, backLabel: String = "Ride
     var rideRouteName by remember { mutableStateOf<String?>(null) }
     var editingRoute by remember { mutableStateOf(false) }
     var confirmReplaceRoute by remember { mutableStateOf(false) }
-    var lessons by remember { mutableStateOf<List<Lesson>>(emptyList()) }
+    var taught by remember { mutableStateOf<Taught?>(null) }
     val hrPermissionLauncher = rememberLauncherForActivityResult(
         PermissionController.createRequestPermissionResultContract()
     ) { hrRefresh++ }
@@ -91,9 +91,9 @@ fun RideDetailScreen(rideId: Long, onBack: () -> Unit, backLabel: String = "Ride
         speeds = dao.points(rideId)
             .filter { (it.accuracyM ?: 0.0) <= RideTracker.MAX_ACCURACY_M && it.speedMps != null }
             .map { Sample(it.timeMs, it.speedMps!! * 3.6) }
-        lessons = loaded?.routeId?.let { routeId ->
-            lessonsFrom(dao.traversals(rideId), container.db.routes().segments(routeId))
-        }.orEmpty()
+        taught = loaded?.routeId?.let { routeId ->
+            taughtBy(loaded, dao.traversals(rideId), container.db.routes().segments(routeId))
+        }
     }
     val r = ride
     LaunchedEffect(r, hrRefresh) {
@@ -138,7 +138,7 @@ fun RideDetailScreen(rideId: Long, onBack: () -> Unit, backLabel: String = "Ride
             Stat("Avg HR", hrSamples?.let { "${it.map { s -> s.value }.average().toInt()} bpm" } ?: "--", Modifier.weight(1f))
         }
 
-        ChartCard("Speed", "dots GPS · line 2-min median, thin 25/75%") {
+        ChartCard("Speed", "dots GPS · line 2-min median") {
             TimeSeriesChart(speeds, SpeedColor, Modifier.fillMaxWidth().height(150.dp), yRange = 0.0..45.0)
         }
 
@@ -171,7 +171,7 @@ fun RideDetailScreen(rideId: Long, onBack: () -> Unit, backLabel: String = "Ride
             }
         }
 
-        if (lessons.isNotEmpty()) WhatILearnedCard(lessons)
+        taught?.let { WhatThisRideTaughtCard(it) }
 
         if (!r.simulated) {
             OutlinedButton(onClick = { routeName = "" }) { Text("Save as route") }
@@ -332,53 +332,76 @@ private suspend fun loadHeartRate(hc: HealthConnectHr, ride: RideEntity): HrStat
     HrState.Failed("Couldn't read Health Connect: ${e.message ?: e::class.simpleName}")
 }
 
-/** One segment of this ride that went differently than the model expected. */
+/** One segment where this ride moved what the model expects. */
 private data class Lesson(
     val startM: Double,
     val endM: Double,
-    val deltaS: Double,
+    val expectedMs: Long,
+    val tookMs: Long,
+    /** How much the segment's expected time changed, seconds: positive = slower from now on. */
+    val shiftS: Double,
     val signals: Int,
     val passes: Int,
 )
 
+/** What the card says about a ride. */
+private sealed interface Taught {
+    /** Up to three nudges, biggest first; empty when nothing moved by a second or more. */
+    data class Lessons(val lessons: List<Lesson>) : Taught
+    /** A real ride from before the model learned from rides. */
+    data object BeforeLearning : Taught
+    data object Simulated : Taught
+}
+
 /**
- * The segments that stood out on this ride, biggest first.
+ * The segments whose learned time this ride moved most. Null when there is nothing to judge by:
+ * no passes, or passes not yet filled in by the backfill.
  *
- * Each one is measured against the pace you actually rode at, not against the physics baseline.
- * Riding 10% below the baseline all day is form, and would otherwise make every segment look
- * equally remarkable while none of them said anything about the road.
+ * Ranked by the nudge rather than by the surprise, so a segment the model already knows is slow
+ * stops showing up once it has learned that.
  */
-private fun lessonsFrom(
+private fun taughtBy(
+    ride: RideEntity,
     traversals: List<SegmentTraversalEntity>,
     segments: List<RouteSegmentEntity>,
-): List<Lesson> {
+): Taught? {
     val bySegIdx = segments.associateBy { it.idx }
-    val ridden = traversals.filter { it.predictedMovingMs > 0 && bySegIdx.containsKey(it.segIdx) }
-    if (ridden.isEmpty()) return emptyList()
-    val ratios = ridden.map { it.movingMs.toDouble() / it.predictedMovingMs }.sorted()
-    val todaysPace = ratios[ratios.size / 2]
-    return ridden.map { t ->
-        val seg = bySegIdx.getValue(t.segIdx)
-        Lesson(
-            startM = seg.startM,
-            endM = seg.endM,
-            deltaS = (t.movingMs - t.predictedMovingMs * todaysPace) / 1000.0,
-            signals = seg.signals ?: 0,
-            passes = seg.learnedPasses,
-        )
-    }
-        .filter { kotlin.math.abs(it.deltaS) >= 3 }
-        .sortedByDescending { kotlin.math.abs(it.deltaS) }
+    val known = traversals.filter { it.expectedMovingMs != null && bySegIdx.containsKey(it.segIdx) }
+    if (known.isEmpty()) return null
+    if (ride.simulated) return Taught.Simulated
+    val learned = known.filter { it.learnedShiftMs != null }
+    if (learned.isEmpty()) return Taught.BeforeLearning
+    return Taught.Lessons(learned
+        .filter { kotlin.math.abs(it.learnedShiftMs!!) >= 1_000 }
+        .sortedByDescending { kotlin.math.abs(it.learnedShiftMs!!) }
         .take(3)
+        .map { t ->
+            val seg = bySegIdx.getValue(t.segIdx)
+            Lesson(
+                startM = seg.startM,
+                endM = seg.endM,
+                expectedMs = t.expectedMovingMs!!,
+                tookMs = t.movingMs,
+                shiftS = t.learnedShiftMs!! / 1000.0,
+                signals = seg.signals ?: 0,
+                passes = seg.learnedPasses,
+            )
+        })
 }
 
 @Composable
-private fun WhatILearnedCard(lessons: List<Lesson>) {
+private fun WhatThisRideTaughtCard(taught: Taught) {
+    val lessons = (taught as? Taught.Lessons)?.lessons.orEmpty()
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("What the model learned", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Text("What this ride taught", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             Text(
-                "Where this ride stood out from the pace you were riding at. Every pass nudges the ETA for next time.",
+                when {
+                    taught == Taught.Simulated -> "Simulated rides don't teach the model."
+                    taught == Taught.BeforeLearning -> "This ride is from before the model learned from rides."
+                    lessons.isEmpty() -> "Nothing new: every segment rode close to what the model expected."
+                    else -> "Where the model changed its mind. These nudges go into your next ETA."
+                },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -387,17 +410,18 @@ private fun WhatILearnedCard(lessons: List<Lesson>) {
                     Column(Modifier.weight(1f)) {
                         Text("%.1f–%.1f km".format(l.startM / 1000, l.endM / 1000), fontWeight = FontWeight.SemiBold)
                         Text(
-                            (if (l.signals > 0) "${l.signals} light${if (l.signals == 1) "" else "s"} · " else "") +
-                                "known from ${l.passes} pass${if (l.passes == 1) "" else "es"}",
+                            "expected ${formatElapsed(l.expectedMs)} · took ${formatElapsed(l.tookMs)} · " +
+                                (if (l.signals > 0) "${l.signals} light${if (l.signals == 1) "" else "s"} · " else "") +
+                                "${l.passes} pass${if (l.passes == 1) "" else "es"}",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                     Text(
-                        "%+d s".format(l.deltaS.roundToInt()),
+                        "%+d s".format(l.shiftS.roundToInt()),
                         style = MaterialTheme.typography.titleMedium.copy(fontFeatureSettings = "tnum"),
                         fontWeight = FontWeight.SemiBold,
-                        color = if (l.deltaS > 0) MaterialTheme.colorScheme.error else GoodColor,
+                        color = if (l.shiftS > 0) MaterialTheme.colorScheme.error else GoodColor,
                     )
                 }
             }

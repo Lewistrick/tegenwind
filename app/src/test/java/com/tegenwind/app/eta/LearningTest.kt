@@ -37,6 +37,18 @@ class LearningTest {
     }
 
     @Test
+    fun aSlowDayIsNotBlamedOnTheRoad() {
+        val prior = SegmentCorrection()
+        // 55 s where physics says 50 s: on a day you rode at 91% of your usual speed that's just
+        // you, so the segment learns nothing; on a normal day it's the road, and it does.
+        val tired = SegmentLearner.update(prior, 55_000, 50_000, form = 50.0 / 55.0)
+        assertEquals(1.0, tired.timeFactor, 1e-9)
+        assertEquals(1, tired.passes)
+        val normal = SegmentLearner.update(prior, 55_000, 50_000, form = 1.0)
+        assertTrue("factor ${normal.timeFactor}", normal.timeFactor > 1.03)
+    }
+
+    @Test
     fun tooShortOrNonsensePassesTeachNothing() {
         val prior = SegmentCorrection()
         assertEquals(prior, SegmentLearner.update(prior, 1_000, 50_000))

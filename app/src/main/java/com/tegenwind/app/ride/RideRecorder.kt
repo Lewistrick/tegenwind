@@ -3,6 +3,7 @@ package com.tegenwind.app.ride
 import com.tegenwind.app.data.RideDao
 import com.tegenwind.app.data.RideEntity
 import com.tegenwind.app.data.RouteDao
+import com.tegenwind.app.data.RouteSegmentEntity
 import com.tegenwind.app.data.SegmentTraversalEntity
 import com.tegenwind.app.data.TrackPointEntity
 import com.tegenwind.app.eta.Banister
@@ -29,6 +30,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlin.math.roundToLong
 
 /** The route being followed during a ride, with the parts the ride screen draws. */
 data class RideRoute(
@@ -303,7 +305,9 @@ class RideRecorder(
         val batch = pending.toList()
         pending.clear()
         if (batch.isNotEmpty()) dao.insertPoints(batch)
-        if (traversals.isNotEmpty()) dao.insertTraversals(traversals.toList())
+        // A made-up ride must not teach the model anything about the real road.
+        val ridden = learnFromTraversals(route, traversals.toList(), form.estimate().mean, learn = !ride.simulated)
+        if (ridden.isNotEmpty()) dao.insertTraversals(ridden)
         val startWind = weather?.at(0.0, snap.startedAtMs)
         dao.updateRide(
             RideEntity(
@@ -320,8 +324,6 @@ class RideRecorder(
                 loadTss = if (ride.simulated) null else Banister.loadFromRide(snap.movingMs, snap.distanceM),
             )
         )
-        // A made-up ride must not teach the model anything about the real road.
-        if (!ride.simulated) learnFromTraversals(route, traversals)
         tracker = null
         routeTracker = null
         route = null
@@ -426,25 +428,35 @@ class RideRecorder(
     /**
      * Layer 2 learning: each segment ridden cleanly this ride folds its actual time into what that
      * segment knows, so the next ETA over this road starts from experience instead of from physics.
+     * [form] is the day's form, divided out so only what's particular to each segment is learned.
+     *
+     * Returns the passes with what the model expected of each and how far each moved its segment,
+     * for the "what this ride taught" card. With [learn] false (a simulated ride) nothing moves.
      */
-    private suspend fun learnFromTraversals(loaded: LoadedRoute?, ridden: List<SegmentTraversalEntity>) {
-        if (loaded == null || ridden.isEmpty()) return
+    private suspend fun learnFromTraversals(
+        loaded: LoadedRoute?,
+        ridden: List<SegmentTraversalEntity>,
+        form: Double,
+        learn: Boolean,
+    ): List<SegmentTraversalEntity> {
+        if (loaded == null || ridden.isEmpty()) return ridden
         val bySegIdx = loaded.segments.associateBy { it.idx }
-        val updated = ridden.mapNotNull { t ->
-            val seg = bySegIdx[t.segIdx] ?: return@mapNotNull null
-            val learned = SegmentLearner.update(
-                SegmentCorrection(seg.learnedLogMean, seg.learnedLogVar, seg.learnedPasses),
-                t.movingMs,
-                t.predictedMovingMs,
+        val updated = ArrayList<RouteSegmentEntity>()
+        val annotated = ridden.map { t ->
+            val seg = bySegIdx[t.segIdx] ?: return@map t
+            val before = SegmentCorrection(seg.learnedLogMean, seg.learnedLogVar, seg.learnedPasses)
+            val expected = t.copy(expectedMovingMs = (t.predictedMovingMs * before.timeFactor / form).roundToLong())
+            val after = if (learn) SegmentLearner.update(before, t.movingMs, t.predictedMovingMs, form) else before
+            if (after.passes == before.passes) return@map expected
+            updated += seg.copy(
+                learnedLogMean = after.logMean,
+                learnedLogVar = after.logVar,
+                learnedPasses = after.passes,
             )
-            if (learned.passes == seg.learnedPasses) null
-            else seg.copy(
-                learnedLogMean = learned.logMean,
-                learnedLogVar = learned.logVar,
-                learnedPasses = learned.passes,
-            )
+            expected.copy(learnedShiftMs = (t.predictedMovingMs * (after.timeFactor - before.timeFactor)).roundToLong())
         }
         if (updated.isNotEmpty()) routeDao.updateSegments(updated)
+        return annotated
     }
 
     private fun flush() {

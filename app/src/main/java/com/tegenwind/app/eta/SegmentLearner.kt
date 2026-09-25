@@ -41,12 +41,14 @@ object SegmentLearner {
 
     /**
      * Folds one pass into what the segment knew. [actualMovingMs] is time spent moving,
-     * [physicsMovingMs] the prediction at form 1.0 before any correction.
+     * [physicsMovingMs] the prediction at form 1.0 before any correction, and [form] how fast
+     * you rode that day as a speed multiplier. Dividing form out is what keeps a tired day from
+     * making every segment look slower: the segment only learns what's different about its road.
      * Returns the prior unchanged when the pass is too short or the prediction is nonsense.
      */
-    fun update(prior: SegmentCorrection, actualMovingMs: Long, physicsMovingMs: Long): SegmentCorrection {
-        if (actualMovingMs < MIN_MS || physicsMovingMs <= 0) return prior
-        val observed = ln(actualMovingMs.toDouble() / physicsMovingMs).coerceIn(-MAX_LOG, MAX_LOG)
+    fun update(prior: SegmentCorrection, actualMovingMs: Long, physicsMovingMs: Long, form: Double = 1.0): SegmentCorrection {
+        if (actualMovingMs < MIN_MS || physicsMovingMs <= 0 || form <= 0) return prior
+        val observed = ln(actualMovingMs * form / physicsMovingMs).coerceIn(-MAX_LOG, MAX_LOG)
         // Letting the variance grow back a little is what makes old passes fade.
         val v = prior.logVar / FORGET
         val gain = v / (v + OBS_VAR)

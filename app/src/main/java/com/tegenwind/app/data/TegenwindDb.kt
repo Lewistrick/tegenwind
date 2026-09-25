@@ -58,6 +58,10 @@ data class SegmentTraversalEntity(
     val headwindMps: Double?,
     /** Physics prediction for the moving time at form 1.0, for later comparison. */
     val predictedMovingMs: Long,
+    /** What the model expected before this ride: physics, the segment's learned correction and the day's form. */
+    val expectedMovingMs: Long? = null,
+    /** How much this pass moved the segment's learned moving time (at form 1.0); null when nothing was learned. */
+    val learnedShiftMs: Long? = null,
 )
 
 /** Every GPS fix as received, including inaccurate ones (the ride stats skip those). */
@@ -206,6 +210,21 @@ interface RideDao {
 
     @Update
     suspend fun updateRides(rides: List<RideEntity>)
+
+    /** Routes with passes from before rides recorded what they taught, so it can be filled in once. */
+    @Query("SELECT DISTINCT routeId FROM segment_traversals WHERE expectedMovingMs IS NULL")
+    suspend fun routesWithUnannotatedPasses(): List<Long>
+
+    /** Every pass over one route, in the order they were ridden. */
+    @Query("SELECT * FROM segment_traversals WHERE routeId = :routeId ORDER BY enterMs")
+    suspend fun traversalsForRoute(routeId: Long): List<SegmentTraversalEntity>
+
+    /** The rides with passes over one route; by pass rather than by ride, since auto-select can switch route. */
+    @Query("SELECT * FROM rides WHERE id IN (SELECT DISTINCT rideId FROM segment_traversals WHERE routeId = :routeId)")
+    suspend fun ridesOnRoute(routeId: Long): List<RideEntity>
+
+    @Update
+    suspend fun updateTraversals(traversals: List<SegmentTraversalEntity>)
 }
 
 @Dao
@@ -298,11 +317,12 @@ interface RouteDao {
         RideEntity::class, TrackPointEntity::class, RouteEntity::class, RoutePointEntity::class,
         RouteSegmentEntity::class, SegmentTraversalEntity::class,
     ],
-    version = 5,
+    version = 6,
     exportSchema = true,
     autoMigrations = [
         AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3),
         AutoMigration(from = 3, to = 4), AutoMigration(from = 4, to = 5),
+        AutoMigration(from = 5, to = 6),
     ],
 )
 abstract class TegenwindDb : RoomDatabase() {

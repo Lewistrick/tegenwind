@@ -8,6 +8,7 @@ import com.tegenwind.app.eta.Banister
 import com.tegenwind.app.health.HealthConnectHr
 import com.tegenwind.app.live.LiveShare
 import com.tegenwind.app.ride.RideRecorder
+import com.tegenwind.app.ride.backfillLessons
 import com.tegenwind.app.routes.RouteEnricher
 import com.tegenwind.app.routes.RouteRepository
 import com.tegenwind.app.weather.WeatherRepository
@@ -47,6 +48,8 @@ class AppContainer(app: Application) {
                 )
             }
         }
+        // Rides from before each pass recorded what it taught get that filled in once.
+        appScope.launch { backfillLessons(db.rides(), db.routes()) }
     }
 }
 
