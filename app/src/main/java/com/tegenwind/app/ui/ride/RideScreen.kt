@@ -10,7 +10,6 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -30,7 +29,6 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
@@ -105,8 +103,6 @@ private const val PREF_ROUTE = "lastRouteId"
 private const val PREF_SHARE_LIVE = "shareLive"
 
 private val etaNumber = TextStyle(fontSize = 48.sp, fontWeight = FontWeight.Bold, fontFeatureSettings = "tnum", lineHeight = 50.sp)
-
-private val bigNumber = TextStyle(fontSize = 64.sp, fontWeight = FontWeight.Bold, fontFeatureSettings = "tnum", lineHeight = 64.sp)
 
 private fun hasLocation(context: Context) =
     ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
@@ -331,10 +327,11 @@ private fun LiveView(ride: LiveRide, onStop: () -> Unit) {
 
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
-                    Label("Speed")
                     Row(verticalAlignment = Alignment.Bottom) {
-                        Text(s.speedKmh?.let { "%.1f".format(it) } ?: "--", style = bigNumber)
-                        Text(" km/h", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Column {
+                            Label("Speed")
+                            Text("${s.speedKmh?.let { "%.1f".format(it) } ?: "--"} km/h", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+                        }
                         Spacer(Modifier.weight(1f))
                         Column(horizontalAlignment = Alignment.End) {
                             Label("Distance")
@@ -358,7 +355,7 @@ private fun LiveView(ride: LiveRide, onStop: () -> Unit) {
                     TimeSeriesChart(
                         samples = s.speeds,
                         color = SpeedColor,
-                        modifier = Modifier.fillMaxWidth().height(140.dp).padding(top = 6.dp),
+                        modifier = Modifier.fillMaxWidth().height(245.dp).padding(top = 6.dp),
                         windowMs = if (fullRide) null else TWO_MINUTES_MS,
                         endMs = if (fullRide) null else now,
                         yRange = if (fullRide) 0.0..45.0 else null,
@@ -787,14 +784,4 @@ private fun ProgressTrack(r: RideRoute, modifier: Modifier) {
 @Composable
 private fun Label(text: String) {
     Text(text, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-}
-
-@Composable
-private fun Stat(label: String, value: String, modifier: Modifier = Modifier) {
-    Card(modifier) {
-        Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
-            Label(label)
-            Text(value, style = MaterialTheme.typography.titleLarge.copy(fontFeatureSettings = "tnum"), fontWeight = FontWeight.SemiBold)
-        }
-    }
 }
