@@ -263,8 +263,33 @@ interface RouteDao {
     @Insert
     suspend fun insertSegments(segments: List<RouteSegmentEntity>)
 
-    @Update
-    suspend fun updateSegments(segments: List<RouteSegmentEntity>)
+    /*
+     * A segment's row has two writers that can overlap in time: the map lookup (which can take
+     * minutes) and the end of a ride. Each writes only its own columns, so neither can put back a
+     * stale copy of what the other just stored.
+     */
+
+    @Query(
+        "UPDATE route_segments SET learnedLogMean = :logMean, learnedLogVar = :logVar, learnedPasses = :passes " +
+            "WHERE routeId = :routeId AND idx = :idx"
+    )
+    suspend fun setLearned(routeId: Long, idx: Int, logMean: Double, logVar: Double, passes: Int)
+
+    @Transaction
+    suspend fun setLearned(segments: List<RouteSegmentEntity>) {
+        segments.forEach { setLearned(it.routeId, it.idx, it.learnedLogMean, it.learnedLogVar, it.learnedPasses) }
+    }
+
+    @Query(
+        "UPDATE route_segments SET gradePct = :gradePct, buildings = :buildings, exposure = :exposure, signals = :signals " +
+            "WHERE routeId = :routeId AND idx = :idx"
+    )
+    suspend fun setMapData(routeId: Long, idx: Int, gradePct: Double?, buildings: Int?, exposure: Double?, signals: Int?)
+
+    @Transaction
+    suspend fun setMapData(segments: List<RouteSegmentEntity>) {
+        segments.forEach { setMapData(it.routeId, it.idx, it.gradePct, it.buildings, it.exposure, it.signals) }
+    }
 
     @Update
     suspend fun updateRoute(route: RouteEntity)

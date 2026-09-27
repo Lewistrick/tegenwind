@@ -37,6 +37,7 @@ class LiveShare(
     private var routeVersion = 0
     private var sentVersion = -1
     private var lastRouteId: Long? = NOT_SET
+    private var lastProvisional = false
 
     val configured: Boolean get() = baseUrl.isNotBlank() && key.isNotBlank()
 
@@ -47,26 +48,30 @@ class LiveShare(
         routeVersion = 0
         sentVersion = -1
         lastRouteId = NOT_SET
+        lastProvisional = false
         _link.value = "$baseUrl?ridetoken=${token}"
         return _link.value
     }
 
     /**
      * Sends one tick, re-sending the route first whenever it has changed — which auto-select does
-     * mid-ride — or whenever the server says it doesn't have it.
+     * mid-ride, also when a guessed route becomes certain — or whenever the server says it doesn't
+     * have it.
      */
     suspend fun push(ride: LiveRide, route: LoadedRoute?) {
         val token = token ?: return
         if (!ride.started) return
-        if (route?.route?.id != lastRouteId) {
+        val provisional = ride.route?.provisional == true
+        if (route?.route?.id != lastRouteId || provisional != lastProvisional) {
             lastRouteId = route?.route?.id
+            lastProvisional = provisional
             routeVersion++
         }
         try {
-            if (sentVersion != routeVersion) sendRoute(token, ride.simulated, route)
+            if (sentVersion != routeVersion) sendRoute(token, ride.simulated, route, provisional)
             val tick = tickJson(routeVersion, ride, System.currentTimeMillis())
             if (post(token, "state", tick) == NEEDS_ROUTE) {
-                sendRoute(token, ride.simulated, route)
+                sendRoute(token, ride.simulated, route, provisional)
                 post(token, "state", tick)
             }
         } catch (e: CancellationException) {
@@ -81,7 +86,7 @@ class LiveShare(
         val token = token ?: return
         try {
             if (last != null && last.started) {
-                if (sentVersion != routeVersion) sendRoute(token, last.simulated, route)
+                if (sentVersion != routeVersion) sendRoute(token, last.simulated, route, lastProvisional)
                 post(token, "state", tickJson(routeVersion, last, System.currentTimeMillis()).markFinished())
             }
             post(token, "end", JSONObject())
@@ -95,8 +100,8 @@ class LiveShare(
         }
     }
 
-    private suspend fun sendRoute(token: String, simulated: Boolean, route: LoadedRoute?) {
-        if (post(token, "route", manifestJson(routeVersion, simulated, route)) == OK) {
+    private suspend fun sendRoute(token: String, simulated: Boolean, route: LoadedRoute?, provisional: Boolean) {
+        if (post(token, "route", manifestJson(routeVersion, simulated, route, provisional)) == OK) {
             sentVersion = routeVersion
         }
     }

@@ -301,6 +301,13 @@ class RideRecorder(
     /** Ends the ride and returns its id, or null if nothing was recording. */
     suspend fun stop(): Long? {
         val ride = _live.value ?: return null
+        if (!ride.started) {
+            // Start then Stop without setting off: nothing was recorded, so there is no ride to
+            // keep. Left in, it would sit in the list as 0 km and count as the route's fastest time.
+            dao.delete(ride.rideId)
+            clear()
+            return null
+        }
         val snap = tracker?.snapshot() ?: ride.snapshot
         val batch = pending.toList()
         pending.clear()
@@ -324,16 +331,20 @@ class RideRecorder(
                 loadTss = if (ride.simulated) null else Banister.loadFromRide(snap.movingMs, snap.distanceM),
             )
         )
+        clear()
+        _justFinished.value = ride.rideId
+        return ride.rideId
+    }
+
+    private fun clear() {
         tracker = null
         routeTracker = null
         route = null
         matcher = null
         model = null
         traversals.clear()
+        pending.clear()
         _live.value = null
-        // Nothing to show for a ride that never set off (Start then Stop, or location denied).
-        if (ride.started) _justFinished.value = ride.rideId
-        return ride.rideId
     }
 
     private fun refreshEta(nowMs: Long) {
@@ -440,7 +451,9 @@ class RideRecorder(
         learn: Boolean,
     ): List<SegmentTraversalEntity> {
         if (loaded == null || ridden.isEmpty()) return ridden
-        val bySegIdx = loaded.segments.associateBy { it.idx }
+        // Read afresh rather than trusting the copy from the start of the ride: learning builds on
+        // what the segment knows now.
+        val bySegIdx = routeDao.segments(loaded.route.id).associateBy { it.idx }
         val updated = ArrayList<RouteSegmentEntity>()
         val annotated = ridden.map { t ->
             val seg = bySegIdx[t.segIdx] ?: return@map t
@@ -455,7 +468,7 @@ class RideRecorder(
             )
             expected.copy(learnedShiftMs = (t.predictedMovingMs * (after.timeFactor - before.timeFactor)).roundToLong())
         }
-        if (updated.isNotEmpty()) routeDao.updateSegments(updated)
+        if (updated.isNotEmpty()) routeDao.setLearned(updated)
         return annotated
     }
 
@@ -466,10 +479,14 @@ class RideRecorder(
         scope.launch { dao.insertPoints(batch) }
     }
 
-    /** A ride left open by a crash or a killed app is closed at its last recorded fix. */
+    /**
+     * A ride left open by a crash or a killed app is closed at its last recorded fix. One that
+     * never recorded a fix never set off, so it goes, like a ride stopped before setting off.
+     */
     private suspend fun closeUnfinished() {
         dao.unfinishedRides().forEach { r ->
-            dao.updateRide(r.copy(endedAtMs = dao.lastPointTime(r.id) ?: r.startedAtMs))
+            val last = dao.lastPointTime(r.id)
+            if (last == null) dao.delete(r.id) else dao.updateRide(r.copy(endedAtMs = last))
         }
     }
 

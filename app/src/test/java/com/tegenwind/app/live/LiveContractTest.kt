@@ -131,6 +131,12 @@ class LiveContractTest {
     }
 
     @Test
+    fun aGuessedRouteSaysSo() {
+        assertFalse(manifestJson(3, false, route()).getJSONObject("route").getBoolean("provisional"))
+        assertTrue(manifestJson(3, false, route(), provisional = true).getJSONObject("route").getBoolean("provisional"))
+    }
+
+    @Test
     fun aFreeRideHasNoRouteAndNoEta() {
         val manifest = manifestJson(routeVersion = 4, simulated = false, route = null)
         assertTrue(manifest.isNull("route"))

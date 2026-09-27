@@ -15,9 +15,10 @@ private fun coord(v: Double) = "%.5f".format(Locale.ROOT, v).toDouble()
 
 /**
  * The route being ridden, sent once per [routeVersion]: the line to draw and what riding it has
- * taught the model about each segment. A free ride has no route, and says so.
+ * taught the model about each segment. A free ride has no route, and says so. [provisional] is true
+ * while auto-select is still guessing which route this is.
  */
-fun manifestJson(routeVersion: Int, simulated: Boolean, route: LoadedRoute?): JSONObject {
+fun manifestJson(routeVersion: Int, simulated: Boolean, route: LoadedRoute?, provisional: Boolean = false): JSONObject {
     val body = JSONObject()
         .put("v", CONTRACT_VERSION)
         .put("routeVersion", routeVersion)
@@ -45,7 +46,7 @@ fun manifestJson(routeVersion: Int, simulated: Boolean, route: LoadedRoute?): JS
         JSONObject()
             .put("routeId", route.route.id)
             .put("name", route.route.name)
-            .put("provisional", false)
+            .put("provisional", provisional)
             .put("lengthM", route.line.lengthM)
             .put("points", points)
             .put("segments", segments)

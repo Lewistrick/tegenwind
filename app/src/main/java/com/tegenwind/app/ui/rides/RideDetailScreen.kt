@@ -91,8 +91,10 @@ fun RideDetailScreen(rideId: Long, onBack: () -> Unit, backLabel: String = "Ride
         speeds = dao.points(rideId)
             .filter { (it.accuracyM ?: 0.0) <= RideTracker.MAX_ACCURACY_M && it.speedMps != null }
             .map { Sample(it.timeMs, it.speedMps!! * 3.6) }
-        taught = loaded?.routeId?.let { routeId ->
-            taughtBy(loaded, dao.traversals(rideId), container.db.routes().segments(routeId))
+        // The passes belong to the route they were ridden on, which "Edit route" doesn't alter.
+        val passes = dao.traversals(rideId)
+        taught = if (loaded == null) null else passes.firstOrNull()?.routeId?.let { routeId ->
+            taughtBy(loaded, passes, container.db.routes().segments(routeId))
         }
     }
     val r = ride

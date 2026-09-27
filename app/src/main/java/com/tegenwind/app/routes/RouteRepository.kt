@@ -151,7 +151,8 @@ class RouteRepository(
                         signals = signalAlong.count { it >= s.startM && (it < s.endM || i == loaded.segments.lastIndex) },
                     )
                 }
-                dao.updateSegments(updated)
+                // Only the map columns: a ride may have finished and learned while this ran.
+                dao.setMapData(updated)
                 dao.setEnrichState(routeId, EnrichState.DONE, null)
             } catch (e: CancellationException) {
                 throw e // a newer lookup for this route took over, and it set the state
