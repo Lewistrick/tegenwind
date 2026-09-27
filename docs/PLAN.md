@@ -9,7 +9,10 @@ Your current tracking apps don't give you what you want on the handlebar. The go
 3. **Smart ETA** on saved routes ("home → work"). It accounts for position on the route, current pace, wind (open fields vs city), inclines and traffic, and it learns from every ride: which segments are slow or fast, fatigue during a ride, fitness over months.
 4. **Route stats page**: fastest, slowest and average time per route, plus trends.
 
-The project folder `bike-dashboard/` is empty, so this is a greenfield build.
+> **Plan versus project.** Sections 1–8 are the plan as it was written before building started, and
+> they are kept that way on purpose. The project drifted from it: some parts were simplified or
+> dropped, and features came in that the plan never mentioned. **Section 9 describes what was
+> actually built** and where it differs. The status notes in section 7 are kept up to date.
 
 ---
 
@@ -173,11 +176,11 @@ The **clickable HTML prototype** is the first deliverable after approval. It liv
 |---|---|---|
 | 0 | Clickable HTML prototype; **Health Connect latency spike** with the Steel HR (decision gate) | ✅ done |
 | 1 | Android project skeleton, theme, navigation; foreground `RideService`; live GPS speed with scatter and rolling chart; ride recording to Room | ✅ done |
-| 2 | `HealthConnectHrSource`: permissions, including the required privacy-rationale activity; polling, freshness badge, post-ride backfill | ✅ done |
-| 3 | Routes: record or import GPX, segmentation, elevation and OSM enrichment, map screen, route tracking | ✅ done (map screen is a lightweight Canvas schematic, not MapLibre) |
+| 2 | `HealthConnectHrSource`: permissions, including the required privacy-rationale activity; polling, freshness badge, post-ride backfill | ✅ done, reshaped by Phase 0: permissions and post-ride heart rate only. No polling or freshness badge, since the Steel HR can't deliver live data |
+| 3 | Routes: record or import GPX, segmentation, elevation and OSM enrichment, map screen, route tracking | ✅ done, without a map screen: the ride screen's progress bar and the route's wind-exposure strip took its place |
 | 4 | ETA v1: physics plus Open-Meteo wind plus live pace, shown on the Ride screen | ✅ done |
 | 5 | Stats dashboard | ✅ done |
-| 6 | ETA v2: Bayesian segment learning, Kalman form, fatigue and fitness, uncertainty band, "what I learned" card | ✅ done (segment learning is a per-segment offset, not the full multi-feature model — see below) |
+| 6 | ETA v2: Bayesian segment learning, Kalman form, fatigue and fitness, uncertainty band, "what I learned" card | ✅ done (segment learning is a per-segment offset, not the full multi-feature model; no fatigue within a ride — see below) |
 | 7 | Optional: BLE strap source, voice announcements, CSV export plus Jupyter backtest notebook | not started |
 
 ### Status (16 Sep 2026)
@@ -195,8 +198,9 @@ with the Share ETA message. That link is good for one ride.
 This is the first internet-facing part of the project, so the boundaries are deliberate: nothing is
 sent until the ride has set off, the server keeps rides in memory only and forgets them within the
 day, the token never appears in a URL path, and the feature is switched off entirely unless
-`meewind.key` is set in `local.properties`. The JSON contract lives in `docs/CONTRACT.md` in both
-repos and is pinned by `LiveContractTest.kt` here and `tests/test_contract.py` there.
+`meewind.key` is set in `local.properties`. The JSON contract lives in `docs/CONTRACT.md` in the
+meewind repo. It is pinned by `tests/test_contract.py` there and by `LiveContractTest.kt` here, which
+runs against copies of meewind's fixtures in `app/src/test/resources/contract`.
 
 ### Phase 6 result (17 Sep 2026): the ETA learns the road and the rider
 
@@ -207,8 +211,9 @@ repos and is pinned by `LiveContractTest.kt` here and `tests/test_contract.py` t
   - Both averages start at the average day instead of zero. Starting at zero, the 42-day average spends months catching up to the 7-day one, and every new rider reads as permanently tired — a bug the unit tests caught.
 - **Uncertainty band**: now adds each remaining segment's own posterior variance, treated as independent between segments (they are separate parameters), so the band tightens as the route gets learned instead of sitting at a flat 4%.
 - **"What the model learned" card** on a finished ride: the three segments that differed most from the prediction, with how many passes that segment has behind it.
+  - **Changed 25 Sep 2026: "What this ride taught".** Ranking by surprise kept showing the same slow segment after every ride, even once the model knew it was slow. The card now ranks segments by how far this ride moved their expected time (at least 1 s), showing expected vs actual time and the nudge. Learning now also divides out the day's form, so a tired day isn't blamed on the road. Rides from before this change were filled in by replaying history exactly.
 
-**Project layout**
+**Project layout (as planned; section 9 has the real one)**
 ```
 bike-dashboard/
   prototype/index.html          # Phase 0 wireframe/prototype
@@ -235,3 +240,159 @@ bike-dashboard/
 - **Health Connect:** use Health Connect Toolbox in the emulator to insert delayed HR records and check the freshness badge and backfill.
 - **Screenshot tests** (Roborazzi) for the four screens in both portrait and landscape.
 - **Field test:** ride home → work and back. The app logs every ETA prediction with a timestamp; afterwards, plot predicted vs actual on the Stats page (or in the notebook).
+
+---
+
+## 9. What was built (27 Sep 2026)
+
+It is still a native Kotlin and Compose app for one rider on one commute, and it does all four
+things from the Context. How it does them drifted. The heart-rate side shrank once Phase 0 showed
+live heart rate can't come from the Steel HR. The map was never built. The stack stayed much leaner
+than section 2 planned. Meanwhile the commute itself grew features the plan never had: the app
+works out which route you're on, finishes the ride when you arrive, and tells someone when you'll
+be there.
+
+### Stack
+
+| Concern | Planned | Built |
+|---|---|---|
+| DI / navigation | Hilt, Navigation Compose | A hand-written `AppContainer` in `TegenwindApp.kt`; four bottom tabs, with detail screens opened from screen state |
+| State | MVVM, a ViewModel with `StateFlow` per screen | `RideRecorder` exposes the ride as a `StateFlow`; the other screens read Room flows directly, without ViewModels |
+| Persistence | Room plus DataStore | Room (database version 6, schemas exported to `app/schemas`, auto-migrations only) plus `SharedPreferences` for the last route and the "Share live" switch |
+| Background work | WorkManager | Coroutines in the app's scope for map lookups and one-time backfills; a foreground service while riding |
+| Charts / maps / geometry | Vico, MapLibre, spatial-k | Own Canvas charts, no map, own geometry in `routes/Geo.kt` (projection, Douglas-Peucker) |
+| HTTP / JSON / math | Ktor, kotlinx.serialization, EJML | `HttpURLConnection`, `org.json`, plain Kotlin |
+| Weather | Open-Meteo, KNMI model | Open-Meteo 15-minute data (hourly fallback) from its default model, with temperature, cloud cover and rain as well as wind |
+| Testing / CI | JUnit 5, Turbine, Roborazzi, GitHub Actions | JUnit 4 unit tests only; no CI, installed over USB |
+
+### Screens
+
+The bottom bar is **Ride · Rides · Routes · Stats**. Rides replaced Map.
+
+- **Ride, before setting off:** route picker (Auto-select, Free ride, or a saved route). A
+  "Leave now, arrive at" card shows the arrival time ± band, the ride time, and the wind with what it
+  costs. There's a "Share live" switch, Start ride, and a simulated ride to try it at a desk.
+- **Ride, while riding:**
+  - A status line and a clock.
+  - A bar while auto-paused, and a bar on arrival with a countdown and "Keep riding".
+  - The ETA card is the centre of the screen. It shows arrival ± band, a wind badge (head, tail
+    or cross, with the speed at rider height and how sheltered you are), km to go, form and the wind's
+    cost. Below that is a route bar coloured per segment by sky and rain on top and by what the wind
+    does to you underneath, with a marker at your position. Tapping the card shares the ETA.
+  - A speed and distance row, then a speed chart: GPS dots and a 2-minute rolling **median**, over
+    the last 2 minutes. Tapping it shows the whole ride on a reverse-log time axis.
+  - A note that heart rate comes after the ride, and a Stop button that needs two taps.
+  - Once the ETA is firm, a one-time "Share ETA via WhatsApp?" prompt.
+  - The large speed number, 2-minute average and live heart rate from the plan are gone: the ETA
+    is what you read on the handlebar.
+- **Rides** (not in the plan): the list of finished rides. A ride's page shows distance, moving and
+  total time, average speed, form and average heart rate, then the speed chart and the heart-rate
+  chart from Health Connect, and the "What this ride taught" card. It can also save the ride as a
+  route, change which route it belongs to, give its route the line you actually rode, or delete it.
+  A ride opens here by itself when it finishes.
+- **Routes:** the list shows name, length and the state of the map lookup. Rename and GPX import
+  are there. A route's page shows its traffic lights, km open to the wind and steepest slope, a
+  wind-exposure strip, and a table per segment. It can add the reverse route, redo the lookup, or
+  delete the route. Ride count, typical time and "Reset learning" were not built.
+- **Stats:** as planned (route picker; fastest, slowest, average and median ride; trend;
+  histogram; headwind vs duration; slowest segments), plus a fitness card that runs across routes.
+  Durations are start to finish, standing still included. "Slowest segments" compares against
+  physics alone, not the learned expectation.
+
+### Riding and routes
+
+- **Recording** starts only when you set off (moving, or 25 m from where you tapped Start), so the
+  time spent at the door isn't part of the ride. A ride that never sets off isn't kept.
+- **Live pipeline:** as planned (Doppler speed, fixes worse than 20 m dropped, auto-pause below
+  1.5 km/h after 5 s, screen kept on), except the rolling line is a median, which rides through GPS
+  spikes, and there is no landscape layout.
+- **Routes** come from a recorded ride (Douglas-Peucker at 5 m) or a GPX file. They can also be
+  reversed, or given the line of a later ride when the road changed for good (this drops the
+  segment times measured on the old line).
+- **Segments** are equal stretches of about 250 m, without the planned extra cuts at slope changes
+  or traffic lights.
+- **The lookup** fetches elevation every 50 m (least-squares slope per segment), buildings within
+  about 125 m of each segment's middle, and traffic lights within 25 m of the line (merged within
+  40 m). Exposure is `0.15 + 0.85·e^(−buildings/25)`, so the range is 0.15–1.0 rather than 0.3–1.0.
+  Crossings and road type are not looked up.
+- **Tracking** takes hold within 40 m of the line and calls it off-route beyond 60 m. Progress only
+  moves forward.
+- **Auto-select** (`RouteMatcher`), instead of a guess at the start: every saved route is a
+  candidate. Each is dropped after 300 m of riding that contradicts it, and can come back. Heading,
+  and which end of a route you set off from, separate a route from its mirror. Past rides at this
+  time of day break ties. Until one route is left, the likeliest carries the ETA, marked "still
+  deciding", and no segment is timed.
+- **Arrival:** within 30 m of the end, the ride finishes itself after 15 s unless you keep riding.
+
+### The ETA model
+
+- **Layer 1** as planned. Rider parameters are constants (130 W, CdA 0.45, Crr 0.006, 90 kg); the
+  planned learned `P_rider` isn't there, and the form factor does that job. Air density follows the
+  temperature. Wind at rider height uses a log profile whose surface roughness follows the segment's
+  exposure: about 65% of the 10 m wind in the open, about 30% between buildings.
+- **Layer 2** is a single learned offset per segment (see Phase 6), learned from moving time with
+  the day's form divided out. Traffic lights are not learned: every light costs a fixed 12 s on
+  average.
+- **Layer 3:** the Kalman filter on today's form, as planned. The Banister model sets the starting
+  form (±5% at most) instead of adjusting `P_rider`. There is no fatigue term within a ride and no
+  cardiac drift.
+- **Output:** as planned, the band being 1.28σ from form, segment, traffic-light and baseline
+  uncertainty. There is no backtest and no log of predictions yet.
+
+### Heart rate
+
+Only after the ride. A ride's page reads its window from Health Connect each time it opens (the samples
+aren't stored) and upgrades the ride's training load to TRIMP. No polling, freshness badge, background
+backfill, `HeartRateSource` interface or Bluetooth strap.
+
+### Data
+
+Room holds `rides`, `track_points`, `routes`, `route_points`, `route_segments` (with the learned
+correction) and `segment_traversals`. A traversal stores the headwind and the physics prediction,
+and since database version 6 also what the model expected before the ride and how far the pass
+moved its segment. Standing time is `exit − enter − moving`; there's no average heart rate. The
+planned `HrSample`, `RiderState` and `ModelParams` tables don't exist: heart rate stays in Health
+Connect, fitness is computed from ride loads when needed, and rider parameters are constants.
+
+### Beyond the plan
+
+Everything above marked as not planned, plus:
+- live sharing through meewind (section 7)
+- the ETA shared as text with a live link or a map pin
+- the simulator, which follows the route at the model's speed and stops at about half the traffic
+  lights, instead of the planned GPX replay with synthetic heart rate
+
+### Project layout
+
+```
+tegenwind/
+  docs/PLAN.md, docs/prototype/index.html, docs/logo/
+  app/schemas/                        # Room schema for every database version
+  app/src/main/java/com/tegenwind/app/
+    MainActivity.kt, TegenwindApp.kt (AppContainer), PermissionsRationaleActivity.kt
+    ride/     RideService, RideRecorder, RideTracker, Rolling, AutoFinish, RideSimulator, LessonBackfill
+    routes/   Geo, Gpx, RouteRepository, RouteEnricher, RouteTracker, RouteMatcher
+    eta/      Physics, EtaModel, SegmentLearner, LiveEta, Fitness
+    weather/  WindForecast (Open-Meteo)
+    live/     LiveShare, LiveJson (meewind)
+    health/   HealthConnectHr
+    data/     TegenwindDb (entities and DAOs)
+    ui/       ride/, rides/, routes/, stats/, theme/, TimeSeriesChart
+  app/src/test/java/com/tegenwind/app/  # JUnit 4 unit tests
+```
+
+### Verification
+
+The JUnit 4 unit tests cover:
+- the rolling median, auto-pause and GPS filtering
+- route snapping and progress, auto-select, GPX, and turning a track into a route
+- lookup retries, physics and the ETA, segment learning and the form filter
+- the lessons backfill, arriving, and the meewind contract
+
+Not built:
+- Compose UI and screenshot tests
+- tests for `RideRecorder`
+- the Health Connect emulator checks
+- the prediction log for field tests
+
+Rides are tested with the simulator and on the phone.
