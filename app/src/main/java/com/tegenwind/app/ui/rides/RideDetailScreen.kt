@@ -1,7 +1,10 @@
 package com.tegenwind.app.ui.rides
 
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -12,6 +15,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Card
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -33,6 +39,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.Alignment
 import com.tegenwind.app.appContainer
@@ -51,6 +58,7 @@ import com.tegenwind.app.ui.theme.HeartColor
 import com.tegenwind.app.ui.theme.SpeedColor
 import androidx.health.connect.client.PermissionController
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.time.Instant
 
@@ -175,37 +183,55 @@ fun RideDetailScreen(rideId: Long, onBack: () -> Unit, backLabel: String = "Ride
 
         taught?.let { WhatThisRideTaughtCard(it) }
 
-        if (!r.simulated) {
-            OutlinedButton(onClick = { routeName = "" }) { Text("Save as route") }
-            Text(
-                "Uses this ride's GPS track as a route, for example woon-werk. Ride it once, save it, done.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+        // What you can do with the ride: one row per action, the button left, what it does right.
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(horizontal = 12.dp, vertical = 4.dp)) {
+                val rows = ArrayList<@Composable () -> Unit>()
+                if (!r.simulated) rows += {
+                    ActionRow("Save as route", "Uses this ride's GPS track as a route, for example woon-werk. Ride it once, save it, done.") {
+                        routeName = ""
+                    }
+                }
+                if (routes.isNotEmpty()) rows += {
+                    ActionRow("Edit route", "Retroactively change which route was ridden.") { editingRoute = true }
+                }
+                if (!r.simulated && rideRouteName != null) rows += {
+                    ActionRow(
+                        "Update route from this ride",
+                        "For a road that changed for good: gives \"$rideRouteName\" the line you rode today, " +
+                            "keeping its rides and its name.",
+                    ) { confirmReplaceRoute = true }
+                }
+                rows += {
+                    ActionRow(
+                        if (confirmDelete) "Sure? Tap again" else "Delete ride",
+                        "Removes the ride and its GPS track from this phone. Heart rate stays in Health Connect.",
+                        danger = true,
+                        armed = confirmDelete,
+                    ) {
+                        if (confirmDelete) {
+                            confirmDelete = false
+                            scope.launch {
+                                dao.delete(rideId)
+                                onBack()
+                            }
+                        } else confirmDelete = true
+                    }
+                }
+                rows.forEachIndexed { i, row ->
+                    if (i > 0) HorizontalDivider()
+                    row()
+                }
+            }
         }
         routeMessage?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
+    }
 
-        if (routes.isNotEmpty()) {
-            OutlinedButton(onClick = { editingRoute = true }) { Text("Edit route") }
-            Text(
-                "Retroactively change which route was ridden.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-
-        if (!r.simulated && rideRouteName != null) {
-            OutlinedButton(onClick = { confirmReplaceRoute = true }) { Text("Update route from this ride") }
-            Text(
-                "For a road that changed for good: gives \"$rideRouteName\" the line you rode today, " +
-                    "keeping its rides and its name.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-
-        TextButton(onClick = { confirmDelete = true }) {
-            Text("Delete ride", color = MaterialTheme.colorScheme.error)
+    // The second tap has to follow soon, or Delete goes back to asking.
+    LaunchedEffect(confirmDelete) {
+        if (confirmDelete) {
+            delay(3_000)
+            confirmDelete = false
         }
     }
 
@@ -235,24 +261,6 @@ fun RideDetailScreen(rideId: Long, onBack: () -> Unit, backLabel: String = "Ride
                 }) { Text("Save") }
             },
             dismissButton = { TextButton(onClick = { routeName = null }) { Text("Cancel") } },
-        )
-    }
-
-    if (confirmDelete) {
-        AlertDialog(
-            onDismissRequest = { confirmDelete = false },
-            title = { Text("Delete this ride?") },
-            text = { Text("The ride and its GPS track are removed from this phone. Heart rate stays in Health Connect.") },
-            confirmButton = {
-                TextButton(onClick = {
-                    confirmDelete = false
-                    scope.launch {
-                        dao.delete(rideId)
-                        onBack()
-                    }
-                }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
-            },
-            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } },
         )
     }
 
@@ -428,6 +436,45 @@ private fun WhatThisRideTaughtCard(taught: Taught) {
                 }
             }
         }
+    }
+}
+
+/**
+ * One action in the table at the bottom: a button of the same size in every row, and what it does.
+ * A [danger] action is red, and filled red while [armed] (waiting for the confirming tap).
+ */
+@Composable
+private fun ActionRow(label: String, description: String, danger: Boolean = false, armed: Boolean = false, onClick: () -> Unit) {
+    val error = MaterialTheme.colorScheme.error
+    Row(Modifier.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        val size = Modifier.width(128.dp).height(52.dp)
+        val padding = PaddingValues(horizontal = 8.dp)
+        val text: @Composable () -> Unit = {
+            Text(label, textAlign = TextAlign.Center, style = MaterialTheme.typography.labelLarge, maxLines = 2)
+        }
+        if (armed) {
+            Button(
+                onClick = onClick,
+                modifier = size,
+                contentPadding = padding,
+                colors = ButtonDefaults.buttonColors(containerColor = error, contentColor = MaterialTheme.colorScheme.onError),
+            ) { text() }
+        } else {
+            OutlinedButton(
+                onClick = onClick,
+                modifier = size,
+                contentPadding = padding,
+                colors = if (danger) ButtonDefaults.outlinedButtonColors(contentColor = error) else ButtonDefaults.outlinedButtonColors(),
+                border = if (danger) BorderStroke(1.dp, error) else ButtonDefaults.outlinedButtonBorder(),
+            ) { text() }
+        }
+        Spacer(Modifier.width(12.dp))
+        Text(
+            description,
+            Modifier.weight(1f),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 
