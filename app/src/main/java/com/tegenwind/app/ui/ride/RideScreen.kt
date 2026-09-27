@@ -347,7 +347,7 @@ private fun LiveView(ride: LiveRide, onStop: () -> Unit) {
                         Text("Speed", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                         Spacer(Modifier.weight(1f))
                         Text(
-                            "dots GPS · line 2-min median · ${if (fullRide) "full ride" else "last 2 min"}",
+                            if (fullRide) "full ride" else "last 2 min",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -362,6 +362,9 @@ private fun LiveView(ride: LiveRide, onStop: () -> Unit) {
                         niceY = true,
                         logXWhenFull = true,
                         emptyText = "Waiting for GPS…",
+                        expected = ride.expectedSpeeds,
+                        expectedColor = MaterialTheme.colorScheme.primary,
+                        legend = true,
                     )
                 }
             }

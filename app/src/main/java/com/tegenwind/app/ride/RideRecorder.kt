@@ -64,6 +64,11 @@ data class LiveRide(
     val freeWind: WindNow? = null,
     /** The ETA has become firm: offer to tell someone you're almost there, until answered. */
     val offerShare: Boolean = false,
+    /**
+     * The speed the ETA assumed at each fix (km/h), for drawing under the actual speed. Only while
+     * on a route; never stored.
+     */
+    val expectedSpeeds: List<Sample> = emptyList(),
 )
 
 /**
@@ -102,6 +107,7 @@ class RideRecorder(
     private var weather: RouteWeather? = null
     private val pending = ArrayList<TrackPointEntity>()
     private val traversals = ArrayList<SegmentTraversalEntity>()
+    private val expected = ArrayList<Sample>()
     private var lastFlushMs = 0L
 
     private var autoFinishCancelled = false
@@ -148,6 +154,7 @@ class RideRecorder(
         riddenWeather.clear()
         weather = null
         traversals.clear()
+        expected.clear()
         segIdx = -1
         lastFlushMs = now
         _live.value = LiveRide(
@@ -222,13 +229,31 @@ class RideRecorder(
                     else base.copy(progress = progress, provisional = matcher?.locked == false)
                 }
             }
-            _live.value = ride.copy(snapshot = snap, route = liveRoute, arrivedAtMs = arrived)
+            if (liveRoute != null && progress != null) recordExpected(progress, fix.timeMs)
+            _live.value = ride.copy(
+                snapshot = snap,
+                route = liveRoute,
+                arrivedAtMs = arrived,
+                expectedSpeeds = expected.toList(),
+            )
             refreshEta(fix.timeMs)
         }
         if (fix.timeMs - lastFlushMs >= FLUSH_EVERY_MS) {
             lastFlushMs = fix.timeMs
             flush()
         }
+    }
+
+    /**
+     * What the ETA assumes you ride here. Nothing before reaching the route or while off it, so the
+     * line breaks there rather than pretending. Standing at a light it keeps the riding speed: it is
+     * a target, not a forecast of standing still.
+     */
+    private fun recordExpected(p: RouteProgress, nowMs: Long) {
+        val m = model ?: return
+        if (!p.onRouteYet || p.offRoute) return
+        val mps = m.expectedSpeedMps(p.progressM, nowMs, weather, form.estimate()) ?: return
+        expected += Sample(nowMs, mps * 3.6)
     }
 
     /**
@@ -343,6 +368,7 @@ class RideRecorder(
         matcher = null
         model = null
         traversals.clear()
+        expected.clear()
         pending.clear()
         _live.value = null
     }
