@@ -44,6 +44,13 @@ import kotlin.math.log10
 import kotlin.math.pow
 import kotlin.math.roundToInt
 
+/**
+ * The expected line: the app's amber, nearly opaque so it stays amber over the dark card (at half
+ * strength it turns olive), and wider than the median so it still shows around it.
+ */
+private const val EXPECTED_ALPHA = 0.85f
+private val EXPECTED_WIDTH = 4.dp
+
 /** A "nice" grid step (1/2/5 × a power of ten, at least 1) so ticks land on round numbers. */
 private fun niceIntStep(mn: Double, mx: Double): Double {
     val rawStep = maxOf(mx - mn, 2.0) / 4.0
@@ -140,8 +147,10 @@ fun TimeSeriesChart(
             val logMinMs = 10_000L
             val logSpanMs = maxOf(right - left, logMinMs * 3)
             fun logX(t: Long): Float {
-                val ago = maxOf(right - t, logMinMs).toDouble()
-                val frac = (ln(ago) - ln(logMinMs.toDouble())) / (ln(logSpanMs.toDouble()) - ln(logMinMs.toDouble()))
+                // ln(1 + ago / 10 s): about linear over the last seconds and logarithmic beyond, so
+                // the latest fixes spread out instead of all landing on "now" as a plain log would put them.
+                val ago = maxOf(right - t, 0L).toDouble()
+                val frac = ln(1 + ago / logMinMs) / ln(1 + logSpanMs.toDouble() / logMinMs)
                 return padL + (1 - frac).toFloat() * plotW
             }
             fun x(t: Long) = if (useLogX) logX(t) else padL + (t - left) / span * plotW
@@ -189,7 +198,7 @@ fun TimeSeriesChart(
                 }
             } else {
                 val minutes = ((right - left) / 60_000).toInt()
-                val labels = if (windowMs != null) listOf("−$minutes min", "−${minutes / 2}", "now")
+                val labels = if (windowMs != null) listOf("−$minutes min", "−${minutes / 2} min", "now")
                 else listOf("0", "${minutes / 2} min", "$minutes min")
                 labels.forEachIndexed { i, text ->
                     val layout = measurer.measure(text, labelStyle)
@@ -218,8 +227,8 @@ fun TimeSeriesChart(
                     }
                     drawPath(
                         path,
-                        expectedColor.copy(alpha = 0.5f),
-                        style = Stroke(width = 5.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round),
+                        expectedColor.copy(alpha = EXPECTED_ALPHA),
+                        style = Stroke(width = EXPECTED_WIDTH.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round),
                     )
                 }
 
@@ -295,7 +304,7 @@ private fun ChartLegend(color: Color, expectedColor: Color?, modifier: Modifier 
             drawLine(color, Offset(0f, size.height / 2), Offset(size.width, size.height / 2), 2.5.dp.toPx(), StrokeCap.Round)
         }
         if (expectedColor != null) LegendRow("expected", text) {
-            drawLine(expectedColor.copy(alpha = 0.5f), Offset(0f, size.height / 2), Offset(size.width, size.height / 2), 5.dp.toPx(), StrokeCap.Round)
+            drawLine(expectedColor.copy(alpha = EXPECTED_ALPHA), Offset(0f, size.height / 2), Offset(size.width, size.height / 2), EXPECTED_WIDTH.toPx(), StrokeCap.Round)
         }
     }
 }

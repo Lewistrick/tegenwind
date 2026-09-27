@@ -9,15 +9,18 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -27,10 +30,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -60,6 +60,8 @@ import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -85,12 +87,12 @@ import com.tegenwind.app.ride.TWO_MINUTES_MS
 import com.tegenwind.app.ride.formatClock
 import com.tegenwind.app.ride.formatElapsed
 import com.tegenwind.app.ui.TimeSeriesChart
+import com.tegenwind.app.ui.Picker
 import com.tegenwind.app.ui.rides.RideDetailScreen
 import com.tegenwind.app.ui.theme.AmberInk
 import com.tegenwind.app.ui.theme.Asphalt
 import com.tegenwind.app.ui.theme.Danger
 import com.tegenwind.app.ui.theme.GoodColor
-import com.tegenwind.app.ui.theme.HeartColor
 import com.tegenwind.app.ui.theme.SpeedColor
 import com.tegenwind.app.weather.Sky
 import com.tegenwind.app.weather.WindSample
@@ -192,77 +194,69 @@ private fun IdleView(
     onAllow: () -> Unit,
     onStart: (simulated: Boolean) -> Unit,
 ) {
-    Column(
-        Modifier.fillMaxSize().padding(24.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Text("Tegenwind", style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold)
-        if (routes.isNotEmpty()) {
-            var routeDropdownOpen by remember { mutableStateOf(false) }
-            val selectedName = when (selectedRouteId) {
-                null -> "Free ride"
-                RideService.AUTO_ROUTE -> "Auto-select"
-                else -> routes.find { it.id == selectedRouteId }?.name ?: "Free ride"
+    // Centred when it fits, scrolling when it doesn't: nothing may end up hidden under the tabs.
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        Column(
+            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).heightIn(min = maxHeight).padding(24.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text("Tegenwind", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
+            if (routes.isNotEmpty()) {
+                Picker(
+                    selected = selectedRouteId,
+                    options = listOf<Pair<Long?, String>>(RideService.AUTO_ROUTE to "Auto-select", null to "Free ride") +
+                        routes.map { it.id to it.name },
+                    onSelect = onSelectRoute,
+                    modifier = Modifier.fillMaxWidth(),
+                )
             }
-            Column {
-                OutlinedButton(onClick = { routeDropdownOpen = true }, modifier = Modifier.fillMaxWidth()) {
-                    Text(selectedName)
-                }
-                DropdownMenu(expanded = routeDropdownOpen, onDismissRequest = { routeDropdownOpen = false }, modifier = Modifier.fillMaxWidth(0.9f)) {
-                    DropdownMenuItem(
-                        text = { Text("Auto-select") },
-                        onClick = { onSelectRoute(RideService.AUTO_ROUTE); routeDropdownOpen = false },
-                    )
-                    DropdownMenuItem(text = { Text("Free ride") }, onClick = { onSelectRoute(null); routeDropdownOpen = false })
-                    routes.forEach { r ->
-                        DropdownMenuItem(text = { Text(r.name) }, onClick = { onSelectRoute(r.id); routeDropdownOpen = false })
+            if (selectedRouteId == RideService.AUTO_ROUTE) {
+                Text(
+                    "The route is worked out as you ride, from where you set off and which way you go.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                )
+            } else {
+                selectedRouteId?.let { LeaveNowPreview(it) }
+            }
+            if (canShareLive) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Share live", style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            if (shareLive) "The link to follow along goes with your Share ETA message."
+                            else "Nothing leaves the phone.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            // Two lines either way, so switching doesn't shift the whole page.
+                            minLines = 2,
+                        )
                     }
+                    Switch(checked = shareLive, onCheckedChange = onShareLive)
                 }
             }
-        }
-        if (selectedRouteId == RideService.AUTO_ROUTE) {
-            Text(
-                "The route is worked out as you ride, from where you set off and which way you go.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
-            )
-        } else {
-            selectedRouteId?.let { LeaveNowPreview(it) }
-        }
-        if (canShareLive) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text("Share live", style = MaterialTheme.typography.titleMedium)
-                    Text(
-                        if (shareLive) "The link to follow along goes with your Share ETA message."
-                        else "Nothing leaves the phone.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                Switch(checked = shareLive, onCheckedChange = onShareLive)
+            if (!locationOk) {
+                Text(
+                    "Tegenwind needs your location to measure speed and distance. It stays on this phone.",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Button(onClick = onAllow) { Text("Allow location") }
+            } else {
+                Button(
+                    onClick = { onStart(false) },
+                    modifier = Modifier.fillMaxWidth().height(72.dp),
+                ) { Text("Start ride", style = MaterialTheme.typography.headlineSmall) }
+                TextButton(onClick = { onStart(true) }) { Text("Try a simulated ride") }
+                Text(
+                    "Start a workout on your watch too: its heart rate is added to the ride once the workout ends.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                )
             }
-        }
-        if (!locationOk) {
-            Text(
-                "Tegenwind needs your location to measure speed and distance. It stays on this phone.",
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Button(onClick = onAllow) { Text("Allow location") }
-        } else {
-            Button(
-                onClick = { onStart(false) },
-                modifier = Modifier.fillMaxWidth().height(72.dp),
-            ) { Text("Start ride", style = MaterialTheme.typography.headlineSmall) }
-            TextButton(onClick = { onStart(true) }) { Text("Try a simulated ride") }
-            Text(
-                "Start a workout on your watch too: its heart rate is added to the ride once the workout ends.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
         }
     }
 }
@@ -291,8 +285,8 @@ private fun LiveView(ride: LiveRide, onStop: () -> Unit) {
     val liveLink by remember { context.appContainer.liveShare.link }.collectAsStateWithLifecycle()
     Box(Modifier.fillMaxSize()) {
         Column(
-            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 14.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 14.dp, vertical = 6.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 val state = when {
@@ -325,64 +319,56 @@ private fun LiveView(ride: LiveRide, onStop: () -> Unit) {
             ride.route?.let { EtaCard(it, ride.eta, s.lastLat, s.lastLon, liveLink) }
             if (ride.route == null) ride.freeWind?.let { FreeWindCard(it) }
 
-            Card(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
-                    Row(verticalAlignment = Alignment.Bottom) {
+            // Speed and distance head the chart they belong to, so the whole ride, Stop included,
+            // fits on one screen. Heart rate only arrives after the ride, so it has no card here.
+            Card(Modifier.fillMaxWidth().clickable { fullRide = !fullRide }) {
+                Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+                    Row(Modifier.padding(horizontal = 4.dp), verticalAlignment = Alignment.Bottom) {
                         Column {
                             Label("Speed")
-                            Text("${s.speedKmh?.let { "%.1f".format(it) } ?: "--"} km/h", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+                            Text(
+                                "${s.speedKmh?.let { "%.1f".format(it) } ?: "--"} km/h",
+                                style = MaterialTheme.typography.headlineSmall.copy(fontFeatureSettings = "tnum"),
+                                fontWeight = FontWeight.SemiBold,
+                            )
                         }
                         Spacer(Modifier.weight(1f))
                         Column(horizontalAlignment = Alignment.End) {
                             Label("Distance")
-                            Text("%.2f km".format(s.distanceM / 1000), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+                            Text(
+                                "%.2f km".format(s.distanceM / 1000),
+                                style = MaterialTheme.typography.headlineSmall.copy(fontFeatureSettings = "tnum"),
+                                fontWeight = FontWeight.SemiBold,
+                            )
                         }
                     }
-                }
-            }
-
-            Card(Modifier.fillMaxWidth().clickable { fullRide = !fullRide }) {
-                Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
-                    Row {
-                        Text("Speed", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                        Spacer(Modifier.weight(1f))
-                        Text(
+                    Box(Modifier.fillMaxWidth().height(245.dp).padding(top = 4.dp)) {
+                        TimeSeriesChart(
+                            samples = s.speeds,
+                            color = SpeedColor,
+                            modifier = Modifier.fillMaxSize(),
+                            windowMs = if (fullRide) null else TWO_MINUTES_MS,
+                            endMs = if (fullRide) null else now,
+                            yRange = if (fullRide) 0.0..45.0 else null,
+                            niceY = true,
+                            logXWhenFull = true,
+                            emptyText = "Waiting for GPS…",
+                            expected = ride.expectedSpeeds,
+                            expectedColor = MaterialTheme.colorScheme.primary,
+                            legend = true,
+                        )
+                        // Across from the legend: what the chart shows. Tapping the chart switches it.
+                        ChartChip(
                             if (fullRide) "full ride" else "last 2 min",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            Modifier.align(Alignment.TopEnd).padding(top = 8.dp, end = 8.dp),
                         )
                     }
-                    TimeSeriesChart(
-                        samples = s.speeds,
-                        color = SpeedColor,
-                        modifier = Modifier.fillMaxWidth().height(245.dp).padding(top = 6.dp),
-                        windowMs = if (fullRide) null else TWO_MINUTES_MS,
-                        endMs = if (fullRide) null else now,
-                        yRange = if (fullRide) 0.0..45.0 else null,
-                        niceY = true,
-                        logXWhenFull = true,
-                        emptyText = "Waiting for GPS…",
-                        expected = ride.expectedSpeeds,
-                        expectedColor = MaterialTheme.colorScheme.primary,
-                        legend = true,
-                    )
-                }
-            }
-
-            Card(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(12.dp)) {
-                    Text("Heart rate", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, color = HeartColor)
-                    Text(
-                        "Added after the ride. Your Steel HR sends workout data when the workout ends.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
                 }
             }
 
             Button(
                 onClick = { if (confirmStop) onStop() else confirmStop = true },
-                modifier = Modifier.fillMaxWidth().height(60.dp),
+                modifier = Modifier.fillMaxWidth().height(56.dp),
                 colors = if (confirmStop) ButtonDefaults.buttonColors(containerColor = Danger)
                 else ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surfaceVariant, contentColor = MaterialTheme.colorScheme.onSurface),
             ) { Text(if (confirmStop) "Tap again to stop" else "Stop ride", style = MaterialTheme.typography.titleMedium) }
@@ -433,7 +419,7 @@ private fun LeaveNowPreview(routeId: Long) {
     val p = preview ?: return
     Card(Modifier.fillMaxWidth()) {
         Column(
-            Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 24.dp),
+            Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 20.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
@@ -555,7 +541,7 @@ private fun EtaCard(r: RideRoute, live: LiveEta?, lat: Double?, lon: Double?, li
         }
     }
     Card(Modifier.fillMaxWidth().then(share)) {
-        Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text(
@@ -691,11 +677,10 @@ private fun WindBadge(w: WindNow, exposureKnown: Boolean = true) {
         Text(w.label, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
         val kmh = (kotlin.math.abs(w.headwindMps) * 3.6).roundToInt()
         val shelter = if (w.exposure >= 0.7) "open" else if (w.exposure >= 0.4) "partly open" else "sheltered"
-        Text(
-            if (exposureKnown) "%d km/h · %s".format(kmh, shelter) else "~%d km/h".format(kmh),
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        val small = MaterialTheme.typography.labelSmall
+        val muted = MaterialTheme.colorScheme.onSurfaceVariant
+        Text(if (exposureKnown) "%d km/h".format(kmh) else "~%d km/h".format(kmh), style = small, color = muted)
+        if (exposureKnown) Text(shelter, style = small, color = muted)
     }
 }
 
@@ -740,37 +725,45 @@ private fun windColor(impact: Double): Color {
 }
 
 /**
- * The whole route, one block per segment in two bars: the sky, and below it what the wind does to
- * you. A red triangle underneath points at where you are.
+ * The whole route in two bars, labelled "sky" and "wind": the weather over each segment, and below
+ * it what the wind does to you there. Segments run into each other without gaps, so the colours
+ * read as a band rather than a row of blocks. A triangle underneath points at where you are.
  */
 @Composable
 private fun ProgressTrack(r: RideRoute, modifier: Modifier) {
     val unknown = MaterialTheme.colorScheme.surfaceVariant
+    val marker = MaterialTheme.colorScheme.onSurface
+    val measurer = rememberTextMeasurer()
+    val labelStyle = TextStyle(color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 8.sp, lineHeight = 9.sp)
     Canvas(modifier) {
+        val labels = listOf("sky", "wind").map { measurer.measure(it, labelStyle) }
+        val left = labels.maxOf { it.size.width } + 6.dp.toPx()
         val len = r.progress.lengthM.toFloat()
-        fun x(m: Double) = (m.toFloat() / len).coerceIn(0f, 1f) * size.width
+        fun x(m: Double) = left + (m.toFloat() / len).coerceIn(0f, 1f) * (size.width - left)
         val barH = 8.dp.toPx()
-        val gap = 1.dp.toPx()
 
-        fun bar(top: Float, colorOf: (SegmentWeather) -> Color) {
+        fun bar(top: Float, label: Int, colorOf: (SegmentWeather) -> Color) {
+            val l = labels[label]
+            drawText(l, topLeft = Offset(0f, top + (barH - l.size.height) / 2))
             val shape = Path().apply {
-                addRoundRect(RoundRect(0f, top, size.width, top + barH, CornerRadius(barH / 2)))
+                addRoundRect(RoundRect(left, top, size.width, top + barH, CornerRadius(barH / 2)))
             }
             clipPath(shape) {
                 r.segmentStartsM.forEachIndexed { i, startM ->
                     val x0 = x(startM)
                     val x1 = x(r.segmentStartsM.getOrNull(i + 1) ?: r.progress.lengthM)
                     val color = r.weather.getOrNull(i)?.let(colorOf) ?: unknown
-                    drawRect(color, Offset(x0, top), Size((x1 - x0 - gap).coerceAtLeast(1f), barH))
+                    // A pixel of overlap, so no hairline seam shows between two blocks.
+                    drawRect(color, Offset(x0, top), Size(x1 - x0 + 1f, barH))
                 }
             }
         }
-        bar(0f) { w -> w.sky?.let(::skyColor) ?: unknown }
+        bar(0f, 0) { w -> w.sky?.let(::skyColor) ?: unknown }
         val windTop = barH + 2.dp.toPx()
-        bar(windTop) { w -> windColor(w.windImpact) }
+        bar(windTop, 1) { w -> windColor(w.windImpact) }
 
         val half = 5.dp.toPx()
-        val at = x(r.progress.progressM).coerceIn(half, size.width - half)
+        val at = x(r.progress.progressM).coerceIn(left + half, size.width - half)
         val apex = windTop + barH + 1.dp.toPx()
         drawPath(
             Path().apply {
@@ -779,9 +772,22 @@ private fun ProgressTrack(r: RideRoute, modifier: Modifier) {
                 lineTo(at + half, apex + 8.dp.toPx())
                 close()
             },
-            Danger,
+            // Neutral: red and green already say what the wind does.
+            marker,
         )
     }
+}
+
+/** A small annotation inside a chart's corner, on the same translucent chip as the legend. */
+@Composable
+private fun ChartChip(text: String, modifier: Modifier = Modifier) {
+    Text(
+        text,
+        modifier
+            .background(MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.85f), RoundedCornerShape(4.dp))
+            .padding(horizontal = 5.dp, vertical = 2.dp),
+        style = TextStyle(color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, lineHeight = 12.sp),
+    )
 }
 
 @Composable

@@ -12,11 +12,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -36,13 +34,18 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.tegenwind.app.appContainer
 import com.tegenwind.app.data.EnrichState
 import com.tegenwind.app.data.RouteSegmentEntity
-import com.tegenwind.app.ui.theme.Danger
-import com.tegenwind.app.ui.theme.GoodColor
-import com.tegenwind.app.ui.theme.SpeedColor
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.drawText
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.unit.sp
+import com.tegenwind.app.ui.Action
+import com.tegenwind.app.ui.ActionCard
+import com.tegenwind.app.ui.ChartCard
+import com.tegenwind.app.ui.StatTile
+import com.tegenwind.app.ui.rememberConfirmTap
+import com.tegenwind.app.weather.compassPoint
 import kotlinx.coroutines.launch
-
-private val COMPASS = listOf("N", "NE", "E", "SE", "S", "SW", "W", "NW")
-fun compass(bearingDeg: Double): String = COMPASS[(((bearingDeg + 22.5) % 360) / 45).toInt()]
 
 @Composable
 fun RouteDetailScreen(routeId: Long, onBack: () -> Unit, onOpen: (Long) -> Unit) {
@@ -52,7 +55,8 @@ fun RouteDetailScreen(routeId: Long, onBack: () -> Unit, onOpen: (Long) -> Unit)
     val scope = rememberCoroutineScope()
     val route by remember(routeId) { dao.routeFlow(routeId) }.collectAsStateWithLifecycle(null)
     val segments by remember(routeId) { dao.segmentsFlow(routeId) }.collectAsStateWithLifecycle(emptyList())
-    var confirmDelete by remember { mutableStateOf(false) }
+    // The second tap has to follow soon, or Delete goes back to asking.
+    var confirmDelete by rememberConfirmTap()
 
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(14.dp),
@@ -72,78 +76,106 @@ fun RouteDetailScreen(routeId: Long, onBack: () -> Unit, onOpen: (Long) -> Unit)
             val openKm = segments.filter { (it.exposure ?: 0.0) >= 0.7 }.sumOf { it.endM - it.startM } / 1000
             val steepest = segments.mapNotNull { it.gradePct }.maxByOrNull { kotlin.math.abs(it) } ?: 0.0
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Stat("Traffic lights", "$lights", Modifier.weight(1f))
-                Stat("Open to wind", "%.1f km".format(openKm), Modifier.weight(1f))
-                Stat("Steepest", "%+.1f%%".format(steepest), Modifier.weight(1f))
+                StatTile("Traffic lights", "$lights", Modifier.weight(1f))
+                StatTile("Open to wind", "%.1f km".format(openKm), Modifier.weight(1f))
+                StatTile("Steepest", "%+.1f%%".format(steepest), Modifier.weight(1f))
             }
-            Card(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(12.dp)) {
-                    Text("Wind exposure along the route", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    Text(
-                        "Tall bars: open fields. Short bars: between buildings. Red ticks: traffic lights.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    ExposureStrip(segments, r.lengthM, Modifier.fillMaxWidth().height(90.dp).padding(top = 8.dp))
-                }
+            ChartCard("Wind exposure along the route", "Tall bars: open fields. Short bars: between buildings. Amber ticks: traffic lights.") {
+                ExposureStrip(segments, r.lengthM, Modifier.fillMaxWidth().height(104.dp))
             }
-        }
-
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(onClick = { scope.launch { onOpen(repo.createReverse(routeId)) } }) { Text("Add reverse route") }
-            // Also while it's running: that's exactly when a stalled lookup needs restarting.
-            OutlinedButton(onClick = { repo.enrich(routeId) }) { Text("Look up again") }
         }
 
         if (segments.isNotEmpty()) {
+            // 50-odd rows is a lot to scroll past, so the table waits until asked for.
+            var showSegments by rememberSaveable(routeId) { mutableStateOf(false) }
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) {
-                    SegmentHeader()
-                    segments.forEach { s ->
-                        HorizontalDivider()
-                        SegmentRow(s)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Segments", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                        TextButton(onClick = { showSegments = !showSegments }) {
+                            Text(if (showSegments) "Hide" else "Show all ${segments.size}")
+                        }
+                    }
+                    if (showSegments) {
+                        SegmentHeader()
+                        segments.forEach { s ->
+                            HorizontalDivider()
+                            SegmentRow(s)
+                        }
                     }
                 }
             }
         }
 
-        TextButton(onClick = { confirmDelete = true }) { Text("Delete route", color = MaterialTheme.colorScheme.error) }
-        Text(DATA_ATTRIBUTION, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    }
-
-    if (confirmDelete) {
-        AlertDialog(
-            onDismissRequest = { confirmDelete = false },
-            title = { Text("Delete this route?") },
-            text = { Text("Your rides on it stay, but they're no longer linked to a route.") },
-            confirmButton = {
-                TextButton(onClick = {
-                    confirmDelete = false
-                    scope.launch {
-                        repo.delete(routeId)
-                        onBack()
-                    }
-                }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
-            },
-            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } },
+        ActionCard(
+            listOf(
+                Action("Add reverse route", "The same route the other way round, e.g. werk-woon from woon-werk.") {
+                    scope.launch { onOpen(repo.createReverse(routeId)) }
+                },
+                // Also while it's running: that's exactly when a stalled lookup needs restarting.
+                Action("Look up again", "Fetches elevation, buildings and traffic lights again, e.g. after a failed lookup.") {
+                    repo.enrich(routeId)
+                },
+                Action(
+                    if (confirmDelete) "Sure? Tap again" else "Delete route",
+                    "Removes the route and what it learned. Your rides on it stay, no longer linked to a route.",
+                    danger = true,
+                    armed = confirmDelete,
+                ) {
+                    if (confirmDelete) {
+                        confirmDelete = false
+                        scope.launch {
+                            repo.delete(routeId)
+                            onBack()
+                        }
+                    } else confirmDelete = true
+                },
+            )
         )
+        Text(DATA_ATTRIBUTION, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
+/**
+ * How open each segment is to the wind, as bars along the route: tall is an open field, short is
+ * between buildings. Grey, because it describes the road rather than judging it; amber ticks mark
+ * traffic lights. With [axis], km marks run underneath.
+ */
 @Composable
-private fun ExposureStrip(segments: List<RouteSegmentEntity>, lengthM: Double, modifier: Modifier) {
+internal fun ExposureStrip(segments: List<RouteSegmentEntity>, lengthM: Double, modifier: Modifier, axis: Boolean = true) {
     val track = MaterialTheme.colorScheme.surfaceVariant
+    val bar = MaterialTheme.colorScheme.onSurfaceVariant
+    val light = MaterialTheme.colorScheme.primary
+    val measurer = rememberTextMeasurer()
+    val labelStyle = TextStyle(color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
     Canvas(modifier) {
+        val axisH = if (axis) 16.dp.toPx() else 0f
+        val h = size.height - axisH
         val gap = 1.dp.toPx()
+        val tick = minOf(10.dp.toPx(), h * 0.3f)
         segments.forEach { s ->
             val x0 = (s.startM / lengthM * size.width).toFloat()
             val w = ((s.endM - s.startM) / lengthM * size.width).toFloat() - gap
             val e = (s.exposure ?: 0.0).toFloat()
-            drawRect(track, Offset(x0, 0f), Size(w, size.height))
-            drawRect(SpeedColor.copy(alpha = 0.35f + 0.65f * e), Offset(x0, size.height * (1 - e)), Size(w, size.height * e))
+            drawRect(track, Offset(x0, 0f), Size(w, h))
+            drawRect(bar.copy(alpha = 0.35f + 0.65f * e), Offset(x0, h * (1 - e)), Size(w, h * e))
             repeat(s.signals ?: 0) { k ->
                 val x = x0 + w - 2.dp.toPx() - k * 4.dp.toPx()
-                drawRect(Danger, Offset(x, 0f), Size(2.dp.toPx(), 10.dp.toPx()))
+                drawRect(light, Offset(x, 0f), Size(2.dp.toPx(), tick))
+            }
+        }
+        if (axis) {
+            // A mark every 1, 2 or 5 km, whichever gives at most seven.
+            val km = lengthM / 1000
+            val step = listOf(1, 2, 5, 10).first { km / it <= 7 }
+            var k = 0
+            while (k <= km + 1e-9) {
+                val text = if (k + step > km) "$k km" else "$k"
+                val layout = measurer.measure(text, labelStyle)
+                val x = (k * 1000 / lengthM * size.width).toFloat()
+                val lx = (x - layout.size.width / 2).coerceIn(0f, size.width - layout.size.width)
+                drawText(layout, topLeft = Offset(lx, size.height - layout.size.height))
+                k += step
             }
         }
     }
@@ -163,21 +195,10 @@ private fun SegmentRow(s: RouteSegmentEntity) {
     val style = MaterialTheme.typography.bodyMedium.copy(fontFeatureSettings = "tnum")
     Row(Modifier.padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
         Text("%.2f".format(s.startM / 1000), Modifier.width(70.dp), style = style)
-        Text(compass(s.bearingDeg), Modifier.width(44.dp), style = style)
+        Text(compassPoint(s.bearingDeg), Modifier.width(44.dp), style = style)
         Text(s.gradePct?.let { "%+.1f%%".format(it) } ?: "–", Modifier.width(64.dp), style = style)
-        Text(s.exposure?.let { "%d%%".format((it * 100).toInt()) } ?: "–", Modifier.width(60.dp), style = style,
-            color = if ((s.exposure ?: 0.0) >= 0.7) GoodColor else MaterialTheme.colorScheme.onSurface)
-        Text(s.signals?.takeIf { it > 0 }?.toString() ?: "", Modifier.width(50.dp), style = style, color = Danger)
+        Text(s.exposure?.let { "%d%%".format((it * 100).toInt()) } ?: "–", Modifier.width(60.dp), style = style)
+        Text(s.signals?.takeIf { it > 0 }?.toString() ?: "", Modifier.width(50.dp), style = style, color = MaterialTheme.colorScheme.primary)
         Spacer(Modifier.weight(1f))
-    }
-}
-
-@Composable
-private fun Stat(label: String, value: String, modifier: Modifier = Modifier) {
-    Card(modifier) {
-        Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
-            Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(value, style = MaterialTheme.typography.titleMedium.copy(fontFeatureSettings = "tnum"), fontWeight = FontWeight.SemiBold)
-        }
     }
 }

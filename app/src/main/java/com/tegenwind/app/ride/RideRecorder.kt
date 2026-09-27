@@ -108,6 +108,9 @@ class RideRecorder(
     private val pending = ArrayList<TrackPointEntity>()
     private val traversals = ArrayList<SegmentTraversalEntity>()
     private val expected = ArrayList<Sample>()
+    /** The form the expected line is drawn with: follows today's form, but eases into each change. */
+    private var plottedForm: Double? = null
+    private var plottedAtMs = 0L
     private var lastFlushMs = 0L
 
     private var autoFinishCancelled = false
@@ -155,6 +158,7 @@ class RideRecorder(
         weather = null
         traversals.clear()
         expected.clear()
+        plottedForm = null
         segIdx = -1
         lastFlushMs = now
         _live.value = LiveRide(
@@ -248,11 +252,21 @@ class RideRecorder(
      * What the ETA assumes you ride here. Nothing before reaching the route or while off it, so the
      * line breaks there rather than pretending. Standing at a light it keeps the riding speed: it is
      * a target, not a forecast of standing still.
+     *
+     * Form is updated once per segment and can move several percent at once, early in a ride most of
+     * all. The ETA takes that at once; the line eases into it over [FORM_EASE_MS] so it doesn't jump.
      */
     private fun recordExpected(p: RouteProgress, nowMs: Long) {
         val m = model ?: return
         if (!p.onRouteYet || p.offRoute) return
-        val mps = m.expectedSpeedMps(p.progressM, nowMs, weather, form.estimate()) ?: return
+        val target = form.estimate()
+        val eased = plottedForm?.let { was ->
+            val dt = (nowMs - plottedAtMs).coerceAtLeast(0L).toDouble()
+            was + (target.mean - was) * (1 - kotlin.math.exp(-dt / FORM_EASE_MS))
+        } ?: target.mean
+        plottedForm = eased
+        plottedAtMs = nowMs
+        val mps = m.expectedSpeedMps(p.progressM, nowMs, weather, target.copy(mean = eased)) ?: return
         expected += Sample(nowMs, mps * 3.6)
     }
 
@@ -522,6 +536,8 @@ class RideRecorder(
         const val CLEAN_ENTRY_M = 30.0
         const val MIN_MOVING_MS = 5_000L
         const val MIN_FORM_OBSERVATIONS = 3
+        /** How quickly the expected line follows a change in form: about two thirds of the way in 15 s. */
+        const val FORM_EASE_MS = 15_000.0
         /** Far enough from where you tapped Start to call it setting off, if GPS speed doesn't say so. */
         const val SET_OFF_M = 25.0
     }

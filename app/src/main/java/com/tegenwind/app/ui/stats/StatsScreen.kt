@@ -2,7 +2,6 @@ package com.tegenwind.app.ui.stats
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -12,10 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Card
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -45,6 +41,9 @@ import com.tegenwind.app.data.SegmentTraversalEntity
 import com.tegenwind.app.eta.Banister
 import com.tegenwind.app.eta.RiderState
 import com.tegenwind.app.ride.formatElapsed
+import com.tegenwind.app.ui.StatTile
+import com.tegenwind.app.ui.Picker
+import com.tegenwind.app.ui.ChartCard
 import com.tegenwind.app.ui.theme.Danger
 import com.tegenwind.app.ui.theme.GoodColor
 import com.tegenwind.app.ui.theme.SpeedColor
@@ -62,7 +61,6 @@ fun StatsScreen() {
     val container = LocalContext.current.appContainer
     val routes by remember { container.db.routes().routes() }.collectAsStateWithLifecycle(emptyList())
     var selectedRouteId by rememberSaveable { mutableStateOf<Long?>(null) }
-    var routeDropdownOpen by remember { mutableStateOf(false) }
 
     LaunchedEffect(routes) {
         if (routes.isNotEmpty() && routes.none { it.id == selectedRouteId }) {
@@ -107,16 +105,12 @@ fun StatsScreen() {
         }
 
         item {
-            Box {
-                OutlinedButton(onClick = { routeDropdownOpen = true }, modifier = Modifier.fillMaxWidth()) {
-                    Text(selectedRoute?.name ?: "Choose a route")
-                }
-                DropdownMenu(expanded = routeDropdownOpen, onDismissRequest = { routeDropdownOpen = false }, modifier = Modifier.fillMaxWidth(0.85f)) {
-                    routes.forEach { r ->
-                        DropdownMenuItem(text = { Text(r.name) }, onClick = { selectedRouteId = r.id; routeDropdownOpen = false })
-                    }
-                }
-            }
+            Picker(
+                selected = selectedRoute?.id,
+                options = routes.map { it.id to it.name },
+                onSelect = { selectedRouteId = it },
+                modifier = Modifier.fillMaxWidth(),
+            )
         }
 
         if (rides.size < 2) {
@@ -132,27 +126,37 @@ fun StatsScreen() {
         item { KpiRow(rides) }
 
         item {
-            ChartCard("Duration", "trend over time · fastest & slowest") {
+            ChartCard("Duration", "minutes, start to finish, over time · fastest & slowest") {
                 TrendChart(rides)
             }
         }
 
         item {
-            ChartCard("Duration", "how often each time range happens") {
+            ChartCard("Duration", "how often each time range happens, in minutes") {
                 DurationHistogram(rides)
             }
         }
 
         if (headwindPoints.size >= 2) {
             item {
-                ChartCard("Headwind vs duration", "each dot is one ride") {
+                // Two deliberate lines: as one, it broke inside "km/h".
+                ChartCard("Headwind vs duration", "each dot is one ride · up: minutes\nacross: headwind in km/h, below 0 is tailwind") {
                     HeadwindScatter(headwindPoints)
                 }
             }
         }
 
         if (slowRows.isNotEmpty()) {
-            item { Text("Slowest segments", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold) }
+            item {
+                Column {
+                    Text("Slowest segments", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "moving time compared with bare physics: where the road itself costs time",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
             items(slowRows) { SegmentOverrunRow(it) }
         }
     }
@@ -168,13 +172,13 @@ private fun FitnessCard(state: RiderState) {
         Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Fitness", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Stat("Fitness · 6 wk", "%.0f".format(state.fitness), Modifier.weight(1f))
-                Stat("Fatigue · 1 wk", "%.0f".format(state.fatigue), Modifier.weight(1f))
-                Stat("Today", "%+.1f%%".format(effectPct), Modifier.weight(1f))
+                FlatStat("Fitness · 6 wk", "%.0f".format(state.fitness), Modifier.weight(1f))
+                FlatStat("Fatigue · 1 wk", "%.0f".format(state.fatigue), Modifier.weight(1f))
+                FlatStat("Today", "%+.1f%%".format(effectPct), Modifier.weight(1f))
             }
             Text(
                 when {
-                    state.rideDays < 10 -> "Ride on ${10 - state.rideDays} more days before this starts nudging the ETA."
+                    state.rideDays < Banister.MIN_RIDE_DAYS -> "Ride on ${Banister.MIN_RIDE_DAYS - state.rideDays} more days before this starts nudging the ETA."
                     effectPct > 0.3 -> "Fresher than your recent average, so the ETA expects a little more of you."
                     effectPct < -0.3 -> "Still carrying the last few rides, so the ETA gives you a little more time."
                     else -> "Training and recovery are in balance; the ETA takes you at your usual pace."
@@ -194,12 +198,12 @@ private fun KpiRow(rides: List<RideEntity>) {
     val average = durations.average().toLong()
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Stat("Fastest", formatElapsed(sorted.first()), Modifier.weight(1f))
-            Stat("Slowest", formatElapsed(sorted.last()), Modifier.weight(1f))
+            StatTile("Fastest", formatElapsed(sorted.first()), Modifier.weight(1f))
+            StatTile("Slowest", formatElapsed(sorted.last()), Modifier.weight(1f))
         }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Stat("Average", formatElapsed(average), Modifier.weight(1f))
-            Stat("Median", formatElapsed(median), Modifier.weight(1f))
+            StatTile("Average", formatElapsed(average), Modifier.weight(1f))
+            StatTile("Median", formatElapsed(median), Modifier.weight(1f))
         }
     }
 }
@@ -340,7 +344,7 @@ private fun DurationHistogram(rides: List<RideEntity>) {
         }
 
         listOf(firstBin to 0f, ((firstBin + lastBin) / 2) to 0.5f, lastBin to 1f).forEach { (mins, frac) ->
-            val layout = measurer.measure("${mins.toInt()}m", labelStyle)
+            val layout = measurer.measure("${mins.toInt()} min", labelStyle)
             val cx = padL + plotW * frac
             val lx = when (frac) {
                 0f -> cx
@@ -352,12 +356,12 @@ private fun DurationHistogram(rides: List<RideEntity>) {
     }
 }
 
-/** (headwind m/s at rider height, positive = against you; ride duration in minutes) for each ride that has segment data. */
+/** (headwind km/h at rider height, positive = against you; ride duration in minutes) for each ride that has segment data. */
 private fun headwindDurationPoints(rides: List<RideEntity>, traversals: List<SegmentTraversalEntity>): List<Pair<Double, Double>> {
     val byRide = traversals.groupBy { it.rideId }
     return rides.mapNotNull { ride ->
         val hs = byRide[ride.id]?.mapNotNull { it.headwindMps }
-        if (hs.isNullOrEmpty()) null else hs.average() to durationMs(ride) / 60_000.0
+        if (hs.isNullOrEmpty()) null else hs.average() * 3.6 to durationMs(ride) / 60_000.0
     }
 }
 
@@ -372,7 +376,8 @@ private fun HeadwindScatter(points: List<Pair<Double, Double>>) {
         val xMx = points.maxOf { it.first }
         val yMn = points.minOf { it.second }
         val yMx = points.maxOf { it.second }
-        val xStep = niceStep((xMx - xMn).coerceAtLeast(1.0))
+        // At least 1 km/h, so no two ticks can round to the same label.
+        val xStep = niceStep((xMx - xMn).coerceAtLeast(1.0)).coerceAtLeast(1.0)
         val yStep = niceStep((yMx - yMn).coerceAtLeast(2.0)).coerceAtLeast(1.0)
         val xLo = floor(xMn / xStep) * xStep
         val xHi = (ceil(xMx / xStep) * xStep).coerceAtLeast(xLo + xStep)
@@ -400,7 +405,8 @@ private fun HeadwindScatter(points: List<Pair<Double, Double>>) {
         while (xv <= xHi + 0.001) {
             val xx = x(xv)
             drawLine(gridColor, Offset(xx, padT), Offset(xx, padT + plotH), strokeWidth = 1f)
-            val layout = measurer.measure("%+.0f".format(xv), labelStyle)
+            val tick = "%+.0f".format(xv).replace('-', '−').let { if (it == "+0" || it == "−0") "0" else it }
+            val layout = measurer.measure(tick, labelStyle)
             drawText(layout, topLeft = Offset(xx - layout.size.width / 2, size.height - layout.size.height))
             xv += xStep
         }
@@ -435,40 +441,23 @@ private fun SegmentOverrunRow(s: SegOverrun) {
             Column(Modifier.weight(1f)) {
                 Text("%.1f–%.1f km".format(s.startM / 1000, s.endM / 1000), fontWeight = FontWeight.SemiBold)
                 Text(
-                    "usual ${formatElapsed(s.actualMs.toLong())} vs modeled ${formatElapsed(s.predictedMs.toLong())} · ${s.rides} ride${if (s.rides == 1) "" else "s"}",
+                    "usual ${formatElapsed(s.actualMs.toLong())} · physics ${formatElapsed(s.predictedMs.toLong())} · ${s.rides} ride${if (s.rides == 1) "" else "s"}",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
             val pct = ((s.overrun - 1) * 100).toInt()
-            Text(
-                "%+d%%".format(pct),
-                fontWeight = FontWeight.SemiBold,
-                color = if (pct > 0) Danger else GoodColor,
-            )
+            // Neutral: against bare physics nearly every segment is slower, so red would say nothing.
+            Text("%+d%%".format(pct), fontWeight = FontWeight.SemiBold)
         }
     }
 }
 
+/** A label over a value, straight on the card: for numbers grouped inside a card of their own. */
 @Composable
-private fun ChartCard(title: String, subtitle: String, content: @Composable () -> Unit) {
-    Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
-            Row {
-                Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            }
-            Text(subtitle, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Column(Modifier.padding(top = 6.dp)) { content() }
-        }
-    }
-}
-
-@Composable
-private fun Stat(label: String, value: String, modifier: Modifier = Modifier) {
-    Card(modifier) {
-        Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
-            Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(value, style = MaterialTheme.typography.titleMedium.copy(fontFeatureSettings = "tnum"), fontWeight = FontWeight.SemiBold)
-        }
+private fun FlatStat(label: String, value: String, modifier: Modifier = Modifier) {
+    Column(modifier) {
+        Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+        Text(value, style = MaterialTheme.typography.titleMedium.copy(fontFeatureSettings = "tnum"), fontWeight = FontWeight.SemiBold)
     }
 }

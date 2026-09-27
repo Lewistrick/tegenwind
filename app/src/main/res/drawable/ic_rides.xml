@@ -3,8 +3,9 @@
     android:height="24dp"
     android:viewportWidth="24"
     android:viewportHeight="24">
+    <!-- A list: rides are a history, not a chart (that's Stats). -->
     <path
-        android:pathData="M5,20v-8 M12,20V5 M19,20v-5 M3,20h18"
+        android:pathData="M9,6h11 M9,12h11 M9,18h11 M4.5,6h0.01 M4.5,12h0.01 M4.5,18h0.01"
         android:strokeWidth="1.8"
         android:strokeColor="#FFFFFFFF"
         android:strokeLineCap="round"

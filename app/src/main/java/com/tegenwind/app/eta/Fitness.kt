@@ -37,7 +37,7 @@ object Banister {
 
     /** Freshness is only believable once there is a few weeks of riding behind it. */
     private const val MIN_FITNESS = 8.0
-    private const val MIN_RIDE_DAYS = 10
+    const val MIN_RIDE_DAYS = 10
 
     /** How much of the freshness swing reaches your legs, and the most it may ever claim. */
     private const val EFFECT = 0.15

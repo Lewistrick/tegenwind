@@ -6,7 +6,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -72,26 +71,29 @@ fun RidesScreen() {
 
 @Composable
 private fun RideRow(ride: RideEntity, routeName: String?, onClick: () -> Unit) {
+    // Simulated rides stay in the list but step back, so the real ones stand out.
+    val ink = if (ride.simulated) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
     Card(Modifier.fillMaxWidth().clickable(onClick = onClick)) {
-        Row(Modifier.padding(14.dp)) {
-            Column(Modifier.weight(1f)) {
-                Text(routeName ?: "Free ride", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                Text(
-                    formatRideStart(ride.startedAtMs) + if (ride.simulated) " · simulated" else "",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Text(
-                    "%.1f km · %s moving".format(ride.distanceM / 1000, formatElapsed(ride.movingMs)) +
-                        (formPercent(ride.formFactor)?.let { " · form $it" } ?: ""),
-                    style = MaterialTheme.typography.bodyMedium.copy(fontFeatureSettings = "tnum"),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+        Column(Modifier.padding(14.dp)) {
+            Row {
+                Text(routeName ?: "Free ride", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, color = ink)
+                Text(avgSpeedText(ride), style = MaterialTheme.typography.titleMedium.copy(fontFeatureSettings = "tnum"), color = ink)
             }
-            Spacer(Modifier.padding(4.dp))
             Text(
-                avgSpeedText(ride),
-                style = MaterialTheme.typography.titleMedium.copy(fontFeatureSettings = "tnum"),
+                formatRideStart(ride.startedAtMs) + if (ride.simulated) " · simulated" else "",
+                style = MaterialTheme.typography.bodyMedium,
+                color = muted,
+            )
+            // Each item keeps its words together ("form -16%"), so a line can only break between items.
+            Text(
+                listOfNotNull(
+                    "%.1f km".format(ride.distanceM / 1000),
+                    "${formatElapsed(ride.movingMs)} moving",
+                    formPercent(ride.formFactor)?.let { "form $it" },
+                ).joinToString(" · ") { it.replace(' ', ' ') },
+                style = MaterialTheme.typography.bodyMedium.copy(fontFeatureSettings = "tnum"),
+                color = muted,
             )
         }
     }

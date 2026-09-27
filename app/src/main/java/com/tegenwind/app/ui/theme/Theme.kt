@@ -8,7 +8,11 @@ import androidx.compose.runtime.Composable
 private val NightScheme = darkColorScheme(
     primary = Amber,
     onPrimary = AmberInk,
-    secondary = SpeedColor,
+    // Material components pick up secondary for selected tabs, chips and the like: keep them amber.
+    secondary = Amber,
+    onSecondary = AmberInk,
+    secondaryContainer = AmberDim,
+    onSecondaryContainer = Amber,
     tertiary = HeartColor,
     background = Asphalt,
     onBackground = Ink,

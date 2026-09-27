@@ -1,13 +1,9 @@
 package com.tegenwind.app.ui.rides
 
 import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -15,12 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Card
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -39,7 +30,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.Alignment
 import com.tegenwind.app.appContainer
@@ -54,11 +44,16 @@ import com.tegenwind.app.ride.RideTracker
 import com.tegenwind.app.ride.Sample
 import com.tegenwind.app.ride.formatElapsed
 import com.tegenwind.app.ui.TimeSeriesChart
+import com.tegenwind.app.ui.Picker
+import com.tegenwind.app.ui.rememberConfirmTap
+import com.tegenwind.app.ui.StatTile
+import com.tegenwind.app.ui.ChartCard
+import com.tegenwind.app.ui.Action
+import com.tegenwind.app.ui.ActionCard
 import com.tegenwind.app.ui.theme.HeartColor
 import com.tegenwind.app.ui.theme.SpeedColor
 import androidx.health.connect.client.PermissionController
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.time.Instant
 
@@ -81,7 +76,8 @@ fun RideDetailScreen(rideId: Long, onBack: () -> Unit, backLabel: String = "Ride
     var speeds by remember { mutableStateOf<List<Sample>>(emptyList()) }
     var hr by remember { mutableStateOf<HrState>(HrState.Loading) }
     var hrRefresh by remember { mutableIntStateOf(0) }
-    var confirmDelete by remember { mutableStateOf(false) }
+    // The second tap has to follow soon, or Delete goes back to asking.
+    var confirmDelete by rememberConfirmTap()
     var routeName by remember { mutableStateOf<String?>(null) } // non-null while the "Save as route" dialog is open
     var routeMessage by remember { mutableStateOf<String?>(null) }
     var rideRouteName by remember { mutableStateOf<String?>(null) }
@@ -107,7 +103,8 @@ fun RideDetailScreen(rideId: Long, onBack: () -> Unit, backLabel: String = "Ride
     }
     val r = ride
     LaunchedEffect(r, hrRefresh) {
-        if (r != null) {
+        // A simulated ride has no watch behind it, so there is nothing to look for.
+        if (r != null && !r.simulated) {
             hr = HrState.Loading
             hr = loadHeartRate(container.healthConnect, r)
         }
@@ -137,28 +134,26 @@ fun RideDetailScreen(rideId: Long, onBack: () -> Unit, backLabel: String = "Ride
         )
 
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Stat("Distance", "%.2f km".format(r.distanceM / 1000), Modifier.weight(1f))
-            Stat("Moving", formatElapsed(r.movingMs), Modifier.weight(1f))
-            Stat("Total", formatElapsed((r.endedAtMs ?: r.startedAtMs) - r.startedAtMs), Modifier.weight(1f))
+            StatTile("Distance", "%.2f km".format(r.distanceM / 1000), Modifier.weight(1f))
+            StatTile("Moving", formatElapsed(r.movingMs), Modifier.weight(1f))
+            StatTile("Total", formatElapsed((r.endedAtMs ?: r.startedAtMs) - r.startedAtMs), Modifier.weight(1f))
         }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Stat("Avg speed", avgSpeedText(r), Modifier.weight(1f))
-            Stat("Form", formPercent(r.formFactor) ?: "–", Modifier.weight(1f))
+            StatTile("Avg speed", avgSpeedText(r), Modifier.weight(1f))
+            StatTile("Form", formPercent(r.formFactor) ?: "–", Modifier.weight(1f))
             val hrSamples = (hr as? HrState.Loaded)?.samples
-            Stat("Avg HR", hrSamples?.let { "${it.map { s -> s.value }.average().toInt()} bpm" } ?: "--", Modifier.weight(1f))
+            StatTile("Avg HR", hrSamples?.let { "${it.map { s -> s.value }.average().toInt()} bpm" } ?: "--", Modifier.weight(1f))
         }
 
-        ChartCard("Speed", "dots GPS · line 2-min median") {
-            TimeSeriesChart(speeds, SpeedColor, Modifier.fillMaxWidth().height(150.dp), yRange = 0.0..45.0)
+        ChartCard("Speed") {
+            TimeSeriesChart(speeds, SpeedColor, Modifier.fillMaxWidth().height(150.dp), yRange = 0.0..45.0, legend = true)
         }
 
-        when (val state = hr) {
+        // A simulated ride has no heart rate to show or wait for.
+        if (!r.simulated) when (val state = hr) {
             HrState.Loading -> ChartCard("Heart rate", "loading…") { }
-            is HrState.Loaded -> ChartCard(
-                "Heart rate",
-                "max ${state.samples.maxOf { it.value }.toInt()} bpm · line 2-min median",
-            ) {
-                TimeSeriesChart(state.samples, HeartColor, Modifier.fillMaxWidth().height(150.dp), gapMs = 120_000)
+            is HrState.Loaded -> ChartCard("Heart rate", "max ${state.samples.maxOf { it.value }.toInt()} bpm") {
+                TimeSeriesChart(state.samples, HeartColor, Modifier.fillMaxWidth().height(150.dp), gapMs = 120_000, legend = true)
             }
             else -> Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -170,7 +165,8 @@ fun RideDetailScreen(rideId: Long, onBack: () -> Unit, backLabel: String = "Ride
                             is HrState.Failed -> state.message
                             else -> ""
                         },
-                        style = MaterialTheme.typography.bodyMedium,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     if (state == HrState.NoPermission) {
                         OutlinedButton(onClick = { hrPermissionLauncher.launch(container.healthConnect.permissions) }) { Text("Allow access") }
@@ -183,27 +179,28 @@ fun RideDetailScreen(rideId: Long, onBack: () -> Unit, backLabel: String = "Ride
 
         taught?.let { WhatThisRideTaughtCard(it) }
 
-        // What you can do with the ride: one row per action, the button left, what it does right.
-        Card(Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(horizontal = 12.dp, vertical = 4.dp)) {
-                val rows = ArrayList<@Composable () -> Unit>()
-                if (!r.simulated) rows += {
-                    ActionRow("Save as route", "Uses this ride's GPS track as a route, for example woon-werk. Ride it once, save it, done.") {
+        // What you can do with the ride, each with what it does.
+        ActionCard(
+            buildList {
+                if (!r.simulated) add(
+                    Action("Save as route", "Uses this ride's GPS track as a route, for example woon-werk. Ride it once, save it, done.") {
                         routeName = ""
                     }
-                }
-                if (routes.isNotEmpty()) rows += {
-                    ActionRow("Edit route", "Retroactively change which route was ridden.") { editingRoute = true }
-                }
-                if (!r.simulated && rideRouteName != null) rows += {
-                    ActionRow(
+                )
+                if (routes.isNotEmpty()) add(
+                    Action("Change route", "Pick which route this ride was on, if auto-select or you got it wrong.") {
+                        editingRoute = true
+                    }
+                )
+                if (!r.simulated && rideRouteName != null) add(
+                    Action(
                         "Update route from this ride",
                         "For a road that changed for good: gives \"$rideRouteName\" the line you rode today, " +
                             "keeping its rides and its name.",
                     ) { confirmReplaceRoute = true }
-                }
-                rows += {
-                    ActionRow(
+                )
+                add(
+                    Action(
                         if (confirmDelete) "Sure? Tap again" else "Delete ride",
                         "Removes the ride and its GPS track from this phone. Heart rate stays in Health Connect.",
                         danger = true,
@@ -217,22 +214,10 @@ fun RideDetailScreen(rideId: Long, onBack: () -> Unit, backLabel: String = "Ride
                             }
                         } else confirmDelete = true
                     }
-                }
-                rows.forEachIndexed { i, row ->
-                    if (i > 0) HorizontalDivider()
-                    row()
-                }
+                )
             }
-        }
+        )
         routeMessage?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
-    }
-
-    // The second tap has to follow soon, or Delete goes back to asking.
-    LaunchedEffect(confirmDelete) {
-        if (confirmDelete) {
-            delay(3_000)
-            confirmDelete = false
-        }
     }
 
     routeName?.let { name ->
@@ -300,22 +285,26 @@ fun RideDetailScreen(rideId: Long, onBack: () -> Unit, backLabel: String = "Ride
     }
 
     if (editingRoute) {
-        var routeDropdownOpen by remember { mutableStateOf(false) }
         AlertDialog(
             onDismissRequest = { editingRoute = false },
             title = { Text("Which route was ridden?") },
             text = {
-                Column {
-                    OutlinedButton(onClick = { routeDropdownOpen = true }, modifier = Modifier.fillMaxWidth()) {
-                        Text(r?.routeId?.let { id -> routes.find { it.id == id }?.name } ?: "Free ride")
-                    }
-                    DropdownMenu(expanded = routeDropdownOpen, onDismissRequest = { routeDropdownOpen = false }, modifier = Modifier.fillMaxWidth(0.8f)) {
-                        DropdownMenuItem(text = { Text("Free ride") }, onClick = { r?.let { scope.launch { dao.updateRide(it.copy(routeId = null)); rideRouteName = null; editingRoute = false; routeDropdownOpen = false } } })
-                        routes.forEach { route ->
-                            DropdownMenuItem(text = { Text(route.name) }, onClick = { r?.let { scope.launch { dao.updateRide(it.copy(routeId = route.id)); rideRouteName = route.name; editingRoute = false; routeDropdownOpen = false } } })
+                Picker(
+                    selected = r?.routeId,
+                    options = listOf<Pair<Long?, String>>(null to "Free ride") + routes.map { it.id to it.name },
+                    onSelect = { id ->
+                        r?.let { current ->
+                            scope.launch {
+                                val changed = current.copy(routeId = id)
+                                dao.updateRide(changed)
+                                ride = changed
+                                rideRouteName = routes.find { it.id == id }?.name
+                                editingRoute = false
+                            }
                         }
-                    }
-                }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                )
             },
             confirmButton = {
                 TextButton(onClick = { editingRoute = false }) { Text("Done") }
@@ -435,70 +424,6 @@ private fun WhatThisRideTaughtCard(taught: Taught) {
                     )
                 }
             }
-        }
-    }
-}
-
-/**
- * One action in the table at the bottom: a button of the same size in every row, and what it does.
- * A [danger] action is red, and filled red while [armed] (waiting for the confirming tap).
- */
-@Composable
-private fun ActionRow(label: String, description: String, danger: Boolean = false, armed: Boolean = false, onClick: () -> Unit) {
-    val error = MaterialTheme.colorScheme.error
-    Row(Modifier.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-        val size = Modifier.width(128.dp).height(52.dp)
-        val padding = PaddingValues(horizontal = 8.dp)
-        val text: @Composable () -> Unit = {
-            Text(label, textAlign = TextAlign.Center, style = MaterialTheme.typography.labelLarge, maxLines = 2)
-        }
-        if (armed) {
-            Button(
-                onClick = onClick,
-                modifier = size,
-                contentPadding = padding,
-                colors = ButtonDefaults.buttonColors(containerColor = error, contentColor = MaterialTheme.colorScheme.onError),
-            ) { text() }
-        } else {
-            OutlinedButton(
-                onClick = onClick,
-                modifier = size,
-                contentPadding = padding,
-                colors = if (danger) ButtonDefaults.outlinedButtonColors(contentColor = error) else ButtonDefaults.outlinedButtonColors(),
-                border = if (danger) BorderStroke(1.dp, error) else ButtonDefaults.outlinedButtonBorder(),
-            ) { text() }
-        }
-        Spacer(Modifier.width(12.dp))
-        Text(
-            description,
-            Modifier.weight(1f),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    }
-}
-
-@Composable
-private fun ChartCard(title: String, subtitle: String, content: @Composable () -> Unit) {
-    Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
-            Row {
-                Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                Spacer(Modifier.weight(1f))
-                Text(subtitle, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            Spacer(Modifier.height(6.dp))
-            content()
-        }
-    }
-}
-
-@Composable
-private fun Stat(label: String, value: String, modifier: Modifier = Modifier) {
-    Card(modifier) {
-        Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
-            Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(value, style = MaterialTheme.typography.titleMedium.copy(fontFeatureSettings = "tnum"), fontWeight = FontWeight.SemiBold)
         }
     }
 }

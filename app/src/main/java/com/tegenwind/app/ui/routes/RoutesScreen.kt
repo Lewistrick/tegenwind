@@ -13,15 +13,17 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import com.tegenwind.app.data.RideEntity
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -57,6 +59,8 @@ fun RoutesScreen() {
     val context = LocalContext.current
     val repo = context.appContainer.routes
     val routes by remember { repo.routes() }.collectAsStateWithLifecycle(emptyList())
+    val rides by remember { context.appContainer.db.rides().finishedRides() }.collectAsStateWithLifecycle(emptyList())
+    val ridesByRoute = remember(rides) { rides.filter { !it.simulated }.groupBy { it.routeId } }
     val scope = rememberCoroutineScope()
 
     var openId by rememberSaveable { mutableStateOf<Long?>(null) }
@@ -85,7 +89,8 @@ fun RoutesScreen() {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Routes", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.SemiBold)
                 Spacer(Modifier.weight(1f))
-                Button(onClick = { picker.launch(arrayOf("*/*")) }) { Text("Import GPX") }
+                // Rarely needed, so it doesn't shout: outlined, not filled.
+                OutlinedButton(onClick = { picker.launch(arrayOf("*/*")) }) { Text("Import GPX") }
             }
         }
         message?.let { m -> item { Text(m, color = MaterialTheme.colorScheme.error) } }
@@ -99,7 +104,7 @@ fun RoutesScreen() {
             }
         }
         items(routes, key = { it.id }) { r ->
-            RouteRow(r, onClick = { openId = r.id }, onEditName = { editingRouteId = r.id; editingRouteName = r.name })
+            RouteRow(r, ridesByRoute[r.id].orEmpty(), onClick = { openId = r.id }, onRename = { editingRouteId = r.id; editingRouteName = r.name })
         }
         item {
             Text(DATA_ATTRIBUTION, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -141,7 +146,7 @@ fun RoutesScreen() {
     if (idToEdit != null) {
         AlertDialog(
             onDismissRequest = { editingRouteId = null },
-            title = { Text("Edit route name") },
+            title = { Text("Rename route") },
             text = {
                 OutlinedTextField(value = editingRouteName, onValueChange = { editingRouteName = it }, label = { Text("Name") }, singleLine = true)
             },
@@ -163,20 +168,41 @@ fun RoutesScreen() {
     }
 }
 
+/** One route: how long, how often ridden and how long it usually takes, and where it's open to the wind. */
 @Composable
-private fun RouteRow(route: RouteEntity, onClick: () -> Unit, onEditName: () -> Unit) {
+private fun RouteRow(route: RouteEntity, rides: List<RideEntity>, onClick: () -> Unit, onRename: () -> Unit) {
+    val dao = LocalContext.current.appContainer.db.routes()
+    val segments by remember(route.id) { dao.segmentsFlow(route.id) }.collectAsStateWithLifecycle(emptyList())
     Card(Modifier.fillMaxWidth().clickable(onClick = onClick)) {
-        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Column(Modifier.padding(start = 14.dp, end = 6.dp, top = 6.dp, bottom = 14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text(route.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-                    Text("%.1f km".format(route.lengthM / 1000), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                TextButton(onClick = onEditName) { Text("Edit", style = MaterialTheme.typography.labelSmall) }
+                Text(route.name, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                TextButton(onClick = onRename) { Text("Rename") }
             }
-            EnrichStatus(route)
+            Column(Modifier.padding(end = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    routeSummary(route, rides),
+                    style = MaterialTheme.typography.bodyMedium.copy(fontFeatureSettings = "tnum"),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                if (segments.any { it.exposure != null }) {
+                    ExposureStrip(segments, route.lengthM, Modifier.fillMaxWidth().height(20.dp), axis = false)
+                }
+                EnrichStatus(route)
+            }
         }
     }
+}
+
+/** "13.6 km · 6 rides · usually 37:43": the typical time is the median, start to finish. */
+private fun routeSummary(route: RouteEntity, rides: List<RideEntity>): String {
+    val durations = rides.map { (it.endedAtMs ?: it.startedAtMs) - it.startedAtMs }.sorted()
+    val parts = listOfNotNull(
+        "%.1f km".format(route.lengthM / 1000),
+        if (rides.isEmpty()) "not ridden yet" else "${rides.size} ride${if (rides.size == 1) "" else "s"}",
+        durations.takeIf { it.isNotEmpty() }?.let { "usually ${formatElapsed(it[it.size / 2])}" },
+    )
+    return parts.joinToString(" · ") { it.replace(' ', '\u00A0') }
 }
 
 @Composable
