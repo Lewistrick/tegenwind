@@ -19,11 +19,15 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
 import com.tegenwind.app.ui.rides.RidesScreen
 import com.tegenwind.app.ui.routes.RoutesScreen
 import com.tegenwind.app.ui.ride.RideScreen
 import com.tegenwind.app.ui.stats.StatsScreen
 import com.tegenwind.app.ui.theme.TegenwindTheme
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 private enum class Tab(val label: String, @param:DrawableRes val icon: Int) {
     RIDE("Ride", R.drawable.ic_ride),
@@ -63,6 +67,16 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             }
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Health Connect only answers apps in front, and right at start it doesn't count this one as
+        // in front yet: give it a moment, and only read if the app is still there.
+        lifecycleScope.launch {
+            delay(2_000)
+            if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) appContainer.heartRate.catchUp()
         }
     }
 }

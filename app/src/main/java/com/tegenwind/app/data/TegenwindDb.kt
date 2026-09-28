@@ -8,6 +8,7 @@ import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.Insert
+import androidx.room.OnConflictStrategy
 import androidx.room.PrimaryKey
 import androidx.room.Query
 import androidx.room.RoomDatabase
@@ -146,6 +147,37 @@ data class RouteSegmentEntity(
     val learnedPasses: Int = 0,
 )
 
+/**
+ * Heart rate during a ride, as read from Health Connect, for fitting the in-ride heart-rate estimate.
+ * Kept for [com.tegenwind.app.health.HR_KEEP_DAYS] days only; Health Connect keeps its own copy.
+ */
+@Entity(
+    tableName = "hr_samples",
+    primaryKeys = ["rideId", "timeMs"],
+    foreignKeys = [ForeignKey(RideEntity::class, ["id"], ["rideId"], onDelete = ForeignKey.CASCADE)],
+    indices = [Index("timeMs")],
+)
+data class HrSampleEntity(val rideId: Long, val timeMs: Long, val bpm: Double)
+
+/**
+ * How speed varies within the segments of a route, per 25 m: see [com.tegenwind.app.eta.SpeedProfile].
+ * Only bins some ride has taught anything are stored.
+ */
+@Entity(
+    tableName = "route_profile",
+    primaryKeys = ["routeId", "bin"],
+    foreignKeys = [ForeignKey(RouteEntity::class, ["id"], ["routeId"], onDelete = ForeignKey.CASCADE)],
+)
+data class RouteProfileEntity(
+    val routeId: Long,
+    /** Which 25 m of the route: bin 0 is the first 25 m. */
+    val bin: Int,
+    /** Log of the speed there relative to its segment's average: negative is slower. */
+    val logShape: Double,
+    /** Rides that went into it. */
+    val rides: Int,
+)
+
 @Dao
 interface RideDao {
     @Insert
@@ -225,6 +257,24 @@ interface RideDao {
 
     @Update
     suspend fun updateTraversals(traversals: List<SegmentTraversalEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertHr(samples: List<HrSampleEntity>)
+
+    /** Heart rate older than [beforeMs] goes: it is only kept for a couple of weeks. */
+    @Query("DELETE FROM hr_samples WHERE timeMs < :beforeMs")
+    suspend fun deleteHrBefore(beforeMs: Long)
+
+    /** Real rides since [sinceMs] without heart rate stored yet, to read from Health Connect. */
+    @Query(
+        "SELECT * FROM rides WHERE simulated = 0 AND endedAtMs IS NOT NULL AND startedAtMs >= :sinceMs " +
+            "AND id NOT IN (SELECT DISTINCT rideId FROM hr_samples) ORDER BY startedAtMs"
+    )
+    suspend fun recentRidesWithoutHr(sinceMs: Long): List<RideEntity>
+
+    /** Every real, finished ride, oldest first: what a route's speed profile is learned from. */
+    @Query("SELECT * FROM rides WHERE simulated = 0 AND endedAtMs IS NOT NULL ORDER BY startedAtMs")
+    suspend fun realRidesOldestFirst(): List<RideEntity>
 }
 
 @Dao
@@ -317,6 +367,23 @@ interface RouteDao {
     @Query("DELETE FROM segment_traversals WHERE routeId = :routeId")
     suspend fun deleteTraversals(routeId: Long)
 
+    @Query("SELECT * FROM route_profile WHERE routeId = :routeId")
+    suspend fun profile(routeId: Long): List<RouteProfileEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun saveProfile(bins: List<RouteProfileEntity>)
+
+    /** Like segment times, a profile only means something for the line it was ridden on. */
+    @Query("DELETE FROM route_profile WHERE routeId = :routeId")
+    suspend fun deleteProfile(routeId: Long)
+
+    /** Ridden routes that have no speed profile yet, so one can be learned from the rides already stored. */
+    @Query(
+        "SELECT DISTINCT routeId FROM segment_traversals " +
+            "WHERE routeId IN (SELECT id FROM routes) AND routeId NOT IN (SELECT DISTINCT routeId FROM route_profile)"
+    )
+    suspend fun routesWithoutProfile(): List<Long>
+
     @Transaction
     suspend fun insertFull(route: RouteEntity, points: List<RoutePointEntity>, segments: List<RouteSegmentEntity>): Long {
         val id = insertRoute(route)
@@ -331,6 +398,7 @@ interface RouteDao {
         deletePoints(route.id)
         deleteSegments(route.id)
         deleteTraversals(route.id)
+        deleteProfile(route.id)
         updateRoute(route)
         insertPoints(points.map { it.copy(routeId = route.id) })
         insertSegments(segments.map { it.copy(routeId = route.id) })
@@ -340,14 +408,14 @@ interface RouteDao {
 @Database(
     entities = [
         RideEntity::class, TrackPointEntity::class, RouteEntity::class, RoutePointEntity::class,
-        RouteSegmentEntity::class, SegmentTraversalEntity::class,
+        RouteSegmentEntity::class, SegmentTraversalEntity::class, RouteProfileEntity::class, HrSampleEntity::class,
     ],
-    version = 6,
+    version = 7,
     exportSchema = true,
     autoMigrations = [
         AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3),
         AutoMigration(from = 3, to = 4), AutoMigration(from = 4, to = 5),
-        AutoMigration(from = 5, to = 6),
+        AutoMigration(from = 5, to = 6), AutoMigration(from = 6, to = 7),
     ],
 )
 abstract class TegenwindDb : RoomDatabase() {

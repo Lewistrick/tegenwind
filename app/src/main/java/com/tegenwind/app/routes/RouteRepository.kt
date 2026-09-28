@@ -5,6 +5,8 @@ import com.tegenwind.app.data.RouteDao
 import com.tegenwind.app.data.RouteEntity
 import com.tegenwind.app.data.RoutePointEntity
 import com.tegenwind.app.data.RouteSegmentEntity
+import com.tegenwind.app.eta.ProfileBin
+import com.tegenwind.app.eta.SpeedProfile
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -37,8 +39,13 @@ fun lineFromTrack(track: List<GeoPoint>): Polyline {
     return line
 }
 
-/** A route ready for riding: its line plus the per-segment data. */
-data class LoadedRoute(val route: RouteEntity, val line: Polyline, val segments: List<RouteSegmentEntity>) {
+/** A route ready for riding: its line, the per-segment data, and how speed varies within segments. */
+data class LoadedRoute(
+    val route: RouteEntity,
+    val line: Polyline,
+    val segments: List<RouteSegmentEntity>,
+    val profile: SpeedProfile? = null,
+) {
     val signalsAtM: List<Double>
         get() = segments.flatMap { s -> List(s.signals ?: 0) { s.endM } }
 }
@@ -94,7 +101,8 @@ class RouteRepository(
     suspend fun load(routeId: Long): LoadedRoute? {
         val route = dao.route(routeId) ?: return null
         val line = Polyline(dao.points(routeId).map { GeoPoint(it.lat, it.lon) })
-        return LoadedRoute(route, line, dao.segments(routeId))
+        val profile = SpeedProfile(dao.profile(routeId).associate { it.bin to ProfileBin(it.logShape, it.rides) })
+        return LoadedRoute(route, line, dao.segments(routeId), profile.takeUnless { it.isEmpty })
     }
 
     /** Every saved route, for working out which one is being ridden. */

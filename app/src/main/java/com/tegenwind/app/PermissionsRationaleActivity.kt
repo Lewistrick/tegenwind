@@ -30,8 +30,10 @@ class PermissionsRationaleActivity : ComponentActivity() {
                         Text("How Tegenwind uses your health data", style = MaterialTheme.typography.headlineSmall)
                         Text(
                             "Tegenwind reads your heart rate and workouts from Health Connect to show them " +
-                                "during rides and to estimate your fitness for arrival-time predictions. " +
-                                "The data stays on this phone. It isn't uploaded or shared with anyone."
+                                "with your rides and to estimate your fitness for arrival-time predictions. " +
+                                "The heart rate of your rides is kept on this phone for 14 days, to learn how " +
+                                "your heart responds to effort, and then deleted. It isn't uploaded or shared " +
+                                "with anyone."
                         )
                         Button(onClick = ::finish) { Text("Close") }
                     }

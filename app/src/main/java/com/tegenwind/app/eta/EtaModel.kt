@@ -72,38 +72,12 @@ class EtaModel(val segments: List<EtaSegment>, private val params: RiderParams =
 
     /**
      * The speed the ETA assumes at [progressM] right now, m/s: physics with the wind there, what the
-     * segment has learned from past passes, and today's form. Null for a model without segments.
-     *
-     * Each segment has a single speed, which would draw as a staircase. At a segment's middle this is
-     * exactly that speed; in between it follows a smooth curve to the next one (a monotone cubic, as
-     * in PCHIP): no corners at the middles, and never overshooting above the faster or below the
-     * slower of two neighbours. Before the first middle and after the last it holds.
+     * segment has learned from past passes, and today's form. One value per segment, exactly what the
+     * ETA uses for it. Null for a model without segments.
      */
     fun expectedSpeedMps(progressM: Double, nowMs: Long, weather: RouteWeather?, form: FormEstimate): Double? {
-        if (segments.isEmpty()) return null
-        fun speed(i: Int) = segments[i].let { s -> correctedSpeedMps(s, weather?.at(s.midM, nowMs)) * form.mean }
-        val b = segments.indexOfFirst { it.midM >= progressM }
-        if (b == -1) return speed(segments.lastIndex)
-        if (b == 0) return speed(0)
-        val a = b - 1
-        // Only the speeds around the stretch between the two middles matter for its curve.
-        val v = (maxOf(a - 1, 0)..minOf(b + 1, segments.lastIndex)).associateWith { speed(it) }
-        val h = segments[b].midM - segments[a].midM
-        val t = (progressM - segments[a].midM) / h
-
-        /** How steep the curve runs through middle [i]: flat at the ends and at a peak or dip. */
-        fun slope(i: Int): Double {
-            if (i == 0 || i == segments.lastIndex) return 0.0
-            val before = (v.getValue(i) - v.getValue(i - 1)) / (segments[i].midM - segments[i - 1].midM)
-            val after = (v.getValue(i + 1) - v.getValue(i)) / (segments[i + 1].midM - segments[i].midM)
-            // A harmonic mean: steep only where both sides are, which is what prevents overshoot.
-            return if (before * after <= 0) 0.0 else 2 / (1 / before + 1 / after)
-        }
-
-        val t2 = t * t
-        val t3 = t2 * t
-        return (2 * t3 - 3 * t2 + 1) * v.getValue(a) + (t3 - 2 * t2 + t) * h * slope(a) +
-            (-2 * t3 + 3 * t2) * v.getValue(b) + (t3 - t2) * h * slope(b)
+        val s = segmentAt(progressM) ?: return null
+        return correctedSpeedMps(s, weather?.at(s.midM, nowMs)) * form.mean
     }
 
     /** [weather] gives each segment the forecast nearest to it, for the moment you're expected there. */

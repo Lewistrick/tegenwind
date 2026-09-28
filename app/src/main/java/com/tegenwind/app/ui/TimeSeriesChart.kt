@@ -76,8 +76,9 @@ private fun niceIntStep(mn: Double, mx: Double): Double {
  * @param logXWhenFull when showing the whole ride (windowMs null), lay out time on a log scale so
  *   the most recent stretch gets more room than the start, with "−N min" ticks instead of evenly
  *   spaced ones.
- * @param expected a second series drawn as a soft band *under* the measurements (e.g. the speed the
- *   ETA expects), so the measurements always stay on top.
+ * @param expected a second series drawn *under* the measurements (e.g. the speed the ETA expects), in
+ *   runs: each run is a line of its own, nothing joins one run to the next, and the measurements
+ *   always stay on top.
  * @param legend show a small legend in the plot's top-left corner; tapping it folds it away to "?".
  */
 @Composable
@@ -92,7 +93,7 @@ fun TimeSeriesChart(
     logXWhenFull: Boolean = false,
     gapMs: Long = 30_000,
     emptyText: String = "No data yet",
-    expected: List<Sample> = emptyList(),
+    expected: List<List<Sample>> = emptyList(),
     expectedColor: Color = color,
     legend: Boolean = false,
 ) {
@@ -120,7 +121,7 @@ fun TimeSeriesChart(
             } ?: run {
                 // The expected line counts too, so it's never cut off at the top or bottom.
                 val visible = samples.subList(firstVisible, samples.size).map { it.value } +
-                    expected.filter { it.timeMs >= left }.map { it.value }
+                    expected.flatten().filter { it.timeMs >= left }.map { it.value }
                 val mn = visible.min()
                 val mx = visible.max()
                 if (niceY) {
@@ -216,14 +217,16 @@ fun TimeSeriesChart(
                 // First, so everything measured is drawn over it.
                 if (expected.isNotEmpty()) {
                     val path = Path()
-                    var prevT = Long.MIN_VALUE
-                    val from = (expected.indexOfFirst { it.timeMs >= left } - 1).coerceAtLeast(0)
-                    for (i in from until expected.size) {
-                        val e = expected[i]
-                        val px = x(e.timeMs)
-                        val py = y(e.value)
-                        if (prevT == Long.MIN_VALUE || e.timeMs - prevT > gapMs) path.moveTo(px, py) else path.lineTo(px, py)
-                        prevT = e.timeMs
+                    // Each run (a segment) is a line of its own: never a slope from one to the next.
+                    for (run in expected) {
+                        if (run.isEmpty() || run.last().timeMs < left) continue
+                        var prevT = Long.MIN_VALUE
+                        for (e in run) {
+                            val px = x(e.timeMs)
+                            val py = y(e.value)
+                            if (prevT == Long.MIN_VALUE || e.timeMs - prevT > gapMs) path.moveTo(px, py) else path.lineTo(px, py)
+                            prevT = e.timeMs
+                        }
                     }
                     drawPath(
                         path,
@@ -266,7 +269,7 @@ fun TimeSeriesChart(
         if (legend && samples.isNotEmpty()) {
             ChartLegend(
                 color = color,
-                expectedColor = expectedColor.takeIf { expected.isNotEmpty() },
+                expectedColor = expectedColor.takeIf { expected.any { it.isNotEmpty() } },
                 // Just inside the plot area, clear of the axis labels.
                 modifier = Modifier.align(Alignment.TopStart).padding(start = 34.dp, top = 8.dp),
             )

@@ -8,6 +8,7 @@ import androidx.health.connect.client.records.HeartRateRecord
 import androidx.health.connect.client.records.Record
 import androidx.health.connect.client.request.ReadRecordsRequest
 import androidx.health.connect.client.time.TimeRangeFilter
+import com.tegenwind.app.ride.Sample
 import java.time.Instant
 import kotlin.reflect.KClass
 
@@ -28,6 +29,15 @@ class HealthConnectHr(private val context: Context) {
 
     suspend fun heartRateBetween(start: Instant, end: Instant): List<HeartRateRecord> =
         readAll(HeartRateRecord::class, start, end)
+
+    /** Every heart-rate reading between [start] and [end], oldest first, one per moment. */
+    suspend fun heartRateSamples(start: Instant, end: Instant): List<Sample> =
+        heartRateBetween(start, end)
+            .flatMap { it.samples }
+            .filter { !it.time.isBefore(start) && !it.time.isAfter(end) }
+            .map { Sample(it.time.toEpochMilli(), it.beatsPerMinute.toDouble()) }
+            .distinctBy { it.timeMs }
+            .sortedBy { it.timeMs }
 
     suspend fun workoutsBetween(start: Instant, end: Instant): List<ExerciseSessionRecord> =
         readAll(ExerciseSessionRecord::class, start, end)

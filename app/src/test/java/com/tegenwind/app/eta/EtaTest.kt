@@ -106,40 +106,13 @@ class EtaTest {
         assertTrue(model.expectedSpeedMps(625.0, 0, windFrom(270.0), usual)!! > calm)
         assertEquals(calm * 1.1, model.expectedSpeedMps(625.0, 0, null, FormEstimate(1.1, 0.01))!!, 1e-9)
 
-        // A segment the model has learned is slow (here 20% more time) is expected slower at its middle.
+        // A segment the model has learned is slow (here 20% more time) is expected slower, all along it.
         val slow = EtaModel(route.mapIndexed { i, s -> if (i == 2) s.copy(learned = SegmentCorrection(logMean = kotlin.math.ln(1.2))) else s })
-        assertEquals(calm / 1.2, slow.expectedSpeedMps(625.0, 0, null, usual)!!, 1e-9)
-        assertEquals(calm, slow.expectedSpeedMps(375.0, 0, null, usual)!!, 1e-9)
-        // No step at the border between them: halfway from one middle to the next, halfway in speed.
-        assertEquals((calm + calm / 1.2) / 2, slow.expectedSpeedMps(500.0, 0, null, usual)!!, 1e-9)
-        assertEquals(slow.expectedSpeedMps(499.99, 0, null, usual)!!, slow.expectedSpeedMps(500.01, 0, null, usual)!!, 1e-3)
-        // Before the first middle and past the last, it holds.
-        assertEquals(calm, slow.expectedSpeedMps(0.0, 0, null, usual)!!, 1e-9)
-        assertEquals(calm, slow.expectedSpeedMps(2500.0, 0, null, usual)!!, 1e-9)
-    }
-
-    @Test
-    fun expectedSpeedCurvesWithoutCornersOrOvershoot() {
-        // Each segment a little slower than the last, then one fast segment in the middle of them.
-        val route = flatRoute(90.0).mapIndexed { i, s ->
-            s.copy(learned = SegmentCorrection(logMean = if (i == 6) -0.2 else i * 0.05))
-        }
-        val model = EtaModel(route)
-        val form = FormEstimate(1.0, 0.01)
-        fun v(m: Double) = model.expectedSpeedMps(m, 0, null, form)!!
-
-        // No corner where the curve passes a segment's middle (seg 3 at 875 m): the slope going in
-        // is the slope coming out. Straight lines between middles would break here.
-        val slopeIn = v(875.0) - v(874.0)
-        val slopeOut = v(876.0) - v(875.0)
-        assertEquals(slopeIn, slopeOut, kotlin.math.abs(slopeIn) * 0.02)
-        assertTrue("still slowing down", slopeIn < 0)
-
-        // Between two middles it stays between their speeds, however steep the change.
-        for (m in 1375..1625 step 5) {
-            val x = v(m.toDouble())
-            assertTrue("at $m", x >= minOf(v(1375.0), v(1625.0)) - 1e-9 && x <= maxOf(v(1375.0), v(1625.0)) + 1e-9)
-        }
+        assertEquals(calm / 1.2, slow.expectedSpeedMps(510.0, 0, null, usual)!!, 1e-9)
+        assertEquals(calm / 1.2, slow.expectedSpeedMps(740.0, 0, null, usual)!!, 1e-9)
+        // One level per segment: it changes exactly at the border, not before.
+        assertEquals(calm, slow.expectedSpeedMps(499.0, 0, null, usual)!!, 1e-9)
+        assertEquals(calm, slow.expectedSpeedMps(751.0, 0, null, usual)!!, 1e-9)
     }
 
     @Test

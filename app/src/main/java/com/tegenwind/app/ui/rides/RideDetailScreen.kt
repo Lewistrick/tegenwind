@@ -107,6 +107,8 @@ fun RideDetailScreen(rideId: Long, onBack: () -> Unit, backLabel: String = "Ride
         if (r != null && !r.simulated) {
             hr = HrState.Loading
             hr = loadHeartRate(container.healthConnect, r)
+            // Kept for two weeks, for estimating heart rate during rides.
+            (hr as? HrState.Loaded)?.let { container.heartRate.keep(r, it.samples) }
         }
     }
     // Heart rate gives a better training load than pace does, so store it once it arrives.
@@ -316,14 +318,10 @@ fun RideDetailScreen(rideId: Long, onBack: () -> Unit, backLabel: String = "Ride
 private suspend fun loadHeartRate(hc: HealthConnectHr, ride: RideEntity): HrState = try {
     if (!hc.hasAllPermissions()) HrState.NoPermission
     else {
-        val start = Instant.ofEpochMilli(ride.startedAtMs)
-        val end = Instant.ofEpochMilli(ride.endedAtMs ?: ride.startedAtMs)
-        val samples = hc.heartRateBetween(start, end)
-            .flatMap { it.samples }
-            .filter { !it.time.isBefore(start) && !it.time.isAfter(end) }
-            .map { Sample(it.time.toEpochMilli(), it.beatsPerMinute.toDouble()) }
-            .distinctBy { it.timeMs }
-            .sortedBy { it.timeMs }
+        val samples = hc.heartRateSamples(
+            Instant.ofEpochMilli(ride.startedAtMs),
+            Instant.ofEpochMilli(ride.endedAtMs ?: ride.startedAtMs),
+        )
         if (samples.isEmpty()) HrState.NotYet else HrState.Loaded(samples)
     }
 } catch (e: Exception) {

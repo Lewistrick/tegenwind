@@ -9,6 +9,7 @@ import com.tegenwind.app.data.TrackPointEntity
 import com.tegenwind.app.eta.Banister
 import com.tegenwind.app.eta.Eta
 import com.tegenwind.app.eta.EtaModel
+import com.tegenwind.app.eta.EtaSegment
 import com.tegenwind.app.eta.FormEstimator
 import com.tegenwind.app.eta.LiveEta
 import com.tegenwind.app.eta.Physics
@@ -65,10 +66,10 @@ data class LiveRide(
     /** The ETA has become firm: offer to tell someone you're almost there, until answered. */
     val offerShare: Boolean = false,
     /**
-     * The speed the ETA assumed at each fix (km/h), for drawing under the actual speed. Only while
-     * on a route; never stored.
+     * The speed the ETA assumed at each fix (km/h), for drawing under the actual speed: one run per
+     * segment ridden, each its own line. Only while on a route; never stored.
      */
-    val expectedSpeeds: List<Sample> = emptyList(),
+    val expectedSpeeds: List<List<Sample>> = emptyList(),
 )
 
 /**
@@ -107,10 +108,12 @@ class RideRecorder(
     private var weather: RouteWeather? = null
     private val pending = ArrayList<TrackPointEntity>()
     private val traversals = ArrayList<SegmentTraversalEntity>()
-    private val expected = ArrayList<Sample>()
-    /** The form the expected line is drawn with: follows today's form, but eases into each change. */
-    private var plottedForm: Double? = null
-    private var plottedAtMs = 0L
+    private val expected = ArrayList<ArrayList<Sample>>()
+    /** Every fix of this ride, for learning the route's speed profile when it ends. */
+    private val ridePoints = ArrayList<TrackPointEntity>()
+    /** The segment the expected line is on, and the speed it holds there: one level per segment. */
+    private var expectedOn: EtaSegment? = null
+    private var expectedKmh = 0.0
     private var lastFlushMs = 0L
 
     private var autoFinishCancelled = false
@@ -158,7 +161,8 @@ class RideRecorder(
         weather = null
         traversals.clear()
         expected.clear()
-        plottedForm = null
+        ridePoints.clear()
+        expectedOn = null
         segIdx = -1
         lastFlushMs = now
         _live.value = LiveRide(
@@ -205,10 +209,12 @@ class RideRecorder(
             ride = _live.value!!
         }
         val t = tracker ?: return
-        pending += TrackPointEntity(
+        val point = TrackPointEntity(
             rideId = ride.rideId, timeMs = fix.timeMs, lat = fix.lat, lon = fix.lon,
             speedMps = fix.speedMps, accuracyM = fix.accuracyM, altitudeM = fix.altitudeM,
         )
+        pending += point
+        ridePoints += point
         if (t.add(fix)) {
             val snap = t.snapshot()
             val progress = chooseRoute(GeoPoint(fix.lat, fix.lon), snap.headingDeg)
@@ -238,7 +244,7 @@ class RideRecorder(
                 snapshot = snap,
                 route = liveRoute,
                 arrivedAtMs = arrived,
-                expectedSpeeds = expected.toList(),
+                expectedSpeeds = expected.map { it.toList() },
             )
             refreshEta(fix.timeMs)
         }
@@ -253,21 +259,22 @@ class RideRecorder(
      * line breaks there rather than pretending. Standing at a light it keeps the riding speed: it is
      * a target, not a forecast of standing still.
      *
-     * Form is updated once per segment and can move several percent at once, early in a ride most of
-     * all. The ETA takes that at once; the line eases into it over [FORM_EASE_MS] so it doesn't jump.
+     * One level per segment, fixed on entering it: the forecast and today's form as they were then.
+     * Form is updated as a segment is left, so each new level already carries it. Within the segment
+     * the route's learned speed profile shapes it (slower up a bridge, faster down), rescaled so the
+     * segment's time stays the ETA's. Each segment is a run of its own, drawn as its own line.
      */
     private fun recordExpected(p: RouteProgress, nowMs: Long) {
         val m = model ?: return
         if (!p.onRouteYet || p.offRoute) return
-        val target = form.estimate()
-        val eased = plottedForm?.let { was ->
-            val dt = (nowMs - plottedAtMs).coerceAtLeast(0L).toDouble()
-            was + (target.mean - was) * (1 - kotlin.math.exp(-dt / FORM_EASE_MS))
-        } ?: target.mean
-        plottedForm = eased
-        plottedAtMs = nowMs
-        val mps = m.expectedSpeedMps(p.progressM, nowMs, weather, target.copy(mean = eased)) ?: return
-        expected += Sample(nowMs, mps * 3.6)
+        val seg = m.segmentAt(p.progressM) ?: return
+        if (seg !== expectedOn) {
+            expectedKmh = (m.expectedSpeedMps(p.progressM, nowMs, weather, form.estimate()) ?: return) * 3.6
+            expectedOn = seg
+            expected += ArrayList<Sample>()
+        }
+        val shape = route?.profile?.factorAt(p.progressM, seg.startM, seg.endM) ?: 1.0
+        expected.last() += Sample(nowMs, expectedKmh * shape)
     }
 
     /**
@@ -354,6 +361,8 @@ class RideRecorder(
         // A made-up ride must not teach the model anything about the real road.
         val ridden = learnFromTraversals(route, traversals.toList(), form.estimate().mean, learn = !ride.simulated)
         if (ridden.isNotEmpty()) dao.insertTraversals(ridden)
+        // How speed varies within each segment: learned from real rides only, like the segments.
+        route?.let { if (!ride.simulated) learnProfile(routeDao, it, ridePoints.toList()) }
         val startWind = weather?.at(0.0, snap.startedAtMs)
         dao.updateRide(
             RideEntity(
@@ -383,6 +392,7 @@ class RideRecorder(
         model = null
         traversals.clear()
         expected.clear()
+        ridePoints.clear()
         pending.clear()
         _live.value = null
     }
@@ -536,8 +546,6 @@ class RideRecorder(
         const val CLEAN_ENTRY_M = 30.0
         const val MIN_MOVING_MS = 5_000L
         const val MIN_FORM_OBSERVATIONS = 3
-        /** How quickly the expected line follows a change in form: about two thirds of the way in 15 s. */
-        const val FORM_EASE_MS = 15_000.0
         /** Far enough from where you tapped Start to call it setting off, if GPS speed doesn't say so. */
         const val SET_OFF_M = 25.0
     }
