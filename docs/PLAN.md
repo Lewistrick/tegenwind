@@ -279,9 +279,11 @@ The bottom bar is **Ride · Rides · Routes · Stats**. Rides replaced Map.
     or cross, with the speed at rider height and how sheltered you are), km to go, form and the wind's
     cost. Below that is a route bar coloured per segment by sky and rain on top and by what the wind
     does to you underneath, with a marker at your position. Tapping the card shares the ETA.
-  - A speed and distance row, then a speed chart: GPS dots and a 2-minute rolling **median**, over
-    the last 2 minutes. Tapping it shows the whole ride on a reverse-log time axis.
-  - A note that heart rate comes after the ride, and a Stop button that needs two taps.
+  - A speed chart headed by speed and distance: GPS dots and a 2-minute rolling **median**, over
+    the last 2 minutes. Tapping it shows the whole ride on a reverse-log time axis. Under them, in
+    amber, the speed the ETA expects: one line per segment, shaped within the segment by the
+    route's learned speed profile (below). A small legend explains the lines.
+  - A Stop button that needs two taps. The whole screen fits without scrolling.
   - Once the ETA is firm, a one-time "Share ETA via WhatsApp?" prompt.
   - The large speed number, 2-minute average and live heart rate from the plan are gone: the ETA
     is what you read on the handlebar.
@@ -323,6 +325,12 @@ The bottom bar is **Ride · Rides · Routes · Stats**. Rides replaced Map.
   time of day break ties. Until one route is left, the likeliest carries the ETA, marked "still
   deciding", and no segment is timed.
 - **Arrival:** within 30 m of the end, the ride finishes itself after 15 s unless you keep riding.
+- **Speed profile** (28 Sep 2026): a bridge ramp or a sharp corner rides slower than the rest of its
+  segment. Your rides showed these spots repeat reliably. Two halves of the rides agreed with a
+  correlation of 0.93. Turns and altitude from the map explained only 9–16% of them, so each route
+  learns its own profile: per 25 m, the moving speed relative to its segment's average, a fading
+  average over about the last five rides. It was filled in from all stored rides at once. It only
+  shapes the expected-speed line; each segment's time, and so the ETA, stays the segment model's.
 
 ### The ETA model
 
@@ -341,18 +349,30 @@ The bottom bar is **Ride · Rides · Routes · Stats**. Rides replaced Map.
 
 ### Heart rate
 
-Only after the ride. A ride's page reads its window from Health Connect each time it opens (the samples
-aren't stored) and upgrades the ride's training load to TRIMP. No polling, freshness badge, background
-backfill, `HeartRateSource` interface or Bluetooth strap.
+Only after the ride. A ride's page reads its window from Health Connect each time it opens and
+upgrades the ride's training load to TRIMP. No polling, freshness badge, `HeartRateSource` interface
+or Bluetooth strap.
+
+Since 28 Sep 2026 the readings of recent rides are also kept in the app, for **14 days** only. They
+are read whenever the app comes to the front, and anything older is deleted at every start. They
+are material for estimating heart rate during a ride:
+`HR = a + b·effort + c·minutes`, with effort from the ETA's physics, smoothed with a 60–90 s delay.
+
+A first test on 15 rides (leaving out one day at a time) found no useful model yet:
+- the error was about 14 bpm, against 14.6 for always guessing the average
+- your average heart rate differs by up to ±14 bpm from day to day, whatever the pace
+- within a ride, effort explained only 8% of the heart rate's ups and downs
 
 ### Data
 
 Room holds `rides`, `track_points`, `routes`, `route_points`, `route_segments` (with the learned
 correction) and `segment_traversals`. A traversal stores the headwind and the physics prediction,
 and since database version 6 also what the model expected before the ride and how far the pass
-moved its segment. Standing time is `exit − enter − moving`; there's no average heart rate. The
-planned `HrSample`, `RiderState` and `ModelParams` tables don't exist: heart rate stays in Health
-Connect, fitness is computed from ride loads when needed, and rider parameters are constants.
+moved its segment. Standing time is `exit − enter − moving`; there's no average heart rate.
+
+Database version 7 added `route_profile` (the speed profile, per 25 m) and `hr_samples` (the last 14
+days of heart rate). The planned `RiderState` and `ModelParams` tables don't exist: fitness is
+computed from ride loads when needed, and rider parameters are constants.
 
 ### Beyond the plan
 
