@@ -90,8 +90,12 @@ fun cleanPoints(points: List<GeoPoint>, minStepM: Double = 1.0): List<GeoPoint> 
  * Douglas-Peucker: keeps only the points needed to stay within [toleranceM] of the original line.
  * Turns a ride's 1-per-second GPS track into a compact route.
  */
-fun simplify(points: List<GeoPoint>, toleranceM: Double): List<GeoPoint> {
-    if (points.size < 3) return points
+fun simplify(points: List<GeoPoint>, toleranceM: Double): List<GeoPoint> =
+    simplifyIndices(points, toleranceM).map { points[it] }
+
+/** Like [simplify], but says which of [points] it keeps, in order. */
+fun simplifyIndices(points: List<GeoPoint>, toleranceM: Double): List<Int> {
+    if (points.size < 3) return points.indices.toList()
     val lat0 = points.first().lat
     val kx = 111_320.0 * cos(Math.toRadians(lat0))
     val ky = 110_574.0
@@ -120,7 +124,7 @@ fun simplify(points: List<GeoPoint>, toleranceM: Double): List<GeoPoint> {
             stack.addLast(worst to b)
         }
     }
-    return points.filterIndexed { i, _ -> keep[i] }
+    return points.indices.filter { keep[it] }
 }
 
 /** Merges positions along a route that lie within [withinM] of the previous one; returns the first of each group. */

@@ -33,11 +33,11 @@ class TegenwindApp : Application() {
 class AppContainer(app: Application) {
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     val db: TegenwindDb = Room.databaseBuilder(app, TegenwindDb::class.java, "tegenwind.db").build()
-    val recorder = RideRecorder(db.rides(), db.routes(), appScope)
+    val recorder = RideRecorder(db.rides(), db.routes(), appScope) { routeId, rideId -> routes.learnLine(routeId, rideId) }
     val healthConnect = HealthConnectHr(app)
     val heartRate = HeartRateStore(healthConnect, db.rides())
     val liveShare = LiveShare()
-    val routes = RouteRepository(db.routes(), RouteEnricher(), appScope)
+    val routes = RouteRepository(db.routes(), db.rides(), RouteEnricher(), appScope) { recorder.live.value != null }
     val weather = WeatherRepository()
 
     init {
@@ -55,8 +55,13 @@ class AppContainer(app: Application) {
         }
         // Rides from before each pass recorded what it taught get that filled in once.
         appScope.launch { backfillLessons(db.rides(), db.routes()) }
-        // Routes ridden before rides learned a speed profile learn one from the rides already stored.
-        appScope.launch { backfillProfiles(db.rides(), db.routes(), routes::load) }
+        appScope.launch {
+            // Routes ridden before rides learned a speed profile learn one from the rides already stored.
+            backfillProfiles(db.rides(), db.routes(), routes::load)
+            // Then each line moves toward where the rides stored since it last learned went. After
+            // the profiles, so those are learned on the line they are then carried over from.
+            routes.learnLines()
+        }
     }
 }
 

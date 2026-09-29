@@ -1,18 +1,22 @@
 package com.tegenwind.app.routes
 
 import com.tegenwind.app.data.EnrichState
+import com.tegenwind.app.data.RideDao
 import com.tegenwind.app.data.RouteDao
 import com.tegenwind.app.data.RouteEntity
 import com.tegenwind.app.data.RoutePointEntity
 import com.tegenwind.app.data.RouteSegmentEntity
 import com.tegenwind.app.eta.ProfileBin
 import com.tegenwind.app.eta.SpeedProfile
+import com.tegenwind.app.ride.foldRidesIntoLine
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.InputStream
 
@@ -52,11 +56,17 @@ data class LoadedRoute(
 
 class RouteRepository(
     private val dao: RouteDao,
+    private val rideDao: RideDao,
     private val enricher: RouteEnricher,
     private val scope: CoroutineScope,
+    /** True while a ride is being recorded: its route's line must stay as the ride loaded it. */
+    private val isRiding: () -> Boolean = { false },
 ) {
     /** The lookup running per route, so starting one again replaces it instead of racing it. */
     private val jobs = HashMap<Long, Job>()
+
+    /** One change to a line at a time: two folds of the same rides would count them twice. */
+    private val lineLock = Mutex()
 
     fun routes(): Flow<List<RouteEntity>> = dao.routes()
 
@@ -77,14 +87,51 @@ class RouteRepository(
      * times are dropped: they were measured on the old line. The map lookup runs again.
      */
     suspend fun replaceFromTrack(routeId: Long, track: List<GeoPoint>) {
-        val route = dao.route(routeId) ?: throw IllegalArgumentException("Route not found")
         val line = lineFromTrack(track)
-        dao.replaceGeometry(
-            route.copy(lengthM = line.lengthM, enrichState = EnrichState.PENDING, enrichError = null, enrichStartedAtMs = null),
-            line.points.mapIndexed { i, p -> RoutePointEntity(routeId, i, p.lat, p.lon) },
-            segmentsFor(line),
-        )
+        lineLock.withLock {
+            val route = dao.route(routeId) ?: throw IllegalArgumentException("Route not found")
+            dao.replaceGeometry(
+                route.copy(
+                    lengthM = line.lengthM, enrichState = EnrichState.PENDING, enrichError = null, enrichStartedAtMs = null,
+                    // A line you chose: the rides from before it don't pull it back to where they went.
+                    lineFoldedThroughMs = System.currentTimeMillis(),
+                ),
+                line.points.mapIndexed { i, p -> RoutePointEntity(routeId, i, p.lat, p.lon) },
+                segmentsFor(line),
+            )
+        }
         enrich(routeId)
+    }
+
+    /**
+     * Folds the rides on this route that aren't in its line yet into it: every one moves the line a
+     * little toward where you rode (see [RouteDrift]). [rerouteRideId], the ride that just finished,
+     * may also reroute a stretch you've taken another street on twice in three rides.
+     */
+    suspend fun learnLine(routeId: Long, rerouteRideId: Long? = null) {
+        val rerouted = try {
+            lineLock.withLock { foldRidesIntoLine(rideDao, dao, routeId, rerouteRideId, commit = { !isRiding() }) }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // The line stays as it was, and these rides are tried again next time.
+            android.util.Log.w("Tegenwind", "Couldn't learn the line of route $routeId", e)
+            false
+        }
+        // A new stretch of road: its slopes, buildings and traffic lights are still to be looked up.
+        if (rerouted) enrich(routeId)
+    }
+
+    /**
+     * Once at startup: every route folds in the rides stored since its line last learned, including
+     * all of them for a route from before lines followed rides. Only nudges: replaying old rides could
+     * reroute a stretch back and forth, and every switch would lose what that stretch had learned.
+     */
+    suspend fun learnLines() {
+        for (route in dao.allRoutes()) {
+            if (isRiding()) return
+            learnLine(route.id)
+        }
     }
 
     /** Creates the same route in the other direction, e.g. "werk-woon" from "woon-werk". */
@@ -96,21 +143,22 @@ class RouteRepository(
 
     suspend fun delete(routeId: Long) = dao.delete(routeId)
 
-    suspend fun updateRouteName(route: RouteEntity) = dao.updateRoute(route)
+    suspend fun updateRouteName(route: RouteEntity) = dao.rename(route.id, route.name)
 
     suspend fun load(routeId: Long): LoadedRoute? {
-        val route = dao.route(routeId) ?: return null
-        val line = Polyline(dao.points(routeId).map { GeoPoint(it.lat, it.lon) })
-        val profile = SpeedProfile(dao.profile(routeId).associate { it.bin to ProfileBin(it.logShape, it.rides) })
-        return LoadedRoute(route, line, dao.segments(routeId), profile.takeUnless { it.isEmpty })
+        val stored = dao.full(routeId) ?: return null
+        val line = Polyline(stored.points.map { GeoPoint(it.lat, it.lon) })
+        val profile = SpeedProfile(stored.profile.associate { it.bin to ProfileBin(it.logShape, it.rides) })
+        return LoadedRoute(stored.route, line, stored.segments, profile.takeUnless { it.isEmpty })
     }
 
     /** Every saved route, for working out which one is being ridden. */
     suspend fun loadAll(): List<LoadedRoute> = dao.allRoutes().mapNotNull { load(it.id) }
 
     private suspend fun save(name: String, line: Polyline): Long {
+        val now = System.currentTimeMillis()
         val id = dao.insertFull(
-            RouteEntity(name = name.trim(), lengthM = line.lengthM, createdAtMs = System.currentTimeMillis()),
+            RouteEntity(name = name.trim(), lengthM = line.lengthM, createdAtMs = now, lineFoldedThroughMs = now),
             line.points.mapIndexed { i, p -> RoutePointEntity(0, i, p.lat, p.lon) },
             segmentsFor(line),
         )

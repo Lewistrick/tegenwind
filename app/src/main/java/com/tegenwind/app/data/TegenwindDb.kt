@@ -38,7 +38,16 @@ data class RideEntity(
      * otherwise estimated from how long and how hard you rode.
      */
     val loadTss: Double? = null,
+    /**
+     * The stretch of its route's line (metres along it, as the line was then) that this ride
+     * rerouted: you took another street there, as on another recent ride. Null when it rerouted nothing.
+     */
+    val rerouteStartM: Double? = null,
+    val rerouteEndM: Double? = null,
 )
+
+/** The stretch a ride rerouted; see [RideEntity.rerouteStartM]. */
+data class RideReroute(val rerouteStartM: Double?, val rerouteEndM: Double?)
 
 /** How long one ride took over one route segment: the raw material for stats and learning. */
 @Entity(
@@ -100,6 +109,11 @@ data class RouteEntity(
     val enrichError: String? = null,
     /** When the current lookup started, so the UI can tell a slow one from a stalled one. */
     val enrichStartedAtMs: Long? = null,
+    /**
+     * The start time of the last ride folded into the line (see [com.tegenwind.app.routes.RouteDrift]).
+     * Null for a route from before lines followed rides: all its rides are still to be folded in.
+     */
+    val lineFoldedThroughMs: Long? = null,
 )
 
 @Entity(
@@ -176,6 +190,14 @@ data class RouteProfileEntity(
     val logShape: Double,
     /** Rides that went into it. */
     val rides: Int,
+)
+
+/** Everything stored about one route's line; see [RouteDao.full]. */
+data class FullRoute(
+    val route: RouteEntity,
+    val points: List<RoutePointEntity>,
+    val segments: List<RouteSegmentEntity>,
+    val profile: List<RouteProfileEntity>,
 )
 
 @Dao
@@ -275,6 +297,27 @@ interface RideDao {
     /** Every real, finished ride, oldest first: what a route's speed profile is learned from. */
     @Query("SELECT * FROM rides WHERE simulated = 0 AND endedAtMs IS NOT NULL ORDER BY startedAtMs")
     suspend fun realRidesOldestFirst(): List<RideEntity>
+
+    /** Real, finished rides on a route that started after [afterMs], oldest first: not yet folded into its line. */
+    @Query(
+        "SELECT * FROM rides WHERE routeId = :routeId AND simulated = 0 AND endedAtMs IS NOT NULL " +
+            "AND startedAtMs > :afterMs ORDER BY startedAtMs"
+    )
+    suspend fun ridesOnRouteAfter(routeId: Long, afterMs: Long): List<RideEntity>
+
+    /** The two real rides on a route before [beforeMs], newest first: what a detour is checked against. */
+    @Query(
+        "SELECT * FROM rides WHERE routeId = :routeId AND simulated = 0 AND endedAtMs IS NOT NULL " +
+            "AND startedAtMs < :beforeMs ORDER BY startedAtMs DESC LIMIT 2"
+    )
+    suspend fun twoRidesOnRouteBefore(routeId: Long, beforeMs: Long): List<RideEntity>
+
+    @Query("UPDATE rides SET rerouteStartM = :startM, rerouteEndM = :endM WHERE id = :rideId")
+    suspend fun setReroute(rideId: Long, startM: Double, endM: Double)
+
+    /** Written a moment after the ride finishes, while its page may already be open. */
+    @Query("SELECT rerouteStartM, rerouteEndM FROM rides WHERE id = :rideId")
+    fun rerouteFlow(rideId: Long): Flow<RideReroute?>
 }
 
 @Dao
@@ -344,6 +387,10 @@ interface RouteDao {
     @Update
     suspend fun updateRoute(route: RouteEntity)
 
+    /** Only the name: a copy of the whole row from the screen could put back a line's old length. */
+    @Query("UPDATE routes SET name = :name WHERE id = :routeId")
+    suspend fun rename(routeId: Long, name: String)
+
     @Query("UPDATE routes SET enrichState = :state, enrichError = :error, enrichStartedAtMs = :startedAtMs WHERE id = :id")
     suspend fun setEnrichState(id: Long, state: String, error: String?, startedAtMs: Long? = null)
 
@@ -392,6 +439,58 @@ interface RouteDao {
         return id
     }
 
+    /** A route's line, segments and speed profile, read together so a line being relearned can't come between them. */
+    @Transaction
+    suspend fun full(routeId: Long): FullRoute? {
+        val route = route(routeId) ?: return null
+        return FullRoute(route, points(routeId), segments(routeId), profile(routeId))
+    }
+
+    @Query("UPDATE routes SET lineFoldedThroughMs = :foldedThroughMs WHERE id = :routeId")
+    suspend fun setLineFolded(routeId: Long, foldedThroughMs: Long)
+
+    @Query("UPDATE routes SET lengthM = :lengthM, lineFoldedThroughMs = :foldedThroughMs WHERE id = :routeId")
+    suspend fun setLine(routeId: Long, lengthM: Double, foldedThroughMs: Long)
+
+    @Query("DELETE FROM segment_traversals WHERE routeId = :routeId AND segIdx NOT IN (:kept)")
+    suspend fun deleteTraversalsExcept(routeId: Long, kept: List<Int>)
+
+    @Query("UPDATE segment_traversals SET segIdx = :to WHERE routeId = :routeId AND segIdx = :from")
+    suspend fun moveTraversals(routeId: Long, from: Int, to: Int)
+
+    @Query("UPDATE segment_traversals SET segIdx = -segIdx - 1 WHERE routeId = :routeId AND segIdx < 0")
+    suspend fun unflipTraversals(routeId: Long)
+
+    /**
+     * Gives a route a line learned from its rides, keeping what it learned on the old one.
+     * [rebuild] turns the segments and speed profile as stored into those of the new line. They are
+     * read inside this transaction, so what a ride finishing meanwhile learned isn't overwritten.
+     * [newIdx] says which segment each old one became; passes over segments that are gone go with them.
+     */
+    @Transaction
+    suspend fun relearnGeometry(
+        routeId: Long,
+        lengthM: Double,
+        foldedThroughMs: Long,
+        points: List<RoutePointEntity>,
+        newIdx: Map<Int, Int>,
+        rebuild: (List<RouteSegmentEntity>, List<RouteProfileEntity>) -> Pair<List<RouteSegmentEntity>, List<RouteProfileEntity>>,
+    ) {
+        val (segments, profile) = rebuild(segments(routeId), profile(routeId))
+        deletePoints(routeId)
+        insertPoints(points)
+        deleteSegments(routeId)
+        insertSegments(segments)
+        deleteProfile(routeId)
+        saveProfile(profile)
+        deleteTraversalsExcept(routeId, newIdx.keys.toList())
+        val moves = newIdx.filter { (from, to) -> from != to }
+        // By way of negative numbers, so two passes of one ride never share a segment number on the way.
+        moves.forEach { (from, to) -> moveTraversals(routeId, from, -to - 1) }
+        if (moves.isNotEmpty()) unflipTraversals(routeId)
+        setLine(routeId, lengthM, foldedThroughMs)
+    }
+
     /** Gives a route a new line, keeping its id so the rides ridden on it stay attached. */
     @Transaction
     suspend fun replaceGeometry(route: RouteEntity, points: List<RoutePointEntity>, segments: List<RouteSegmentEntity>) {
@@ -410,12 +509,13 @@ interface RouteDao {
         RideEntity::class, TrackPointEntity::class, RouteEntity::class, RoutePointEntity::class,
         RouteSegmentEntity::class, SegmentTraversalEntity::class, RouteProfileEntity::class, HrSampleEntity::class,
     ],
-    version = 7,
+    version = 8,
     exportSchema = true,
     autoMigrations = [
         AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3),
         AutoMigration(from = 3, to = 4), AutoMigration(from = 4, to = 5),
         AutoMigration(from = 5, to = 6), AutoMigration(from = 6, to = 7),
+        AutoMigration(from = 7, to = 8),
     ],
 )
 abstract class TegenwindDb : RoomDatabase() {

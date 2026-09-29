@@ -81,6 +81,8 @@ class RideRecorder(
     private val dao: RideDao,
     private val routeDao: RouteDao,
     private val scope: CoroutineScope,
+    /** After a real ride on a route has been stored: lets the route's line learn where it went. */
+    private val afterRide: suspend (routeId: Long, rideId: Long) -> Unit = { _, _ -> },
 ) {
 
     private val _live = MutableStateFlow<LiveRide?>(null)
@@ -381,6 +383,10 @@ class RideRecorder(
         )
         clear()
         _justFinished.value = ride.rideId
+        // After clear(), so the route's line no longer counts as being ridden; in its own coroutine,
+        // so the ride's page doesn't wait for it.
+        val routeId = ride.route?.routeId
+        if (routeId != null && !ride.simulated) scope.launch { afterRide(routeId, ride.rideId) }
         return ride.rideId
     }
 

@@ -71,6 +71,8 @@ fun RideDetailScreen(rideId: Long, onBack: () -> Unit, backLabel: String = "Ride
     val dao = container.db.rides()
     val scope = rememberCoroutineScope()
     val routes by remember { container.db.routes().routes() }.collectAsStateWithLifecycle(emptyList())
+    // Stored a moment after the ride finishes, when its route's line has learned from it: by then this page may be open.
+    val reroute by remember(rideId) { dao.rerouteFlow(rideId) }.collectAsStateWithLifecycle(null)
 
     var ride by remember { mutableStateOf<RideEntity?>(null) }
     var speeds by remember { mutableStateOf<List<Sample>>(emptyList()) }
@@ -179,7 +181,8 @@ fun RideDetailScreen(rideId: Long, onBack: () -> Unit, backLabel: String = "Ride
             }
         }
 
-        taught?.let { WhatThisRideTaughtCard(it) }
+        val rerouted = reroute?.let { rr -> rr.rerouteStartM?.let { from -> rr.rerouteEndM?.let { to -> from to to } } }
+        if (taught != null || rerouted != null) WhatThisRideTaughtCard(taught, rerouted)
 
         // What you can do with the ride, each with what it does.
         ActionCard(
@@ -386,13 +389,17 @@ private fun taughtBy(
         })
 }
 
+/**
+ * What the ride taught about its segments ([taught], null when there are no passes to judge by) and,
+ * when it rerouted a stretch of its route's line, which one ([rerouted], metres along the new line).
+ */
 @Composable
-private fun WhatThisRideTaughtCard(taught: Taught) {
+private fun WhatThisRideTaughtCard(taught: Taught?, rerouted: Pair<Double, Double>?) {
     val lessons = (taught as? Taught.Lessons)?.lessons.orEmpty()
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("What this ride taught", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            Text(
+            if (taught != null) Text(
                 when {
                     taught == Taught.Simulated -> "Simulated rides don't teach the model."
                     taught == Taught.BeforeLearning -> "This ride is from before the model learned from rides."
@@ -402,6 +409,16 @@ private fun WhatThisRideTaughtCard(taught: Taught) {
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            rerouted?.let { (from, to) ->
+                Column {
+                    Text("%.1f–%.1f km".format(from / 1000, to / 1000), fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "The route now follows the way you rode here, as on another recent ride.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
             lessons.forEach { l ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {

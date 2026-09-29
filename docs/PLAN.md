@@ -331,6 +331,18 @@ The bottom bar is **Ride · Rides · Routes · Stats**. Rides replaced Map.
   learns its own profile: per 25 m, the moving speed relative to its segment's average, a fading
   average over about the last five rides. It was filled in from all stored rides at once. It only
   shapes the expected-speed line; each segment's time, and so the ETA, stays the segment model's.
+- **Lines that follow your rides** (29 Sep 2026, not planned): a route's line is drawn once, from a
+  GPX file or one ride, and then ridden a little differently.
+  - Every real ride moves the line a quarter of the way toward where it went, where it went within
+    40 m. That is a fading average over about the last seven rides, and it settles within a metre.
+  - A stretch ridden on another street (more than 40 m away, leaving and rejoining the line) on two
+    of the last three rides is rerouted: the line takes that street, and the ride's page says so.
+  - What the route learned stays with the road it was learned on. Segments move with the line and
+    keep their corrections, adjusted so their expected time doesn't change with their new length.
+    The speed profile moves along too. Only the segments over a rerouted stretch start again, and
+    the map lookup runs again for the new stretch.
+  - The rides stored before this were folded in once at startup, as nudges only: replaying old
+    rides could reroute a stretch back and forth. "Update route" still replaces the line at once.
 
 ### The ETA model
 
@@ -371,8 +383,10 @@ and since database version 6 also what the model expected before the ride and ho
 moved its segment. Standing time is `exit − enter − moving`; there's no average heart rate.
 
 Database version 7 added `route_profile` (the speed profile, per 25 m) and `hr_samples` (the last 14
-days of heart rate). The planned `RiderState` and `ModelParams` tables don't exist: fitness is
-computed from ride loads when needed, and rider parameters are constants.
+days of heart rate). Version 8 added `routes.lineFoldedThroughMs` (the last ride a route's line
+learned from) and the stretch a ride rerouted (`rides.rerouteStartM`, `rerouteEndM`). The planned
+`RiderState` and `ModelParams` tables don't exist: fitness is computed from ride loads when needed,
+and rider parameters are constants.
 
 ### Beyond the plan
 
@@ -390,8 +404,9 @@ tegenwind/
   app/schemas/                        # Room schema for every database version
   app/src/main/java/com/tegenwind/app/
     MainActivity.kt, TegenwindApp.kt (AppContainer), PermissionsRationaleActivity.kt
-    ride/     RideService, RideRecorder, RideTracker, Rolling, AutoFinish, RideSimulator, LessonBackfill
-    routes/   Geo, Gpx, RouteRepository, RouteEnricher, RouteTracker, RouteMatcher
+    ride/     RideService, RideRecorder, RideTracker, Rolling, AutoFinish, RideSimulator, LessonBackfill,
+              ProfileLearning, LineLearning
+    routes/   Geo, Gpx, RouteRepository, RouteEnricher, RouteTracker, RouteMatcher, RouteDrift
     eta/      Physics, EtaModel, SegmentLearner, LiveEta, Fitness
     weather/  WindForecast (Open-Meteo)
     live/     LiveShare, LiveJson (meewind)
