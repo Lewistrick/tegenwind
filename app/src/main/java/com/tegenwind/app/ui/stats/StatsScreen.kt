@@ -27,8 +27,11 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.drawText
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -170,10 +173,17 @@ private fun FitnessCard(state: RiderState) {
     val effectPct = (Banister.freshnessFactor(state) - 1) * 100
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Fitness", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Column {
+                Text("Fitness", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Text(
+                    "training load per day: an hour of solid riding is about 100",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                FlatStat("Fitness · 6 wk", "%.0f".format(state.fitness), Modifier.weight(1f))
-                FlatStat("Fatigue · 1 wk", "%.0f".format(state.fatigue), Modifier.weight(1f))
+                FlatStat("Fitness · 6 wk", "%.0f".format(state.fitness), Modifier.weight(1f), unit = "load/day")
+                FlatStat("Fatigue · 1 wk", "%.0f".format(state.fatigue), Modifier.weight(1f), unit = "load/day")
                 FlatStat("Today", "%+.1f%%".format(effectPct), Modifier.weight(1f))
             }
             Text(
@@ -455,9 +465,24 @@ private fun SegmentOverrunRow(s: SegOverrun) {
 
 /** A label over a value, straight on the card: for numbers grouped inside a card of their own. */
 @Composable
-private fun FlatStat(label: String, value: String, modifier: Modifier = Modifier) {
+private fun FlatStat(label: String, value: String, modifier: Modifier = Modifier, unit: String? = null) {
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
+    val unitStyle = MaterialTheme.typography.labelMedium
     Column(modifier) {
-        Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
-        Text(value, style = MaterialTheme.typography.titleMedium.copy(fontFeatureSettings = "tnum"), fontWeight = FontWeight.SemiBold)
+        Text(label, style = MaterialTheme.typography.labelMedium, color = muted, maxLines = 1)
+        Text(
+            // A unit that is a word goes in the label's size, so the value stays on one line.
+            buildAnnotatedString {
+                append(value)
+                if (unit != null) {
+                    withStyle(SpanStyle(fontSize = unitStyle.fontSize, fontWeight = FontWeight.Normal, color = muted)) {
+                        append(" $unit")
+                    }
+                }
+            },
+            style = MaterialTheme.typography.titleMedium.copy(fontFeatureSettings = "tnum"),
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+        )
     }
 }

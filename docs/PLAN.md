@@ -288,16 +288,21 @@ The bottom bar is **Ride · Rides · Routes · Stats**. Rides replaced Map.
   - The large speed number, 2-minute average and live heart rate from the plan are gone: the ETA
     is what you read on the handlebar.
 - **Rides** (not in the plan): the list of finished rides. A ride's page shows distance, moving and
-  total time, average speed, form and average heart rate, then the speed chart and the heart-rate
-  chart from Health Connect, and the "What this ride taught" card. It can also save the ride as a
-  route, change which route it belongs to, give its route the line you actually rode, or delete it.
+  total time, average speed, form and average heart rate. Under the total time it says where the
+  ride ranks among the rides on its route: top or bottom x%, from five rides on. Then the speed
+  chart and the heart-rate chart from Health Connect, and the "What this ride taught" card. It can
+  also save the ride as a route, change which route it belongs to, give its route the line you
+  actually rode, or delete it.
   A ride opens here by itself when it finishes.
 - **Routes:** the list shows name, length and the state of the map lookup. Rename and GPX import
   are there. A route's page shows its traffic lights, km open to the wind and steepest slope, a
-  wind-exposure strip, and a table per segment. It can add the reverse route, redo the lookup, or
-  delete the route. Ride count, typical time and "Reset learning" were not built.
+  wind-exposure strip, and a table per segment. The table includes what each segment learned: its
+  time against bare physics, from red (slower) through yellow to green (faster). It can add the
+  reverse route, redo the lookup, or delete the route. Ride count, typical time and "Reset
+  learning" were not built.
 - **Stats:** as planned (route picker; fastest, slowest, average and median ride; trend;
   histogram; headwind vs duration; slowest segments), plus a fitness card that runs across routes.
+  Its fitness and fatigue are in load/day: an hour of solid riding is about 100.
   Durations are start to finish, standing still included. "Slowest segments" compares against
   physics alone, not the learned expectation.
 

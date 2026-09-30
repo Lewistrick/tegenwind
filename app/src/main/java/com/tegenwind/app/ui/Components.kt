@@ -33,6 +33,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -48,13 +49,23 @@ import kotlinx.coroutines.delay
  * - text: navigation and optional extras ("‹ Rides", "Try a simulated ride", "Rename")
  */
 
-/** A small card with a label over a value: the tiles for numbers. */
+/**
+ * A small card with a label over a value: the tiles for numbers. A [note] goes under the value in
+ * [noteColor], e.g. how the value ranks ("top 10%").
+ */
 @Composable
-fun StatTile(label: String, value: String, modifier: Modifier = Modifier) {
+fun StatTile(
+    label: String,
+    value: String,
+    modifier: Modifier = Modifier,
+    note: String? = null,
+    noteColor: Color = MaterialTheme.colorScheme.onSurfaceVariant,
+) {
     Card(modifier) {
         Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
             Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
             Text(value, style = MaterialTheme.typography.titleMedium.copy(fontFeatureSettings = "tnum"), fontWeight = FontWeight.SemiBold)
+            if (note != null) Text(note, style = MaterialTheme.typography.labelMedium, color = noteColor, maxLines = 1)
         }
     }
 }

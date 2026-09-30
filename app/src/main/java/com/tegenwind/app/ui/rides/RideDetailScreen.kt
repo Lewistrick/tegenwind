@@ -3,7 +3,9 @@ package com.tegenwind.app.ui.rides
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -40,6 +42,7 @@ import com.tegenwind.app.eta.Banister
 import com.tegenwind.app.health.HealthConnectHr
 import com.tegenwind.app.ui.theme.GoodColor
 import kotlin.math.roundToInt
+import com.tegenwind.app.ride.RideRank
 import com.tegenwind.app.ride.RideTracker
 import com.tegenwind.app.ride.Sample
 import com.tegenwind.app.ride.formatElapsed
@@ -54,6 +57,7 @@ import com.tegenwind.app.ui.theme.HeartColor
 import com.tegenwind.app.ui.theme.SpeedColor
 import androidx.health.connect.client.PermissionController
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import java.time.Instant
 
@@ -104,6 +108,10 @@ fun RideDetailScreen(rideId: Long, onBack: () -> Unit, backLabel: String = "Ride
         }
     }
     val r = ride
+    // The real rides on this ride's route, to say where its time falls among them.
+    val routeRides by remember(r?.routeId) {
+        r?.routeId?.let { dao.ridesForRoute(it) } ?: flowOf(emptyList())
+    }.collectAsStateWithLifecycle(emptyList())
     LaunchedEffect(r, hrRefresh) {
         // A simulated ride has no watch behind it, so there is nothing to look for.
         if (r != null && !r.simulated) {
@@ -137,10 +145,27 @@ fun RideDetailScreen(rideId: Long, onBack: () -> Unit, backLabel: String = "Ride
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
 
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            StatTile("Distance", "%.2f km".format(r.distanceM / 1000), Modifier.weight(1f))
-            StatTile("Moving", formatElapsed(r.movingMs), Modifier.weight(1f))
-            StatTile("Total", formatElapsed((r.endedAtMs ?: r.startedAtMs) - r.startedAtMs), Modifier.weight(1f))
+        // Among the rides on its route, by the same start-to-finish time as "Total".
+        val rank = routeRides.takeIf { rides -> rides.any { it.id == r.id } }
+            ?.let { rides -> RideRank.of(totalMs(r), rides.map(::totalMs)) }
+        // Equal heights, so the tile with a ranking under its value doesn't stand out of the row.
+        Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            StatTile("Distance", "%.2f km".format(r.distanceM / 1000), Modifier.weight(1f).fillMaxHeight())
+            StatTile("Moving", formatElapsed(r.movingMs), Modifier.weight(1f).fillMaxHeight())
+            StatTile(
+                "Total", formatElapsed(totalMs(r)), Modifier.weight(1f).fillMaxHeight(),
+                note = when (rank) {
+                    is RideRank.Top -> "top ${rank.percent}%"
+                    is RideRank.Bottom -> "bottom ${rank.percent}%"
+                    RideRank.Middle -> "middle"
+                    null -> null
+                },
+                noteColor = when (rank) {
+                    is RideRank.Top -> GoodColor
+                    is RideRank.Bottom -> MaterialTheme.colorScheme.error
+                    else -> MaterialTheme.colorScheme.onSurfaceVariant
+                },
+            )
         }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             StatTile("Avg speed", avgSpeedText(r), Modifier.weight(1f))
@@ -360,6 +385,9 @@ private sealed interface Taught {
  * Ranked by the nudge rather than by the surprise, so a segment the model already knows is slow
  * stops showing up once it has learned that.
  */
+/** From start to finish, standing still included: the "Total" tile, and what rides are ranked by. */
+private fun totalMs(ride: RideEntity): Long = (ride.endedAtMs ?: ride.startedAtMs) - ride.startedAtMs
+
 private fun taughtBy(
     ride: RideEntity,
     traversals: List<SegmentTraversalEntity>,

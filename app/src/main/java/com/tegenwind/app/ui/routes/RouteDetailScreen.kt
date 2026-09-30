@@ -43,8 +43,11 @@ import com.tegenwind.app.ui.Action
 import com.tegenwind.app.ui.ActionCard
 import com.tegenwind.app.ui.ChartCard
 import com.tegenwind.app.ui.StatTile
+import com.tegenwind.app.eta.SegmentCorrection
 import com.tegenwind.app.ui.rememberConfirmTap
+import com.tegenwind.app.ui.theme.scaleColor
 import com.tegenwind.app.weather.compassPoint
+import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
 
 @Composable
@@ -181,11 +184,24 @@ internal fun ExposureStrip(segments: List<RouteSegmentEntity>, lengthM: Double, 
     }
 }
 
+/** Column widths of the segments table, dp: six columns that still fit a 360 dp screen. */
+private val SEGMENT_COLUMNS = listOf("km" to 56, "dir" to 40, "slope" to 56, "open" to 48, "lights" to 44, "learned" to 60)
+
+/** From a quarter more or less time than physics, a segment's learned time is fully red or green. */
+private const val FULL_LEARNED = 0.25
+
 @Composable
 private fun SegmentHeader() {
-    Row(Modifier.padding(vertical = 6.dp)) {
-        listOf("km" to 70, "dir" to 44, "slope" to 64, "open" to 60, "lights" to 50).forEach { (t, w) ->
-            Text(t, Modifier.width(w.dp), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Column(Modifier.padding(vertical = 6.dp)) {
+        Text(
+            "learned: time against bare physics, from your rides. Green is faster, red slower.",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Row(Modifier.padding(top = 6.dp)) {
+            SEGMENT_COLUMNS.forEach { (t, w) ->
+                Text(t, Modifier.width(w.dp), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
         }
     }
 }
@@ -193,12 +209,20 @@ private fun SegmentHeader() {
 @Composable
 private fun SegmentRow(s: RouteSegmentEntity) {
     val style = MaterialTheme.typography.bodyMedium.copy(fontFeatureSettings = "tnum")
+    val w = SEGMENT_COLUMNS.map { it.second.dp }
     Row(Modifier.padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text("%.2f".format(s.startM / 1000), Modifier.width(70.dp), style = style)
-        Text(compassPoint(s.bearingDeg), Modifier.width(44.dp), style = style)
-        Text(s.gradePct?.let { "%+.1f%%".format(it) } ?: "–", Modifier.width(64.dp), style = style)
-        Text(s.exposure?.let { "%d%%".format((it * 100).toInt()) } ?: "–", Modifier.width(60.dp), style = style)
-        Text(s.signals?.takeIf { it > 0 }?.toString() ?: "", Modifier.width(50.dp), style = style, color = MaterialTheme.colorScheme.primary)
+        Text("%.2f".format(s.startM / 1000), Modifier.width(w[0]), style = style)
+        Text(compassPoint(s.bearingDeg), Modifier.width(w[1]), style = style)
+        Text(s.gradePct?.let { "%+.1f%%".format(it) } ?: "–", Modifier.width(w[2]), style = style)
+        Text(s.exposure?.let { "%d%%".format((it * 100).toInt()) } ?: "–", Modifier.width(w[3]), style = style)
+        Text(s.signals?.takeIf { it > 0 }?.toString() ?: "", Modifier.width(w[4]), style = style, color = MaterialTheme.colorScheme.primary)
+        // How much longer than bare physics the segment takes, as the ETA now counts it; nothing before a first pass.
+        if (s.learnedPasses > 0) {
+            val extra = SegmentCorrection(s.learnedLogMean).timeFactor - 1
+            Text("%+d%%".format((extra * 100).roundToInt()), Modifier.width(w[5]), style = style, color = scaleColor(-extra / FULL_LEARNED))
+        } else {
+            Text("–", Modifier.width(w[5]), style = style)
+        }
         Spacer(Modifier.weight(1f))
     }
 }

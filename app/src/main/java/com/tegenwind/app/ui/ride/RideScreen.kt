@@ -94,6 +94,7 @@ import com.tegenwind.app.ui.theme.Asphalt
 import com.tegenwind.app.ui.theme.Danger
 import com.tegenwind.app.ui.theme.GoodColor
 import com.tegenwind.app.ui.theme.SpeedColor
+import com.tegenwind.app.ui.theme.scaleColor
 import com.tegenwind.app.weather.Sky
 import com.tegenwind.app.weather.WindSample
 import com.tegenwind.app.weather.beaufort
@@ -711,18 +712,11 @@ private fun skyColor(s: Sky): Color {
     return lerp(clearToCloudy, RainColor, (s.rainMmH / FULL_RAIN_MM_H).toFloat().coerceIn(0f, 1f))
 }
 
-private val WindHurts = Color(0xFFFF3B30)
-private val WindNeutral = Color(0xFFFFD60A)
-private val WindHelps = Color(0xFF30D158)
-
 /** From a fifth of the time lost or saved, a segment is fully red or green: a strong wind in the open. */
 private const val FULL_WIND_IMPACT = 0.2
 
 /** Red where the wind slows you, green where it pushes you, yellow where it makes no difference. */
-private fun windColor(impact: Double): Color {
-    val strength = (kotlin.math.abs(impact) / FULL_WIND_IMPACT).toFloat().coerceIn(0f, 1f)
-    return lerp(WindNeutral, if (impact < 0) WindHurts else WindHelps, strength)
-}
+private fun windColor(impact: Double): Color = scaleColor(impact / FULL_WIND_IMPACT)
 
 /**
  * The whole route in two bars, labelled "sky" and "wind": the weather over each segment, and below

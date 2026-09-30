@@ -39,6 +39,7 @@ there. Don't use a hex value in a screen.
 | `HeartColor` | `#FF5B4F` | Heart rate |
 | `GoodColor` | `#48D695` | Good |
 | `Danger` | `#FF6A5C` | Bad or dangerous (`error`) |
+| `ScaleWorse`, `ScaleEven`, `ScaleBetter` | `#FF3B30`, `#FFD60A`, `#30D158` | The red–yellow–green scale (`scaleColor`), see below |
 
 **What each colour means, everywhere:**
 - **Amber** is the accent:
@@ -48,20 +49,25 @@ there. Don't use a hex value in a screen.
   - what the model expects (the expected-speed line)
   - traffic lights
 - **Blue** is speed, and nothing else.
-- **Green** is good: faster than expected, a tailwind, the fastest ride, "Recording".
+- **Green** is good: faster than expected, a tailwind, the fastest ride, a ride in the top x% of its
+  route, "Recording".
 - **Red** is bad or dangerous:
   - slower than expected, a headwind
-  - off route, the slowest ride
+  - off route, the slowest ride, a ride in the bottom x% of its route
   - delete, and Stop once armed
 
   Heart rate uses its own red as a data series.
-- **Grey** is descriptive and neutral: how open a stretch of road is, your position marker, numbers
-  measured against bare physics (where "slower" is normal, so red would say nothing).
+- **Grey** is descriptive and neutral: how open a stretch of road is, your position marker, the
+  slowest segments on Stats (measured against bare physics, where "slower" is normal).
 
-Two scales on the ride screen's route bar, only there:
-- **Wind:** red (`#FF3B30`) through yellow (`#FFD60A`) to green (`#30D158`), for how much the wind
-  costs or gains.
-- **Sky:** yellow (`#FFD233`) through white to blue (`#2F6FFF`), for sun, cloud and rain.
+Scales, each only where it's listed:
+- **Red–yellow–green** (`scaleColor`): yellow is even, green gains, red costs.
+  - Wind, on the ride screen's route bar: how much the wind costs or gains, fully red or green
+    from a fifth of the time.
+  - Learned time, in the segments table on a route's page: how much longer or shorter than bare
+    physics a segment takes, fully red or green from a quarter.
+- **Sky,** on the ride screen's route bar: yellow (`#FFD233`) through white to blue (`#2F6FFF`), for
+  sun, cloud and rain.
 
 ## 3. Type
 
@@ -96,6 +102,10 @@ Material 3's default scale, used like this:
   "What this ride taught"), then the action table, then any small print.
 - **Tiles:** `StatTile` in rows of two or three, equal widths (`Modifier.weight(1f)`). Keep labels
   short enough to stay on one line at 360 dp.
+  - A tile can carry a one-line `note` under its value, in the label's size: how the value ranks,
+    such as "top 10%" in green, "bottom 20%" in red or "middle" in grey.
+  - A row with a note keeps its tiles the same height: `Modifier.height(IntrinsicSize.Min)` on the
+    row, `fillMaxHeight()` on each tile.
 - **Touch targets:** at least 48 dp high. Buttons in the action table are 128 × 52 dp.
 
 ## 5. Buttons and actions
@@ -146,7 +156,10 @@ One scheme:
 
 - **Sentence case** everywhere ("Share live", not "Share Live"). No capitals for emphasis. The one
   exception is the YES / NO of the almost-there prompt, which is read while riding.
-- **Units:** km, km/h, min, bpm, %, Bft. Times are m:ss or h:mm:ss; clock times HH:mm.
+- **Units:** km, km/h, min, bpm, %, Bft, load/day (training load per day: an hour of solid riding
+  is about 100). Times are m:ss or h:mm:ss; clock times HH:mm.
+  - A unit that is a word, like load/day, follows the value in the label's size, muted and not
+    bold, so the value stays on one line: "42 load/day".
 - **Separators:** a middle dot with spaces between items: "13.6 km · 6 rides · usually 37:43".
   - Keep each item on one line: join its words with a non-breaking space, so a line can only break
     between items.
