@@ -39,6 +39,30 @@ object SegmentLearner {
     /** Below this the pass is too short to say anything: GPS noise dominates. */
     const val MIN_MS = 5_000L
 
+    /** A shared tilt smaller than this (half a percent) isn't worth rewriting every ride's form for. */
+    const val MIN_TILT = 0.005
+
+    /**
+     * What all learned segments share: their average correction, weighted by how much each is
+     * ridden (length × passes). [segments] pairs each segment's length with what it learned.
+     *
+     * Form and the corrections multiply, so "every segment 10% slower" and "form 10% lower" give the
+     * same ETA and rides can't tell them apart. This shared part belongs in form: moved there, the
+     * corrections average 0 over what you ride, keep only what's particular to each road, and a
+     * new route, whose segments start at 0, starts at your real pace. Across all routes, so a route
+     * that is slower as a whole still is compared with the others.
+     */
+    fun sharedTilt(segments: List<Pair<Double, SegmentCorrection>>): Double {
+        var weight = 0.0
+        var sum = 0.0
+        for ((lengthM, c) in segments) {
+            val w = lengthM * c.passes
+            weight += w
+            sum += w * c.logMean
+        }
+        return if (weight > 0) sum / weight else 0.0
+    }
+
     /**
      * Folds one pass into what the segment knew. [actualMovingMs] is time spent moving,
      * [physicsMovingMs] the prediction at form 1.0 before any correction, and [form] how fast

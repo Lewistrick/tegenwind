@@ -64,8 +64,8 @@ Scales, each only where it's listed:
 - **Red–yellow–green** (`scaleColor`): yellow is even, green gains, red costs.
   - Wind, on the ride screen's route bar: how much the wind costs or gains, fully red or green
     from a fifth of the time.
-  - Learned time, in the segments table on a route's page: how much longer or shorter than bare
-    physics a segment takes, fully red or green from a quarter.
+  - Learned time, in the segments table on a route's page: how much longer or shorter than your
+    usual pace a segment takes, fully red or green from a quarter.
 - **Sky,** on the ride screen's route bar: yellow (`#FFD233`) through white to blue (`#2F6FFF`), for
   sun, cloud and rain.
 

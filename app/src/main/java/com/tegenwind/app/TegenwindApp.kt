@@ -53,8 +53,13 @@ class AppContainer(app: Application) {
                 )
             }
         }
-        // Rides from before each pass recorded what it taught get that filled in once.
-        appScope.launch { backfillLessons(db.rides(), db.routes()) }
+        appScope.launch {
+            // Rides from before each pass recorded what it taught get that filled in once.
+            backfillLessons(db.rides(), db.routes())
+            // Whatever all segments learned in common goes into form. The first time, that's the
+            // tilt they gathered before this existed; after that each ride does it as it ends.
+            db.routes().moveSharedTiltIntoForm()
+        }
         appScope.launch {
             // Routes ridden before rides learned a speed profile learn one from the rides already stored.
             backfillProfiles(db.rides(), db.routes(), routes::load)

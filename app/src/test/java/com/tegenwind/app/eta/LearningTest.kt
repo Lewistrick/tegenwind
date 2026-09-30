@@ -3,6 +3,7 @@ package com.tegenwind.app.eta
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import kotlin.math.exp
 
 class LearningTest {
 
@@ -138,5 +139,52 @@ class LearningTest {
         // After a heavy week the same rider starts a touch slower.
         val hard = steady + (60 until 67).map { RideLoad(it * day, 200.0) }
         assertTrue(startingForm(forms, hard, 66 * day) < 0.95)
+    }
+
+    @Test
+    fun whatAllSegmentsShareIsTheirAverageOverWhatYouRide() {
+        val tilt = SegmentLearner.sharedTilt(
+            listOf(
+                250.0 to SegmentCorrection(logMean = 0.2, passes = 3),
+                250.0 to SegmentCorrection(logMean = 0.0, passes = 1),
+                // Never ridden: it has nothing to share.
+                500.0 to SegmentCorrection(logMean = -0.1, passes = 0),
+            )
+        )
+        assertEquals(0.15, tilt, 1e-12)
+        assertEquals(0.0, SegmentLearner.sharedTilt(emptyList()), 0.0)
+    }
+
+    @Test
+    fun movingTheSharedTiltIntoFormKeepsEveryRiddenEtaAndFixesNewRoads() {
+        fun seg(i: Int, c: SegmentCorrection) = EtaSegment(i * 250.0, (i + 1) * 250.0, 90.0, 0.0, 0.6, 0, c)
+        val ridden = listOf(seg(0, SegmentCorrection(0.15, passes = 5)), seg(1, SegmentCorrection(0.05, passes = 5)))
+        val form = FormEstimate(0.9, 0.0004)
+        val tilt = SegmentLearner.sharedTilt(ridden.map { it.lengthM to it.learned })
+        assertEquals(0.1, tilt, 1e-12)
+
+        val shifted = ridden.map { it.copy(learned = it.learned.copy(logMean = it.learned.logMean - tilt)) }
+        val newForm = form.copy(mean = form.mean * exp(-tilt))
+        // Every ridden segment takes as long as it did...
+        assertEquals(
+            EtaModel(ridden).predict(0.0, 0L, null, form).remainingS,
+            EtaModel(shifted).predict(0.0, 0L, null, newForm).remainingS,
+            1e-6,
+        )
+        // ...the segments now average 0...
+        assertEquals(0.0, SegmentLearner.sharedTilt(shifted.map { it.lengthM to it.learned }), 1e-12)
+        // ...and a road never ridden is expected at your real pace: slower by what they shared.
+        val fresh = EtaModel(listOf(seg(0, SegmentCorrection())))
+        assertEquals(exp(tilt), fresh.predict(0.0, 0L, null, newForm).remainingS / fresh.predict(0.0, 0L, null, form).remainingS, 1e-9)
+    }
+
+    @Test
+    fun theStartingFormLeavesRoomForASlowRider() {
+        assertEquals(0.6, priorForm(listOf(0.6, 0.6, 0.6)), 1e-12)
+        assertEquals(0.5, priorForm(listOf(0.3)), 1e-12)
+        assertEquals(1.6, priorForm(listOf(2.0)), 1e-12)
+        // Scaling every stored form scales their median by the same factor.
+        val forms = listOf(0.8, 0.9, 1.0, 0.85, 0.95)
+        assertEquals(priorForm(forms) * 0.9, priorForm(forms.map { it * 0.9 }), 1e-12)
     }
 }

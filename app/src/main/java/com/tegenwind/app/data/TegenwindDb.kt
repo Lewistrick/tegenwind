@@ -15,8 +15,12 @@ import androidx.room.RoomDatabase
 import androidx.room.Transaction
 import androidx.room.Update
 import com.tegenwind.app.eta.RideLoad
+import com.tegenwind.app.eta.SegmentCorrection
+import com.tegenwind.app.eta.SegmentLearner
 import com.tegenwind.app.routes.RouteStart
 import kotlinx.coroutines.flow.Flow
+import kotlin.math.abs
+import kotlin.math.exp
 
 @Entity(tableName = "rides")
 data class RideEntity(
@@ -371,6 +375,33 @@ interface RouteDao {
     @Transaction
     suspend fun setLearned(segments: List<RouteSegmentEntity>) {
         segments.forEach { setLearned(it.routeId, it.idx, it.learnedLogMean, it.learnedLogVar, it.learnedPasses) }
+    }
+
+    /** Every segment, on every route, that some pass has taught something. */
+    @Query("SELECT * FROM route_segments WHERE learnedPasses > 0")
+    suspend fun learnedSegments(): List<RouteSegmentEntity>
+
+    @Query("UPDATE route_segments SET learnedLogMean = learnedLogMean - :shift WHERE learnedPasses > 0")
+    suspend fun shiftLearned(shift: Double)
+
+    @Query("UPDATE rides SET formFactor = formFactor * :factor WHERE formFactor IS NOT NULL")
+    suspend fun scaleForms(factor: Double)
+
+    /**
+     * Moves what all learned segments share into your form: see [SegmentLearner.sharedTilt]. Every
+     * segment you've ridden takes as long as before, since form and correction shift together; a
+     * segment not yet ridden now starts at your real pace. Past rides' form moves by the same
+     * factor, so their median, the next ride's starting form, moves with it. Returns the shift.
+     */
+    @Transaction
+    suspend fun moveSharedTiltIntoForm(): Double {
+        val tilt = SegmentLearner.sharedTilt(
+            learnedSegments().map { (it.endM - it.startM) to SegmentCorrection(it.learnedLogMean, it.learnedLogVar, it.learnedPasses) }
+        )
+        if (abs(tilt) < SegmentLearner.MIN_TILT) return 0.0
+        shiftLearned(tilt)
+        scaleForms(exp(-tilt))
+        return tilt
     }
 
     @Query(

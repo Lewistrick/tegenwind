@@ -187,14 +187,14 @@ internal fun ExposureStrip(segments: List<RouteSegmentEntity>, lengthM: Double, 
 /** Column widths of the segments table, dp: six columns that still fit a 360 dp screen. */
 private val SEGMENT_COLUMNS = listOf("km" to 56, "dir" to 40, "slope" to 56, "open" to 48, "lights" to 44, "learned" to 60)
 
-/** From a quarter more or less time than physics, a segment's learned time is fully red or green. */
+/** From a quarter more or less time than your usual pace, a segment's learned time is fully red or green. */
 private const val FULL_LEARNED = 0.25
 
 @Composable
 private fun SegmentHeader() {
     Column(Modifier.padding(vertical = 6.dp)) {
         Text(
-            "learned: time against bare physics, from your rides. Green is faster, red slower.",
+            "learned: how each segment rides compared with your usual pace. Green is faster, red slower.",
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -216,7 +216,7 @@ private fun SegmentRow(s: RouteSegmentEntity) {
         Text(s.gradePct?.let { "%+.1f%%".format(it) } ?: "–", Modifier.width(w[2]), style = style)
         Text(s.exposure?.let { "%d%%".format((it * 100).toInt()) } ?: "–", Modifier.width(w[3]), style = style)
         Text(s.signals?.takeIf { it > 0 }?.toString() ?: "", Modifier.width(w[4]), style = style, color = MaterialTheme.colorScheme.primary)
-        // How much longer than bare physics the segment takes, as the ETA now counts it; nothing before a first pass.
+        // How much longer than your usual pace the segment takes, as the ETA now counts it; nothing before a first pass.
         if (s.learnedPasses > 0) {
             val extra = SegmentCorrection(s.learnedLogMean).timeFactor - 1
             Text("%+d%%".format((extra * 100).roundToInt()), Modifier.width(w[5]), style = style, color = scaleColor(-extra / FULL_LEARNED))

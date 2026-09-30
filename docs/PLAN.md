@@ -297,7 +297,7 @@ The bottom bar is **Ride · Rides · Routes · Stats**. Rides replaced Map.
 - **Routes:** the list shows name, length and the state of the map lookup. Rename and GPX import
   are there. A route's page shows its traffic lights, km open to the wind and steepest slope, a
   wind-exposure strip, and a table per segment. The table includes what each segment learned: its
-  time against bare physics, from red (slower) through yellow to green (faster). It can add the
+  time against your usual pace, from red (slower) through yellow to green (faster). It can add the
   reverse route, redo the lookup, or delete the route. Ride count, typical time and "Reset
   learning" were not built.
 - **Stats:** as planned (route picker; fastest, slowest, average and median ride; trend;
@@ -358,6 +358,11 @@ The bottom bar is **Ride · Rides · Routes · Stats**. Rides replaced Map.
 - **Layer 2** is a single learned offset per segment (see Phase 6), learned from moving time with
   the day's form divided out. Traffic lights are not learned: every light costs a fixed 12 s on
   average.
+  - Form and the offsets multiply, so a slowness all segments share could sit in either one.
+    After every ride (and once at startup, 30 Sep 2026) that shared part moves into form. It is the
+    average offset over all routes, weighted by length × passes. The offsets then average 0 over
+    what you ride, and a new route starts at your real pace. Past rides' forms move by the same
+    factor, and the starting form may range 0.5–1.6 (was 0.7–1.4), so the move is never cut short.
 - **Layer 3:** the Kalman filter on today's form, as planned. The Banister model sets the starting
   form (±5% at most) instead of adjusting `P_rider`. There is no fatigue term within a ride and no
   cardiac drift.

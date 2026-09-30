@@ -62,6 +62,10 @@ fun windAlong(headingDeg: Double, w: WindSample, exposure: Double = UNKNOWN_EXPO
 
 const val UNKNOWN_EXPOSURE = 0.6
 
-/** Starting guess for today's form: the median of recent rides, or 1.0 without history. */
+/**
+ * Starting guess for today's form: the median of recent rides, or 1.0 without history. Clamped to
+ * the range a segment's observation can have ([FormEstimator.observe]), no tighter, so moving what
+ * all segments share into form (see [SegmentLearner.sharedTilt]) is never cut short.
+ */
 fun priorForm(recent: List<Double>): Double =
-    if (recent.isEmpty()) 1.0 else recent.sorted()[recent.size / 2].coerceIn(0.7, 1.4)
+    if (recent.isEmpty()) 1.0 else recent.sorted()[recent.size / 2].coerceIn(0.5, 1.6)

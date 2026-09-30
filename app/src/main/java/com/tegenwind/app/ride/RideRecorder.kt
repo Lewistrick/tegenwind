@@ -381,6 +381,9 @@ class RideRecorder(
                 loadTss = if (ride.simulated) null else Banister.loadFromRide(snap.movingMs, snap.distanceM),
             )
         )
+        // What the segments just learned in common belongs in form. After this ride's own form is
+        // stored, so it moves along with the others.
+        if (!ride.simulated) routeDao.moveSharedTiltIntoForm()
         clear()
         _justFinished.value = ride.rideId
         // After clear(), so the route's line no longer counts as being ridden; in its own coroutine,
