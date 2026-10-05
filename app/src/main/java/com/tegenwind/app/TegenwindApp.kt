@@ -33,11 +33,11 @@ class TegenwindApp : Application() {
 class AppContainer(app: Application) {
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     val db: TegenwindDb = Room.databaseBuilder(app, TegenwindDb::class.java, "tegenwind.db").build()
-    val recorder = RideRecorder(db.rides(), db.routes(), appScope) { routeId, rideId -> routes.learnLine(routeId, rideId) }
+    val recorder: RideRecorder = RideRecorder(db.rides(), db.routes(), appScope) { routeId, rideId -> routes.learnLine(routeId, rideId) }
     val healthConnect = HealthConnectHr(app)
     val heartRate = HeartRateStore(healthConnect, db.rides())
     val liveShare = LiveShare()
-    val routes = RouteRepository(db.routes(), db.rides(), RouteEnricher(), appScope) { recorder.live.value != null }
+    val routes: RouteRepository = RouteRepository(db.routes(), db.rides(), RouteEnricher(), appScope) { recorder.live.value != null }
     val weather = WeatherRepository()
 
     init {

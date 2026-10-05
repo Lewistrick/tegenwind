@@ -243,7 +243,7 @@ bike-dashboard/
 
 ---
 
-## 9. What was built (27 Sep 2026)
+## 9. What was built (updated 5 Oct 2026)
 
 It is still a native Kotlin and Compose app for one rider on one commute, and it does all four
 things from the Context. How it does them drifted. The heart-rate side shrank once Phase 0 showed
