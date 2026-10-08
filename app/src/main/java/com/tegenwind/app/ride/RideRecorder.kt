@@ -11,6 +11,7 @@ import com.tegenwind.app.eta.Eta
 import com.tegenwind.app.eta.EtaModel
 import com.tegenwind.app.eta.EtaSegment
 import com.tegenwind.app.eta.FormEstimator
+import com.tegenwind.app.eta.RiderLearned
 import com.tegenwind.app.eta.LiveEta
 import com.tegenwind.app.eta.Physics
 import com.tegenwind.app.eta.SegmentCorrection
@@ -81,6 +82,8 @@ class RideRecorder(
     private val dao: RideDao,
     private val routeDao: RouteDao,
     private val scope: CoroutineScope,
+    /** What has been learned about how you ride; read afresh whenever a ride or a route is begun. */
+    private val learned: () -> RiderLearned = { RiderLearned() },
     /** After a real ride on a route has been stored: lets the route's line learn where it went. */
     private val afterRide: suspend (routeId: Long, rideId: Long) -> Unit = { _, _ -> },
 ) {
@@ -153,8 +156,9 @@ class RideRecorder(
         this.route = route
         matcher = if (route == null && candidates.isNotEmpty()) RouteMatcher(candidates, habit) else null
         routeTracker = route?.let { RouteTracker(it.line) }
-        model = route?.etaModel()
-        form = FormEstimator(prior = priorForm)
+        val learnedNow = learned()
+        model = route?.etaModel(learnedNow)
+        form = FormEstimator(prior = priorForm, priorSd = learnedNow.formSd * priorForm, obsSd = learnedNow.passNoise * priorForm)
         formObservations = 0
         autoFinishCancelled = false
         sharePromptAnswered = false
@@ -310,7 +314,7 @@ class RideRecorder(
         if (leader.route.route.id != route?.route?.id) {
             route = leader.route
             routeTracker = leader.tracker
-            model = leader.route.etaModel()
+            model = leader.route.etaModel(learned())
             // Whatever was half-measured belongs to a route we turn out not to be on.
             segIdx = -1
             traversals.clear()

@@ -356,8 +356,7 @@ The bottom bar is **Ride · Rides · Routes · Stats**. Rides replaced Map.
   temperature. Wind at rider height uses a log profile whose surface roughness follows the segment's
   exposure: about 65% of the 10 m wind in the open, about 30% between buildings.
 - **Layer 2** is a single learned offset per segment (see Phase 6), learned from moving time with
-  the day's form divided out. Traffic lights are not learned: every light costs a fixed 12 s on
-  average.
+  the day's form divided out.
   - Form and the offsets multiply, so a slowness all segments share could sit in either one.
     After every ride (and once at startup, 30 Sep 2026) that shared part moves into form. It is the
     average offset over all routes, weighted by length × passes. The offsets then average 0 over
@@ -366,8 +365,25 @@ The bottom bar is **Ride · Rides · Routes · Stats**. Rides replaced Map.
 - **Layer 3:** the Kalman filter on today's form, as planned. The Banister model sets the starting
   form (±5% at most) instead of adjusting `P_rider`. There is no fatigue term within a ride and no
   cardiac drift.
-- **Output:** as planned, the band being 1.28σ from form, segment, traffic-light and baseline
-  uncertainty. There is no backtest and no log of predictions yet.
+- **Learned from rides (8 Oct 2026, `eta/RiderLearned.kt`, `RiderModel`):** a few numbers that were
+  fixed guesses are now fitted to the stored rides, at startup and after every real ride, and
+  start at the old guess until there is data. Nothing is stored for them: they are worked out again
+  from the rides. Each is pulled toward the old guess in proportion to how little data there is.
+  - **Wind felt:** the share of the modelled headwind that shows in your riding. For each candidate
+    share, passes are compared with physics after taking out each segment's usual time and each
+    ride's pace; the share with least left over wins. On 29 rides it came out at 35%: the model had
+    over-stated wind roughly threefold (a 9 min headwind cost on a day that cost about 5 min). Needs
+    150 passes from 6 rides before it moves off 100%.
+  - **Spread of form:** how far a ride's form landed from its starting guess (the median of the last
+    10), over the last 20 rides. Sets the band's starting width (was a fixed 10%; now 9.7%) and the
+    form filter's starting uncertainty.
+  - **Noise of one pass:** how far a segment pass lands from what was expected of it. It sets how
+    much one segment moves form (was a fixed 15%) and how the ETA's uncertainty adds up.
+  - **Time at lights:** stopped time over lights passed, and its spread (was 12 s ± 15 s per light;
+    now 7.5 s ± 18 s).
+- **Output:** the band is 1.28σ from form, segment, traffic-light and pass-noise uncertainty, all
+  learned as above. There is no backtest and no log of predictions yet. The one unlearned guess
+  left is how fast form drifts within a ride (`FormEstimator.PROCESS_VAR`).
 
 ### Heart rate
 
@@ -417,7 +433,7 @@ tegenwind/
     ride/     RideService, RideRecorder, RideTracker, Rolling, AutoFinish, RideSimulator, LessonBackfill,
               ProfileLearning, LineLearning
     routes/   Geo, Gpx, RouteRepository, RouteEnricher, RouteTracker, RouteMatcher, RouteDrift
-    eta/      Physics, EtaModel, SegmentLearner, LiveEta, Fitness
+    eta/      Physics, EtaModel, SegmentLearner, LiveEta, Fitness, RiderLearned (the fits), RiderModel
     weather/  WindForecast (Open-Meteo)
     live/     LiveShare, LiveJson (meewind)
     health/   HealthConnectHr

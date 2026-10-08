@@ -14,6 +14,7 @@ import androidx.room.Query
 import androidx.room.RoomDatabase
 import androidx.room.Transaction
 import androidx.room.Update
+import com.tegenwind.app.eta.RideFacts
 import com.tegenwind.app.eta.RideLoad
 import com.tegenwind.app.eta.SegmentCorrection
 import com.tegenwind.app.eta.SegmentLearner
@@ -204,6 +205,20 @@ data class FullRoute(
     val profile: List<RouteProfileEntity>,
 )
 
+/** One real segment pass joined with its segment, for [RiderFit]. */
+data class LearningPass(
+    val rideId: Long,
+    val routeId: Long,
+    val segIdx: Int,
+    val movingMs: Long,
+    val headwindMps: Double?,
+    val expectedMovingMs: Long?,
+    val startM: Double,
+    val endM: Double,
+    val gradePct: Double?,
+    val learnedLogVar: Double,
+)
+
 @Dao
 interface RideDao {
     @Insert
@@ -250,6 +265,25 @@ interface RideDao {
             "WHERE loadTss IS NOT NULL AND simulated = 0 AND startedAtMs >= :sinceMs ORDER BY startedAtMs"
     )
     suspend fun loadsSince(sinceMs: Long): List<RideLoad>
+
+    /** Every real pass over a segment with the segment's own details: what the rider fits are learned from. */
+    @Query(
+        "SELECT t.rideId AS rideId, t.routeId AS routeId, t.segIdx AS segIdx, t.movingMs AS movingMs, " +
+            "t.headwindMps AS headwindMps, t.expectedMovingMs AS expectedMovingMs, s.startM AS startM, " +
+            "s.endM AS endM, s.gradePct AS gradePct, s.learnedLogVar AS learnedLogVar " +
+            "FROM segment_traversals t " +
+            "JOIN route_segments s ON s.routeId = t.routeId AND s.idx = t.segIdx " +
+            "JOIN rides r ON r.id = t.rideId WHERE r.simulated = 0"
+    )
+    suspend fun learningPasses(): List<LearningPass>
+
+    /** Finished real rides on a route, oldest first, with the time they spent standing still and the lights they passed. */
+    @Query(
+        "SELECT r.formFactor AS formFactor, (r.endedAtMs - r.startedAtMs - r.movingMs) / 1000.0 AS stoppedS, " +
+            "(SELECT COALESCE(SUM(signals), 0) FROM route_segments WHERE routeId = r.routeId) AS signals " +
+            "FROM rides r WHERE r.simulated = 0 AND r.routeId IS NOT NULL AND r.endedAtMs IS NOT NULL ORDER BY r.startedAtMs"
+    )
+    suspend fun rideFacts(): List<RideFacts>
 
     /** What each segment of this ride actually cost, against what was predicted when riding it. */
     @Query("SELECT * FROM segment_traversals WHERE rideId = :rideId ORDER BY segIdx")

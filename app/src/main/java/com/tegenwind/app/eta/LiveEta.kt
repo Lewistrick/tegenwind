@@ -25,7 +25,7 @@ data class WindNow(
 
 data class LiveEta(val eta: Eta, val form: Double, val wind: WindNow?)
 
-fun LoadedRoute.etaModel(params: RiderParams = RiderParams()) = EtaModel(
+fun LoadedRoute.etaModel(learned: RiderLearned = RiderLearned(), params: RiderParams = RiderParams()) = EtaModel(
     segments.map { s ->
         EtaSegment(
             startM = s.startM,
@@ -39,6 +39,7 @@ fun LoadedRoute.etaModel(params: RiderParams = RiderParams()) = EtaModel(
         )
     },
     params,
+    learned,
 )
 
 fun windNow(model: EtaModel, progressM: Double, nowMs: Long, weather: RouteWeather?): WindNow? {

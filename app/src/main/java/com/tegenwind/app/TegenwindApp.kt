@@ -5,6 +5,7 @@ import android.content.Context
 import androidx.room.Room
 import com.tegenwind.app.data.TegenwindDb
 import com.tegenwind.app.eta.Banister
+import com.tegenwind.app.eta.RiderModel
 import com.tegenwind.app.health.HealthConnectHr
 import com.tegenwind.app.health.HeartRateStore
 import com.tegenwind.app.live.LiveShare
@@ -33,7 +34,13 @@ class TegenwindApp : Application() {
 class AppContainer(app: Application) {
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     val db: TegenwindDb = Room.databaseBuilder(app, TegenwindDb::class.java, "tegenwind.db").build()
-    val recorder: RideRecorder = RideRecorder(db.rides(), db.routes(), appScope) { routeId, rideId -> routes.learnLine(routeId, rideId) }
+    /** What has been learned about how you ride: wind, spread of form, time at lights. */
+    val riderModel = RiderModel(db.rides())
+    val recorder: RideRecorder = RideRecorder(db.rides(), db.routes(), appScope, learned = { riderModel.learned.value }) { routeId, rideId ->
+        routes.learnLine(routeId, rideId)
+        // After the ride is stored and its segments and form have learned from it.
+        riderModel.refresh()
+    }
     val healthConnect = HealthConnectHr(app)
     val heartRate = HeartRateStore(healthConnect, db.rides())
     val liveShare = LiveShare()
@@ -59,6 +66,7 @@ class AppContainer(app: Application) {
             // Whatever all segments learned in common goes into form. The first time, that's the
             // tilt they gathered before this existed; after that each ride does it as it ends.
             db.routes().moveSharedTiltIntoForm()
+            riderModel.refresh()
         }
         appScope.launch {
             // Routes ridden before rides learned a speed profile learn one from the rides already stored.

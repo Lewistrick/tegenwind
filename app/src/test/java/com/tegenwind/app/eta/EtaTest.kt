@@ -120,7 +120,7 @@ class EtaTest {
         val form = FormEstimate(1.0, 0.0)
         val none = EtaModel(flatRoute(0.0)).predict(0.0, 0, null, form)
         val some = EtaModel(flatRoute(0.0, signals = 1)).predict(0.0, 0, null, form)
-        assertEquals(10 * EtaModel.STOP_MEAN_S, some.remainingS - none.remainingS, 1e-6)
+        assertEquals(10 * RiderLearned().stopMeanS, some.remainingS - none.remainingS, 1e-6)
         assertTrue(some.sigmaS > none.sigmaS)
     }
 

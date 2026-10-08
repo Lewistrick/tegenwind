@@ -403,13 +403,12 @@ private fun LeaveNowPreview(routeId: Long) {
     val container = LocalContext.current.appContainer
     val preview by produceState<Preview?>(null, routeId) {
         val route = container.routes.load(routeId) ?: return@produceState
-        val model = route.etaModel()
+        val learned = container.riderModel.learned.value
+        val model = route.etaModel(learned)
         val rides = container.db.rides()
         val since = System.currentTimeMillis() - Banister.WINDOW_DAYS * 86_400_000L
-        val form = FormEstimate(
-            startingForm(rides.recentForms(), rides.loadsSince(since), System.currentTimeMillis()),
-            0.01,
-        )
+        val start = startingForm(rides.recentForms(), rides.loadsSince(since), System.currentTimeMillis())
+        val form = FormEstimate(start, (learned.formSd * start).let { it * it })
         while (true) {
             val weather = container.weather.alongRoute(route.line)
             val now = System.currentTimeMillis()
