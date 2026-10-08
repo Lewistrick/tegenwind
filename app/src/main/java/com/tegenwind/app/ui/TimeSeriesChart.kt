@@ -36,7 +36,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.tegenwind.app.ride.Sample
 import com.tegenwind.app.ride.TWO_MINUTES_MS
-import com.tegenwind.app.ride.rollingMedian
+import com.tegenwind.app.ride.rollingMean
 import kotlin.math.ceil
 import kotlin.math.floor
 import kotlin.math.ln
@@ -44,11 +44,8 @@ import kotlin.math.log10
 import kotlin.math.pow
 import kotlin.math.roundToInt
 
-/**
- * The expected line: the app's amber, nearly opaque so it stays amber over the dark card (at half
- * strength it turns olive), and wider than the median so it still shows around it.
- */
-private const val EXPECTED_ALPHA = 0.85f
+/** The expected line: the app's amber, see-through so the measurements read over it, and wider than the average line. */
+private const val EXPECTED_ALPHA = 0.5f
 private val EXPECTED_WIDTH = 4.dp
 
 /** A "nice" grid step (1/2/5 × a power of ten, at least 1) so ticks land on round numbers. */
@@ -66,7 +63,7 @@ private fun niceIntStep(mn: Double, mx: Double): Double {
 }
 
 /**
- * Raw measurements as faint dots and a 2-minute rolling median as a line.
+ * Raw measurements as dots and a 2-minute centred rolling average (t ± 1 min) as a line.
  * The lines break where there is no data for [gapMs], so gaps are never papered over.
  *
  * @param windowMs show only the last [windowMs] before [endMs]; null shows everything.
@@ -79,6 +76,8 @@ private fun niceIntStep(mn: Double, mx: Double): Double {
  * @param expected a second series drawn *under* the measurements (e.g. the speed the ETA expects), in
  *   runs: each run is a line of its own, nothing joins one run to the next, and the measurements
  *   always stay on top.
+ * @param finished false while the series is still growing: the average's last minute stays empty
+ *   until the samples it needs have arrived.
  * @param legend show a small legend in the plot's top-left corner; tapping it folds it away to "?".
  */
 @Composable
@@ -96,12 +95,13 @@ fun TimeSeriesChart(
     expected: List<List<Sample>> = emptyList(),
     expectedColor: Color = color,
     legend: Boolean = false,
+    finished: Boolean = true,
 ) {
     val measurer = rememberTextMeasurer()
     val labelStyle = TextStyle(color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
     val gridColor = MaterialTheme.colorScheme.outlineVariant
     val ringColor = MaterialTheme.colorScheme.surfaceContainer
-    val median = remember(samples) { rollingMedian(samples, TWO_MINUTES_MS) }
+    val average = remember(samples, finished) { rollingMean(samples, TWO_MINUTES_MS, finished) }
 
     Box(modifier) {
         Canvas(Modifier.matchParentSize()) {
@@ -214,6 +214,13 @@ fun TimeSeriesChart(
             }
 
             clipRect(left = padL, top = 0f, right = size.width, bottom = size.height - padB + 2.dp.toPx()) {
+                // Where one segment gives way to the next, in the grid's colour.
+                for (run in expected.drop(1)) {
+                    val t = run.firstOrNull()?.timeMs ?: continue
+                    if (t < left || t > right) continue
+                    drawLine(gridColor, Offset(x(t), padT), Offset(x(t), padT + plotH), strokeWidth = 1f)
+                }
+
                 // First, so everything measured is drawn over it.
                 if (expected.isNotEmpty()) {
                     val path = Path()
@@ -235,7 +242,7 @@ fun TimeSeriesChart(
                     )
                 }
 
-                val dot = color.copy(alpha = 0.42f)
+                val dot = color
                 val r = if (samples.size - firstVisible > 900) 1.2.dp.toPx() else 1.7.dp.toPx()
                 for (i in firstVisible until samples.size) {
                     drawCircle(dot, r, Offset(x(samples[i].timeMs), y(samples[i].value)))
@@ -248,6 +255,10 @@ fun TimeSeriesChart(
                     for (i in (firstVisible - 1).coerceAtLeast(0) until samples.size) {
                         val s = samples[i]
                         val px = x(s.timeMs)
+                        if (values[i].isNaN()) {
+                            prevT = Long.MIN_VALUE
+                            continue
+                        }
                         val py = y(values[i])
                         if (prevT == Long.MIN_VALUE || s.timeMs - prevT > gapMs) path.moveTo(px, py) else path.lineTo(px, py)
                         prevT = s.timeMs
@@ -256,14 +267,17 @@ fun TimeSeriesChart(
                 }
 
                 drawPath(
-                    pathOf(median),
+                    pathOf(average),
                     color,
                     style = Stroke(width = 2.5.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round),
                 )
 
-                val end = Offset(x(samples.last().timeMs), y(median.last()))
-                drawCircle(ringColor, 6.dp.toPx(), end)
-                drawCircle(color, 4.dp.toPx(), end)
+                val last = average.indexOfLast { !it.isNaN() }
+                if (last >= 0) {
+                    val end = Offset(x(samples[last].timeMs), y(average[last]))
+                    drawCircle(ringColor, 6.dp.toPx(), end)
+                    drawCircle(color, 4.dp.toPx(), end)
+                }
             }
         }
         if (legend && samples.isNotEmpty()) {
@@ -301,9 +315,9 @@ private fun ChartLegend(color: Color, expectedColor: Color?, modifier: Modifier 
     ) {
         LegendRow("actual", text) {
             val r = 1.7.dp.toPx()
-            for (i in 0..2) drawCircle(color.copy(alpha = 0.7f), r, Offset(r + i * (size.width - 2 * r) / 2, size.height / 2))
+            for (i in 0..2) drawCircle(color, r, Offset(r + i * (size.width - 2 * r) / 2, size.height / 2))
         }
-        LegendRow("median", text) {
+        LegendRow("average", text) {
             drawLine(color, Offset(0f, size.height / 2), Offset(size.width, size.height / 2), 2.5.dp.toPx(), StrokeCap.Round)
         }
         if (expectedColor != null) LegendRow("expected", text) {

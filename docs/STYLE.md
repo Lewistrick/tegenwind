@@ -132,9 +132,11 @@ One scheme:
 
 ## 6. Charts
 
-- **Measurements:** raw values as faint dots (the series colour at 42%), and a 2-minute rolling
-  median as a 2.5 dp line on top.
-- **What the model expects** is amber, 4 dp, at 85%, drawn **under** the measurements. The
+- **Measurements:** raw values as solid dots in the series colour, and a 2-minute centred rolling
+  average (each point averages the minute either side) as a 2.5 dp line on top. On a ride still
+  going, the last minute has no average yet.
+- **Segment borders** on the live ride are vertical grid lines, in the grid's colour.
+- **What the model expects** is amber, 4 dp, at 50%, drawn **under** the measurements. The
   measurements always stay on top. Each segment is a line of its own: the speed the ETA uses
   there, shaped within the segment by the route's learned speed profile (slower up a bridge, faster
   down). Nothing joins one segment's line to the next: never draw a slope between two segments.

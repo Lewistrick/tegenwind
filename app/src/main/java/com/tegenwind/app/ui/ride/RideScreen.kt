@@ -357,6 +357,7 @@ private fun LiveView(ride: LiveRide, onStop: () -> Unit) {
                             expected = ride.expectedSpeeds,
                             expectedColor = MaterialTheme.colorScheme.primary,
                             legend = true,
+                            finished = false,
                         )
                         // Across from the legend: what the chart shows. Tapping the chart switches it.
                         ChartChip(
