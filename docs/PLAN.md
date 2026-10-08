@@ -379,11 +379,14 @@ The bottom bar is **Ride · Rides · Routes · Stats**. Rides replaced Map.
     form filter's starting uncertainty.
   - **Noise of one pass:** how far a segment pass lands from what was expected of it. It sets how
     much one segment moves form (was a fixed 15%) and how the ETA's uncertainty adds up.
+  - **Drift of form within a ride:** how much form moves from one segment to the next, from how
+    much the averages of runs of 9 passes vary beyond what pass noise explains. It sets how fast
+    the live form estimate forgets: the fixed guess let form wander about 15% over a ride, which
+    kept the estimate at about ±5% however long you rode; your rides show about a tenth of that.
   - **Time at lights:** stopped time over lights passed, and its spread (was 12 s ± 15 s per light;
     now 7.5 s ± 18 s).
 - **Output:** the band is 1.28σ from form, segment, traffic-light and pass-noise uncertainty, all
-  learned as above. There is no backtest and no log of predictions yet. The one unlearned guess
-  left is how fast form drifts within a ride (`FormEstimator.PROCESS_VAR`).
+  learned as above. There is no backtest and no log of predictions yet.
 
 ### Heart rate
 

@@ -158,7 +158,7 @@ class RideRecorder(
         routeTracker = route?.let { RouteTracker(it.line) }
         val learnedNow = learned()
         model = route?.etaModel(learnedNow)
-        form = FormEstimator(prior = priorForm, priorSd = learnedNow.formSd * priorForm, obsSd = learnedNow.passNoise * priorForm)
+        form = FormEstimator(prior = priorForm, priorSd = learnedNow.formSd * priorForm, obsSd = learnedNow.passNoise * priorForm, drift = learnedNow.formDrift)
         formObservations = 0
         autoFinishCancelled = false
         sharePromptAnswered = false

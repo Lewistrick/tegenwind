@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
+import kotlin.math.ln
 
 /**
  * Holds what has been learned about how you ride ([RiderLearned]). Nothing is stored of its own:
@@ -32,13 +33,16 @@ class RiderModel(private val rides: RideDao) {
         }
         val facts = passes.mapNotNull { p -> p.expectedMovingMs?.let { PassFacts(p.movingMs, it) } }
         val meanLogVar = if (passes.isEmpty()) 0.0 else passes.sumOf { it.learnedLogVar } / passes.size
-        val learned = RiderFit.learn(windPasses, rides.rideFacts(), facts, meanLogVar)
+        val byRide = passes.filter { it.expectedMovingMs != null && it.movingMs >= 5_000 }
+            .groupBy { it.rideId }
+            .values.map { r -> r.sortedBy { it.segIdx }.map { ln(it.movingMs.toDouble() / it.expectedMovingMs!!).coerceIn(-0.7, 0.7) } }
+        val learned = RiderFit.learn(windPasses, rides.rideFacts(), facts, meanLogVar, byRide)
         _learned.value = learned
         Log.i(
             "RiderModel",
-            "wind %.0f%% of modelled, form sd %.1f%%, pass noise %.1f%% (own %.1f%%), %.1f s per light (sd %.0f s), from %d rides"
+            "wind %.0f%% of modelled, form sd %.1f%% (drifts %.2f%% per segment), pass noise %.1f%% (own %.1f%%), %.1f s per light (sd %.0f s), from %d rides"
                 .format(
-                    learned.windFeel * 100, learned.formSd * 100, learned.passNoise * 100, learned.passExtra * 100,
+                    learned.windFeel * 100, learned.formSd * 100, 100 * kotlin.math.sqrt(learned.formDrift), learned.passNoise * 100, learned.passExtra * 100,
                     learned.stopMeanS, kotlin.math.sqrt(learned.stopVarS2), learned.rides,
                 ),
         )

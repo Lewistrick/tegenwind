@@ -138,7 +138,10 @@ class FormEstimator(
     priorSd: Double = RiderLearned.DEFAULT_FORM_SD,
     /** How far a single segment's pace strays from form: see [RiderLearned.passNoise]. */
     obsSd: Double = RiderLearned.DEFAULT_PASS_NOISE,
+    /** How far form moves from one segment to the next, as a variance of the fraction: see [RiderLearned.formDrift]. */
+    drift: Double = RiderLearned.DEFAULT_FORM_DRIFT,
 ) {
+    private val processVar = drift * prior * prior
     private val obsVar = obsSd * obsSd
     private var mean = prior
     private var variance = priorSd * priorSd
@@ -152,14 +155,11 @@ class FormEstimator(
     fun observe(ratio: Double): Boolean {
         val r = ratio.coerceIn(0.5, 1.6)
         if (kotlin.math.abs(r - mean) > 3 * kotlin.math.sqrt(variance + obsVar)) return false
-        variance += PROCESS_VAR
+        variance += processVar
         val gain = variance / (variance + obsVar)
         mean += gain * (r - mean)
         variance *= 1 - gain
         return true
     }
 
-    private companion object {
-        const val PROCESS_VAR = 0.0004
-    }
 }

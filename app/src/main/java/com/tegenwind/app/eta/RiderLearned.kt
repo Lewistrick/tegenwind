@@ -19,6 +19,11 @@ data class RiderLearned(
     val passNoise: Double = DEFAULT_PASS_NOISE,
     /** The part of [passNoise] the segment's own learned value doesn't already account for. */
     val passExtra: Double = DEFAULT_PASS_EXTRA,
+    /**
+     * How much your form drifts from one segment to the next, as a variance of the fraction. It
+     * decides how fast the form estimate forgets what it measured earlier in the ride.
+     */
+    val formDrift: Double = DEFAULT_FORM_DRIFT,
     /** Time standing still per traffic light on the route, on average, and its variance. */
     val stopMeanS: Double = 12.0,
     val stopVarS2: Double = 15.0 * 15.0,
@@ -29,6 +34,7 @@ data class RiderLearned(
         const val DEFAULT_FORM_SD = 0.10
         const val DEFAULT_PASS_NOISE = 0.15
         const val DEFAULT_PASS_EXTRA = 0.10
+        const val DEFAULT_FORM_DRIFT = 0.0004
     }
 }
 
@@ -153,6 +159,27 @@ object RiderFit {
     }
 
     /**
+     * How much form drifts per segment within a ride. Passes are grouped in runs of [DRIFT_BLOCK];
+     * if form never moved, the runs' averages would vary only by the pass noise divided by the run
+     * length, and whatever they vary more than that is drift. [rides] holds each ride's passes in
+     * order, as how far each strayed from what was expected (log). Shrunk toward the old guess by
+     * the weight of a few dozen runs.
+     */
+    fun formDrift(rides: List<List<Double>>): Double {
+        val all = rides.flatten()
+        if (all.size < 2) return RiderLearned.DEFAULT_FORM_DRIFT
+        val mean = all.average()
+        val noise = all.sumOf { (it - mean).sq() } / all.size
+        val blocks = rides.flatMap { r -> r.chunked(DRIFT_BLOCK).filter { it.size == DRIFT_BLOCK }.map { it.average() } }
+        if (blocks.isEmpty()) return RiderLearned.DEFAULT_FORM_DRIFT
+        val blockMean = blocks.average()
+        val spread = blocks.sumOf { (it - blockMean).sq() } / blocks.size
+        val perSegment = max(spread - noise / DRIFT_BLOCK, 0.0) / DRIFT_BLOCK
+        val v = (perSegment * blocks.size + DRIFT_PSEUDO * RiderLearned.DEFAULT_FORM_DRIFT) / (blocks.size + DRIFT_PSEUDO)
+        return v.coerceIn(0.00001, 0.002)
+    }
+
+    /**
      * Time standing still per traffic light on the route: total stopped time over total lights
      * passed, and the spread around that. Stopped time is a ride's length minus its moving time, so
      * it includes anything that made you stop, not just lights. Shrunk toward the old guess.
@@ -172,6 +199,7 @@ object RiderFit {
         rides: List<RideFacts>,
         passes: List<PassFacts>,
         meanSegmentLogVar: Double,
+        passesByRide: List<List<Double>> = emptyList(),
         params: RiderParams = RiderParams(),
     ): RiderLearned {
         val (noise, extra) = passNoise(passes, meanSegmentLogVar)
@@ -181,12 +209,15 @@ object RiderFit {
             formSd = formSd(rides.mapNotNull { it.formFactor }),
             passNoise = noise,
             passExtra = extra,
+            formDrift = formDrift(passesByRide),
             stopMeanS = stopMean,
             stopVarS2 = stopVar,
             rides = rides.size,
         )
     }
 
+    private const val DRIFT_BLOCK = 9
+    private const val DRIFT_PSEUDO = 20.0
     private const val MIN_HISTORY = 3
     private const val RECENT = 10
     private const val WINDOW = 20

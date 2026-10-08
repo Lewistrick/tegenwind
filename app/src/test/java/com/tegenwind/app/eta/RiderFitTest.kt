@@ -56,6 +56,31 @@ class RiderFitTest {
     }
 
     @Test
+    fun formDriftIsWhatAverageOfRunsVaryBeyondNoise() {
+        val rnd = Random(3)
+        // Form that never moves: only noise on each pass.
+        val still = List(40) { List(36) { 0.13 * rnd.nextGaussian() } }
+        // Form that wanders: a random walk on top of the same noise.
+        val wandering = List(40) {
+            var f = 0.0
+            List(36) { f += 0.04 * rnd.nextGaussian(); f + 0.13 * rnd.nextGaussian() }
+        }
+        assertTrue(RiderFit.formDrift(still) < 0.0003)
+        assertTrue(RiderFit.formDrift(wandering) > 0.0008)
+        assertEquals(RiderLearned.DEFAULT_FORM_DRIFT, RiderFit.formDrift(emptyList()), 1e-12)
+    }
+
+    @Test
+    fun aSteadierFormGetsSureFasterWithinARide() {
+        fun sdAfter(drift: Double): Double {
+            val f = FormEstimator(prior = 0.9, priorSd = 0.09, obsSd = 0.12, drift = drift)
+            repeat(12) { f.observe(0.9) }
+            return Math.sqrt(f.estimate().variance)
+        }
+        assertTrue(sdAfter(0.00005) < sdAfter(0.0004))
+    }
+
+    @Test
     fun stopsAreLearnedPerLight() {
         val rides = List(30) { RideFacts(0.9, stoppedS = 20.0, signals = 4) } // 5 s per light
         val (mean, variance) = RiderFit.stops(rides)
