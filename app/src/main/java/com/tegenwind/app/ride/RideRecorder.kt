@@ -71,6 +71,8 @@ data class LiveRide(
      * segment ridden, each its own line. Only while on a route; never stored.
      */
     val expectedSpeeds: List<List<Sample>> = emptyList(),
+    /** The last minute of arrival time and form, a dot every 5 s, for the ride screen's scatterplot. Never stored. */
+    val formTrail: List<FormDot> = emptyList(),
 )
 
 /**
@@ -109,11 +111,14 @@ class RideRecorder(
     private var matcher: RouteMatcher? = null
     private var model: EtaModel? = null
     private var form = FormEstimator()
-    private var formObservations = 0
+    /** Metres of route today's form has been measured on. */
+    private var formObservedM = 0.0
+    private val stretches = StretchClock()
     private var weather: RouteWeather? = null
     private val pending = ArrayList<TrackPointEntity>()
     private val traversals = ArrayList<SegmentTraversalEntity>()
     private val expected = ArrayList<ArrayList<Sample>>()
+    private val formTrail = FormTrail()
     /** Every fix of this ride, for learning the route's speed profile when it ends. */
     private val ridePoints = ArrayList<TrackPointEntity>()
     /** The segment the expected line is on, and the speed it holds there: one level per segment. */
@@ -159,7 +164,8 @@ class RideRecorder(
         val learnedNow = learned()
         model = route?.etaModel(learnedNow)
         form = FormEstimator(prior = priorForm, priorSd = learnedNow.formSd * priorForm, obsSd = learnedNow.passNoise * priorForm, drift = learnedNow.formDrift)
-        formObservations = 0
+        formObservedM = 0.0
+        stretches.reset()
         autoFinishCancelled = false
         sharePromptAnswered = false
         waitingSince = null
@@ -167,6 +173,7 @@ class RideRecorder(
         weather = null
         traversals.clear()
         expected.clear()
+        formTrail.clear()
         ridePoints.clear()
         expectedOn = null
         segIdx = -1
@@ -226,7 +233,10 @@ class RideRecorder(
             val progress = chooseRoute(GeoPoint(fix.lat, fix.lon), snap.headingDeg)
                 ?: routeTracker?.update(GeoPoint(fix.lat, fix.lon))
             // Until one route is certain, nothing is timed: the times would belong to a guess.
-            if (progress != null && matcher?.locked != false) timeSegments(progress, fix.timeMs, snap.movingMs)
+            if (progress != null && matcher?.locked != false) {
+                timeSegments(progress, fix.timeMs, snap.movingMs)
+                observeForm(progress, fix.timeMs, snap.movingMs)
+            }
             val arrived = when {
                 ride.arrivedAtMs != null -> ride.arrivedAtMs
                 autoFinishCancelled || progress == null || !progress.onRouteYet -> null
@@ -307,6 +317,7 @@ class RideRecorder(
             routeTracker = null
             model = null
             segIdx = -1
+            stretches.reset()
             traversals.clear()
             riddenWeather.clear()
             return null
@@ -317,6 +328,7 @@ class RideRecorder(
             model = leader.route.etaModel(learned())
             // Whatever was half-measured belongs to a route we turn out not to be on.
             segIdx = -1
+            stretches.reset()
             traversals.clear()
             riddenWeather.clear()
         }
@@ -381,7 +393,7 @@ class RideRecorder(
                 routeId = ride.route?.routeId,
                 windSpeedMps = startWind?.speedMps,
                 windFromDeg = startWind?.fromDeg,
-                formFactor = form.estimate().mean.takeIf { formObservations >= MIN_FORM_OBSERVATIONS },
+                formFactor = form.estimate().mean.takeIf { formObservedM >= MIN_FORM_M },
                 loadTss = if (ride.simulated) null else Banister.loadFromRide(snap.movingMs, snap.distanceM),
             )
         )
@@ -405,6 +417,7 @@ class RideRecorder(
         model = null
         traversals.clear()
         expected.clear()
+        formTrail.clear()
         ridePoints.clear()
         pending.clear()
         _live.value = null
@@ -426,10 +439,12 @@ class RideRecorder(
             form = form.estimate().mean,
             wind = windNow(m, progress.progressM, nowMs, weather),
         )
+        if (ride.started) formTrail.record(nowMs, eta.arrivalMs, live.form)
         // Once offered the prompt stays until answered, even if the band widens again (off route).
         val firm = progress.onRouteYet && !progress.offRoute && eta.bandS < Eta.FIRM_BAND_S
         _live.value = ride.copy(
             eta = live,
+            formTrail = formTrail.dots,
             offerShare = !sharePromptAnswered && (ride.offerShare || firm),
             route = rideRoute.copy(weather = weatherAlongRoute(m, eta)),
         )
@@ -448,8 +463,30 @@ class RideRecorder(
     }
 
     /**
+     * Today's form, measured every few seconds of riding rather than once per segment, so it
+     * and the ETA move in small steps. Form is how today differs from what the road normally costs,
+     * so each stretch is compared with the corrected time, shaped by the route's speed profile: a
+     * permanently slow corner, or the climb in the middle of a segment, is not bad form.
+     */
+    private fun observeForm(p: RouteProgress, nowMs: Long, movingMs: Long) {
+        val m = model ?: return
+        if (!p.onRouteYet) return
+        if (p.offRoute) {
+            stretches.reset()
+            return
+        }
+        val stretch = stretches.advance(p.progressM, movingMs) ?: return
+        if (stretch.movingMs < MIN_MOVING_MS) return
+        val profile = route?.profile
+        val expectedS = m.movingTimeS(stretch.fromM, stretch.toM, nowMs, weather) { alongM, s ->
+            profile?.factorAt(alongM, s.startM, s.endM) ?: 1.0
+        }
+        if (form.observe(expectedS * 1000 / stretch.movingMs, stretch.lengthM)) formObservedM += stretch.lengthM
+    }
+
+    /**
      * Times each segment from entering to leaving it. Only complete, on-route passes count:
-     * they update today's form and are stored for stats and learning.
+     * they are stored for stats and learning.
      */
     private fun timeSegments(p: RouteProgress, nowMs: Long, movingMs: Long) {
         val m = model ?: return
@@ -484,10 +521,6 @@ class RideRecorder(
                     headwindMps = wind?.let { Physics.headwindMps(it.speedMps, it.fromDeg, etaSeg.bearingDeg, etaSeg.exposure) },
                     predictedMovingMs = predictedMs,
                 )
-                // Form measures how today differs from what this segment normally costs, so it is
-                // compared against the corrected time: a permanently slow corner is not bad form.
-                val expectedMs = predictedMs * etaSeg.learned.timeFactor
-                if (moved >= MIN_MOVING_MS && form.observe(expectedMs / moved)) formObservations++
             }
             // Behind you now, so its colours stop following the forecast.
             segmentWeather(m, segIdx, nowMs)?.let { riddenWeather[segIdx] = it }
@@ -558,7 +591,8 @@ class RideRecorder(
         const val FINISH_WITHIN_M = 20.0
         const val CLEAN_ENTRY_M = 30.0
         const val MIN_MOVING_MS = 5_000L
-        const val MIN_FORM_OBSERVATIONS = 3
+        /** The form of a ride is only kept once it rests on this much road: three segments' worth. */
+        const val MIN_FORM_M = 750.0
         /** Far enough from where you tapped Start to call it setting off, if GPS speed doesn't say so. */
         const val SET_OFF_M = 25.0
     }

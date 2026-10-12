@@ -375,6 +375,10 @@ interface RouteDao {
     @Query("SELECT * FROM route_points WHERE routeId = :routeId ORDER BY idx")
     suspend fun points(routeId: Long): List<RoutePointEntity>
 
+    /** Where every route begins. */
+    @Query("SELECT * FROM route_points WHERE idx = 0")
+    suspend fun routeStarts(): List<RoutePointEntity>
+
     @Query("SELECT * FROM route_segments WHERE routeId = :routeId ORDER BY idx")
     suspend fun segments(routeId: Long): List<RouteSegmentEntity>
 

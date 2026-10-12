@@ -279,11 +279,16 @@ The bottom bar is **Ride · Rides · Routes · Stats**. Rides replaced Map.
     or cross, with the speed at rider height and how sheltered you are), km to go, form and the wind's
     cost. Below that is a route bar coloured per segment by sky and rain on top and by what the wind
     does to you underneath, with a marker at your position. Tapping the card shares the ETA.
-  - A speed chart headed by speed and distance: GPS dots and a 2-minute rolling **median**, over
+  - A speed chart headed by speed and distance: GPS dots and a centred 2-minute rolling **average** (a minute either side, so the last minute has no value yet), over
     the last 2 minutes. Tapping it shows the whole ride on a reverse-log time axis. Under them, in
     amber, the speed the ETA expects: one line per segment, shaped within the segment by the
     route's learned speed profile (below). A small legend explains the lines.
-  - A Stop button that needs two taps. The whole screen fits without scrolling.
+  - On the start screen, a red line under the route picker when the chosen route doesn't fit: you
+    are more than 500 m from its start, or you never ride it around this hour while you do ride
+    another (`routes/RouteDoubt.kt`). A text button switches to the route that fits.
+  - A Stop button that needs two taps. The whole screen down to Stop fits without scrolling.
+  - Below Stop, behind the scroll: "Form and arrival", a scatterplot of the ETA's arrival time against
+    today's form, a dot every 5 s for the last minute (live only, never stored).
   - Once the ETA is firm, a one-time "Share ETA via WhatsApp?" prompt.
   - The large speed number, 2-minute average and live heart rate from the plan are gone: the ETA
     is what you read on the handlebar.
@@ -362,6 +367,13 @@ The bottom bar is **Ride · Rides · Routes · Stats**. Rides replaced Map.
     average offset over all routes, weighted by length × passes. The offsets then average 0 over
     what you ride, and a new route starts at your real pace. Past rides' forms move by the same
     factor, and the starting form may range 0.5–1.6 (was 0.7–1.4), so the move is never cut short.
+- **Form is measured every 5 s of riding** (12 Oct 2026), not once per segment, so it and the ETA
+  move in small steps (`ride/StretchClock.kt`, `EtaModel.movingTimeS`). Each stretch is compared
+  with what the segments it crosses and the speed profile expect there. A stretch counts in
+  proportion to its length, so a segment's stretches together move form as much as the whole
+  segment did: stored rides show a 27 m piece strays 1.65 times a segment's variance, not 9 times,
+  so the pieces of a segment are not separate evidence. A ride's form is kept once it rests on
+  750 m.
 - **Layer 3:** the Kalman filter on today's form, as planned. The Banister model sets the starting
   form (±5% at most) instead of adjusting `P_rider`. There is no fatigue term within a ride and no
   cardiac drift.

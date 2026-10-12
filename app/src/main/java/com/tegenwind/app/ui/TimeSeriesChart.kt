@@ -49,7 +49,7 @@ private const val EXPECTED_ALPHA = 0.5f
 private val EXPECTED_WIDTH = 4.dp
 
 /** A "nice" grid step (1/2/5 × a power of ten, at least 1) so ticks land on round numbers. */
-private fun niceIntStep(mn: Double, mx: Double): Double {
+internal fun niceIntStep(mn: Double, mx: Double): Double {
     val rawStep = maxOf(mx - mn, 2.0) / 4.0
     val mag = 10.0.pow(floor(log10(rawStep)))
     var step = 10 * mag

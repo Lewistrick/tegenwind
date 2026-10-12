@@ -48,7 +48,8 @@ there. Don't use a hex value in a screen.
   - the wind arrow
   - what the model expects (the expected-speed line)
   - traffic lights
-- **Blue** is speed, and nothing else.
+- **Blue** is speed, and nothing else, except the dots of the form-and-arrival scatterplot on the
+  ride screen.
 - **Green** is good: faster than expected, a tailwind, the fastest ride, a ride in the top x% of its
   route, "Recording".
 - **Red** is bad or dangerous:
@@ -127,6 +128,10 @@ One scheme:
   first (Update route from this ride).
 - **Names say what happens:** "Rename" renames. "Change route" changes which route a ride belongs
   to. Never use a bare "Edit".
+- **A warning before you act** (the chosen route doesn't fit where you are or the hour) is one
+  line of `bodySmall` in red under the control it is about, saying what is off in plain words. When
+  there's an obvious fix, a text button under it does it ("Switch to werk-woon"). No icon, no card,
+  no dialog; nothing at all when everything fits.
 - **Choosing one of a list** uses `Picker`: a button showing the current choice with a chevron,
   opening a menu as wide as the button, with a tick at the current choice.
 
@@ -140,6 +145,11 @@ One scheme:
   measurements always stay on top. Each segment is a line of its own: the speed the ETA uses
   there, shaped within the segment by the route's learned speed profile (slower up a bridge, faster
   down). Nothing joins one segment's line to the next: never draw a slope between two segments.
+- **Scatter trail** (the ride screen's "Form and arrival"): one dot every 5 s for the last minute, in
+  blue. The oldest is small (2 dp) and nearly transparent, the newest larger (5 dp) and nearly
+  solid. Arrival time (HH:mm) runs across and form (change from 1.0, whole percent) upward; both axes
+  are centred on the newest dot and wide enough for every dot, with whole-number ticks. It sits
+  below Stop, behind the scroll.
 - **Axes:**
   - labels at 10 sp, muted
   - grid lines 1 px in `Line`
@@ -176,5 +186,5 @@ One scheme:
    to the bottom, and in each state it can be in (for example empty, loading, a simulated ride).
 2. Nothing is cut off or hidden under the tab bar. `uiautomator dump` shows each element's bounds.
 3. On the ride screen, everything down to Stop fits without scrolling (pause and arrival bars
-   aside).
+   aside). What is below Stop may scroll.
 4. Take before and after screenshots of what changed.

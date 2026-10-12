@@ -84,6 +84,33 @@ class EtaModel(
         return correctedSpeedMps(s, weather?.at(s.midM, nowMs)) * form.mean
     }
 
+    /**
+     * The moving time the model expects between [fromM] and [toM] at form 1.0, seconds: each
+     * segment's corrected speed with the wind there at [nowMs], shaped within the segment by
+     * [shape] (the route's speed profile; 1 everywhere without one). For measuring form on a
+     * stretch shorter than a segment, where a climb or a bend is expected to cost more than the
+     * segment's average.
+     */
+    fun movingTimeS(
+        fromM: Double,
+        toM: Double,
+        nowMs: Long,
+        weather: RouteWeather?,
+        shape: (alongM: Double, segment: EtaSegment) -> Double = { _, _ -> 1.0 },
+    ): Double {
+        var seconds = 0.0
+        for (s in segments) {
+            val a = maxOf(s.startM, fromM)
+            val b = minOf(s.endM, toM)
+            if (b <= a) continue
+            val speed = correctedSpeedMps(s, weather?.at(s.midM, nowMs))
+            val steps = kotlin.math.ceil((b - a) / SHAPE_STEP_M).toInt().coerceAtLeast(1)
+            val step = (b - a) / steps
+            for (i in 0 until steps) seconds += step / (speed * shape(a + (i + 0.5) * step, s))
+        }
+        return seconds
+    }
+
     /** [weather] gives each segment the forecast nearest to it, for the moment you're expected there. */
     fun predict(progressM: Double, nowMs: Long, weather: RouteWeather?, form: FormEstimate): Eta {
         var clockMs = nowMs.toDouble()
@@ -124,6 +151,8 @@ class EtaModel(
 
     companion object {
         const val MIN_SPEED_MPS = 1.5
+        /** How finely a stretch is cut up to follow the speed profile within a segment. */
+        private const val SHAPE_STEP_M = 12.5
     }
 }
 
@@ -148,18 +177,38 @@ class FormEstimator(
 
     fun estimate() = FormEstimate(mean, variance)
 
+    companion object {
+        /** The length of a segment: what the learned pass noise and drift are measured over. */
+        const val REFERENCE_M = 250.0
+        /**
+         * How much more a short stretch strays than a whole segment, as a variance ratio. Measured
+         * on stored rides: 1.05 at 125 m, 1.25 at 50 m, 1.65 at 27 m, 2.05 at 20 m.
+         */
+        private fun shortStretchSpread(lengthM: Double): Double =
+            (1 + 0.65 * Math.pow(27.0 / lengthM.coerceAtLeast(1.0), 1.5)).coerceAtMost(3.0)
+    }
+
     /**
-     * [ratio] = observed moving speed / predicted speed at form 1.0 on a finished segment.
+     * [ratio] = observed moving speed / predicted speed at form 1.0 over [lengthM] of road.
      * Returns false when the observation was rejected as implausible (e.g. after a GPS jump).
+     *
+     * A stretch shorter than a segment counts for proportionally less, so that the stretches of one
+     * segment together move form as much as the whole segment would. Stored rides show that what
+     * makes a pass fast or slow is mostly shared by the whole segment (a 27 m piece strays 1.65
+     * times a segment's variance, not 9 times), so its pieces are not separate evidence. Form also
+     * drifts in proportion to the distance.
      */
-    fun observe(ratio: Double): Boolean {
+    fun observe(ratio: Double, lengthM: Double = REFERENCE_M): Boolean {
         val r = ratio.coerceIn(0.5, 1.6)
-        if (kotlin.math.abs(r - mean) > 3 * kotlin.math.sqrt(variance + obsVar)) return false
-        variance += processVar
-        val gain = variance / (variance + obsVar)
+        val share = (lengthM / REFERENCE_M).coerceIn(0.05, 1.0)
+        // What counts as implausible goes by how much a stretch of this length really strays.
+        val spread = if (share < 1) shortStretchSpread(lengthM) else 1.0
+        if (kotlin.math.abs(r - mean) > 3 * kotlin.math.sqrt(variance + obsVar * spread)) return false
+        variance += processVar * share
+        val noise = obsVar / share
+        val gain = variance / (variance + noise)
         mean += gain * (r - mean)
         variance *= 1 - gain
         return true
     }
-
 }
