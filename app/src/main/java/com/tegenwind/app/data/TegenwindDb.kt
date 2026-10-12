@@ -381,8 +381,11 @@ interface RouteDao {
     @Query("SELECT * FROM route_segments WHERE routeId = :routeId ORDER BY idx")
     fun segmentsFlow(routeId: Long): Flow<List<RouteSegmentEntity>>
 
-    /** Every traversal of every segment of this route, across all rides: the raw material for the slowest-segments table. */
-    @Query("SELECT * FROM segment_traversals WHERE routeId = :routeId")
+    /** Every traversal of every segment of this route, across all real rides: the raw material for the slowest-segments table. */
+    @Query(
+        "SELECT t.* FROM segment_traversals t JOIN rides r ON r.id = t.rideId " +
+            "WHERE t.routeId = :routeId AND r.simulated = 0"
+    )
     fun traversalsFlow(routeId: Long): Flow<List<SegmentTraversalEntity>>
 
     @Insert

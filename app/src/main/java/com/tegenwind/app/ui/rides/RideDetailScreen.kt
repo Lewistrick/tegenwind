@@ -207,7 +207,7 @@ fun RideDetailScreen(rideId: Long, onBack: () -> Unit, backLabel: String = "Ride
         }
 
         val rerouted = reroute?.let { rr -> rr.rerouteStartM?.let { from -> rr.rerouteEndM?.let { to -> from to to } } }
-        if (taught != null || rerouted != null) WhatThisRideTaughtCard(taught, rerouted)
+        WhatThisRideTaughtCard(taught, rerouted, onRoute = r.routeId != null, simulated = r.simulated)
 
         // What you can do with the ride, each with what it does.
         ActionCard(
@@ -420,20 +420,29 @@ private fun taughtBy(
 /**
  * What the ride taught about its segments ([taught], null when there are no passes to judge by) and,
  * when it rerouted a stretch of its route's line, which one ([rerouted], metres along the new line).
+ * Always shown, so a ride that taught nothing says so and why.
  */
 @Composable
-private fun WhatThisRideTaughtCard(taught: Taught?, rerouted: Pair<Double, Double>?) {
+private fun WhatThisRideTaughtCard(taught: Taught?, rerouted: Pair<Double, Double>?, onRoute: Boolean, simulated: Boolean) {
     val lessons = (taught as? Taught.Lessons)?.lessons.orEmpty()
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("What this ride taught", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            if (taught != null) Text(
+            Text(
                 when {
+                    simulated -> "Simulated rides don't teach the model."
+                    taught == null && !onRoute -> "Not on a saved route, so nothing was learned."
+                    taught == null -> "No segment of the route was timed cleanly on this ride, so nothing was learned."
                     taught == Taught.Simulated -> "Simulated rides don't teach the model."
                     taught == Taught.BeforeLearning -> "This ride is from before the model learned from rides."
                     lessons.isEmpty() -> "Nothing new: every segment rode close to what the model expected."
                     else -> "Where the model changed its mind. These nudges go into your next ETA."
                 },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (rerouted == null && onRoute && !simulated) Text(
+                "The route wasn't changed: the streets you rode are the ones it already follows.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
