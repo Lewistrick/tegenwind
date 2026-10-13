@@ -196,4 +196,43 @@ class RouteDriftTest {
         assertEquals(247.5, spans[1].startM, 1e-9)
         assertEquals(990.0, spans.last().endM, 1e-9)
     }
+
+    @Test
+    fun aSpikeInTheLineDoesNotCostTheStretchAfterIt() {
+        // The line goes 10 m north, doubles back, and only then sets off east: at the tip of the
+        // spike it has no direction. Nudging once threw away everything after such a point.
+        val spiked = line(0.0 to 0.0, 0.0 to 5.0, 0.0 to 10.0, 0.0 to 5.0, 0.0 to 0.0, 1000.0 to 0.0)
+        val n = nudge(spiked, place(spiked, ride(0.0 to 6.0, 1000.0 to 6.0)))
+        assertNotNull(n)
+        assertEquals(spiked.lengthM, n!!.line.lengthM, 0.03 * spiked.lengthM)
+        assertEquals(0.0, n.line.project(p(500.0, 1.5)).offsetM, 0.5)
+        assertEquals(0.0, n.line.project(p(900.0, 1.5)).offsetM, 0.5)
+    }
+
+    @Test
+    fun aRideThatRodeTheRouteButLiesAwayFromItsLineSaysTheLineIsDamaged() {
+        val road = ride(0.0 to 0.0, 500.0 to 400.0, 1000.0 to 0.0)
+        val bent = line(0.0 to 0.0, 500.0 to 400.0, 1000.0 to 0.0)
+        assertFalse(contradicts(bent, road))
+        // The same route with its corner lost: most of the ride is now far from it.
+        assertTrue(contradicts(straight, road))
+        // Too few fixes to judge by.
+        assertFalse(contradicts(straight, road.take(20)))
+    }
+
+    @Test
+    fun segmentsKeepTheirShareOfALineOfAnotherLength() {
+        val spans = rescaleSpans(listOf(0.0 to 200.0, 200.0 to 400.0, 400.0 to 800.0), 1000.0)
+        assertEquals(listOf(0, 1, 2), spans.map { it.origIdx })
+        assertEquals(listOf(0.0, 250.0, 500.0), spans.map { it.startM })
+        assertEquals(1000.0, spans.last().endM, 1e-9)
+    }
+
+    @Test
+    fun aRideIsCutToWhereTheLineStartsAndEnds() {
+        val whole = ride(-200.0 to 0.0, 1200.0 to 0.0)
+        val cut = between(whole, p(0.0, 0.0), p(1000.0, 0.0))
+        assertEquals(0.0, distanceM(cut.first(), p(0.0, 0.0)), 3.0)
+        assertEquals(0.0, distanceM(cut.last(), p(1000.0, 0.0)), 3.0)
+    }
 }

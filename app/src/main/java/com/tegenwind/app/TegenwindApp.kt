@@ -69,6 +69,8 @@ class AppContainer(app: Application) {
             riderModel.refresh()
         }
         appScope.launch {
+            // First of all: a line damaged by a faulty update is rebuilt from the rides on it.
+            routes.repairLines()
             // Routes ridden before rides learned a speed profile learn one from the rides already stored.
             backfillProfiles(db.rides(), db.routes(), routes::load)
             // Then each line moves toward where the rides stored since it last learned went. After

@@ -12,6 +12,10 @@ import com.tegenwind.app.routes.LineFolder
 import com.tegenwind.app.routes.Polyline
 import com.tegenwind.app.routes.SegmentSpan
 import com.tegenwind.app.routes.bearingDeg
+import com.tegenwind.app.routes.between
+import com.tegenwind.app.routes.contradicts
+import com.tegenwind.app.routes.lineFromTrack
+import com.tegenwind.app.routes.rescaleSpans
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlin.math.floor
@@ -66,6 +70,43 @@ fun remapProfile(bins: List<RouteProfileEntity>, map: (Double) -> Double?): List
     }
     return out.values.sortedBy { it.bin }
 }
+
+/**
+ * Rebuilds a route's line when the latest ride that passed nearly all of its segments lies mostly
+ * away from it: a line damaged by a faulty update, since no ride can do both. The line becomes the
+ * way that ride went between the route's start and end. Every segment keeps its share of the
+ * length, what it learned (at the same expected time) and what the map lookup found; the speed
+ * profile is dropped, to be learned again from the stored rides. Returns true when it rebuilt.
+ */
+suspend fun repairLine(rideDao: RideDao, routeDao: RouteDao, routeId: Long, commit: () -> Boolean = { true }): Boolean {
+    val stored = routeDao.full(routeId) ?: return false
+    if (stored.points.size < 2 || stored.segments.isEmpty()) return false
+    val minPasses = (stored.segments.size * FULL_RIDE_SHARE).toInt().coerceAtLeast(1)
+    val ride = rideDao.lastFullRideOnRoute(routeId, minPasses) ?: return false
+    val fixes = fixesOf(rideDao.points(ride.id))
+    val old = Polyline(stored.points.map { GeoPoint(it.lat, it.lon) })
+    val line = withContext(Dispatchers.Default) {
+        if (!contradicts(old, fixes)) return@withContext null
+        try {
+            lineFromTrack(between(fixes, old.points.first(), old.points.last()))
+        } catch (e: IllegalArgumentException) {
+            null
+        }
+    } ?: return false
+    val spans = rescaleSpans(stored.segments.map { it.startM to it.endM }, line.lengthM)
+    if (spans.isEmpty() || !commit()) return false
+    routeDao.relearnGeometry(
+        routeId = routeId,
+        lengthM = line.lengthM,
+        foldedThroughMs = ride.startedAtMs,
+        points = line.points.mapIndexed { i, p -> RoutePointEntity(routeId, i, p.lat, p.lon) },
+        newIdx = spans.indices.associateWith { it },
+    ) { segments, _ -> rebuildSegments(routeId, spans, segments, line) to emptyList() }
+    return true
+}
+
+/** A ride that passed at least this share of a route's segments rode the route. */
+private const val FULL_RIDE_SHARE = 0.9
 
 /**
  * Folds the rides on a route that aren't in its line yet into it, oldest first: see [LineFolder].

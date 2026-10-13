@@ -343,6 +343,14 @@ interface RideDao {
     )
     suspend fun ridesOnRouteAfter(routeId: Long, afterMs: Long): List<RideEntity>
 
+    /** The latest real ride on a route that passed at least [minPasses] of its segments. */
+    @Query(
+        "SELECT * FROM rides r WHERE r.routeId = :routeId AND r.simulated = 0 AND r.endedAtMs IS NOT NULL " +
+            "AND (SELECT COUNT(*) FROM segment_traversals t WHERE t.rideId = r.id) >= :minPasses " +
+            "ORDER BY r.startedAtMs DESC LIMIT 1"
+    )
+    suspend fun lastFullRideOnRoute(routeId: Long, minPasses: Int): RideEntity?
+
     /** The two real rides on a route before [beforeMs], newest first: what a detour is checked against. */
     @Query(
         "SELECT * FROM rides WHERE routeId = :routeId AND simulated = 0 AND endedAtMs IS NOT NULL " +

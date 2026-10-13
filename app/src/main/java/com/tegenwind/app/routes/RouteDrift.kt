@@ -45,6 +45,18 @@ object RouteDrift {
     /** Below this nothing moved enough to be worth storing: the line settles within a metre of where you ride. */
     const val MIN_MOVE_M = 0.25
 
+    /** Neighbours closer together than this don't give a point of the line a direction. */
+    const val MIN_DIRECTION_M = 1.0
+
+    /** Points of the moved line can only be dropped as "bunched up at a corner" within this of the last one kept. */
+    const val BUNCHED_M = 25.0
+
+    /** A nudge never changes a line's length by more than this share. */
+    const val MAX_LENGTH_CHANGE = 0.03
+
+    /** A ride needs this many fixes before it can say a line is damaged. */
+    const val MIN_FIXES_TO_JUDGE = 100
+
     /** The moved line is stored without the points that lie within this of the rest. */
     const val STORE_TOLERANCE_M = 1.0
 
@@ -169,7 +181,9 @@ fun nudge(line: Polyline, placed: List<Placed>, weight: Double = RouteDrift.NUDG
         val tx = (next.lon - prev.lon) * kx
         val ty = (next.lat - prev.lat) * M_PER_DEG_LAT
         val len = hypot(tx, ty)
-        if (len == 0.0) continue
+        // Where the line doubles back on itself (a spike), its neighbours lie together and say
+        // nothing about its direction: such a point isn't moved, and judges no other point.
+        if (len < RouteDrift.MIN_DIRECTION_M) continue
         nx[i] = -ty / len
         ny[i] = tx / len
 
@@ -235,7 +249,10 @@ fun nudge(line: Polyline, placed: List<Placed>, weight: Double = RouteDrift.NUDG
         if (distanceM(moved[k], moved[i]) < 1.0) continue
         val ahead = (moved[i].lon - moved[k].lon) * mPerDegLon(moved[k].lat) * ny[k] -
             (moved[i].lat - moved[k].lat) * M_PER_DEG_LAT * nx[k]
-        if (ahead > 0 || (nx[k] == 0.0 && ny[k] == 0.0)) clean += i
+        // Only points bunched up close by can be dropped: one further on is kept whatever the
+        // direction says, so a kink in the line can never cost the stretch after it.
+        val near = distanceM(moved[k], moved[i]) < RouteDrift.BUNCHED_M
+        if (ahead > 0 || !near || (nx[k] == 0.0 && ny[k] == 0.0)) clean += i
     }
     // The end stays the end, even when the point before it lies within a metre.
     if (clean.last() != moved.lastIndex) {
@@ -243,6 +260,8 @@ fun nudge(line: Polyline, placed: List<Placed>, weight: Double = RouteDrift.NUDG
     }
     val kept = simplifyIndices(clean.map { moved[it] }, RouteDrift.STORE_TOLERANCE_M).map { clean[it] }
     val newLine = Polyline(kept.map { moved[it] })
+    // A nudge moves a line by metres. One that changes its length by more is a mistake: leave the line.
+    if (abs(newLine.lengthM - line.lengthM) > RouteDrift.MAX_LENGTH_CHANGE * line.lengthM) return null
 
     // Each point's distance along the new line: exact where it was kept, in proportion in between.
     val movedAlong = Polyline(moved).cumulative
@@ -333,6 +352,32 @@ fun splice(line: Polyline, detour: Detour): Reroute {
         gap = a to b,
     )
     return Reroute(newLine, map, fromM, toM)
+}
+
+/**
+ * True when a ride lies mostly away from [line]. For a ride that passed nearly every segment of the
+ * route that can't be: it says the line is damaged, not that the ride went elsewhere.
+ */
+fun contradicts(line: Polyline, fixes: List<GeoPoint>): Boolean {
+    if (fixes.size < RouteDrift.MIN_FIXES_TO_JUDGE) return false
+    val near = fixes.count { line.project(it).offsetM <= RouteDrift.REACH_M }
+    return near < fixes.size / 2
+}
+
+/** The part of a ride between the fixes nearest to where a line starts and where it ends. */
+fun between(fixes: List<GeoPoint>, start: GeoPoint, end: GeoPoint): List<GeoPoint> {
+    if (fixes.isEmpty()) return fixes
+    val from = fixes.indices.minBy { distanceM(fixes[it], start) }
+    val to = fixes.indices.minBy { distanceM(fixes[it], end) }
+    return if (to > from) fixes.subList(from, to + 1) else fixes
+}
+
+/** Segments carried to a line of another length, each keeping its share of it and what it learned. */
+fun rescaleSpans(segments: List<Pair<Double, Double>>, newLengthM: Double): List<SegmentSpan> {
+    val oldLengthM = segments.lastOrNull()?.second ?: return emptyList()
+    if (oldLengthM <= 0) return emptyList()
+    val k = newLengthM / oldLengthM
+    return segments.mapIndexed { i, (s, e) -> SegmentSpan(s * k, if (i == segments.lastIndex) newLengthM else e * k, i) }
 }
 
 /** A segment while a line is relearned: where it lies now, and which stored segment it continues (null: a new one). */

@@ -9,6 +9,7 @@ import com.tegenwind.app.data.RouteSegmentEntity
 import com.tegenwind.app.eta.ProfileBin
 import com.tegenwind.app.eta.SpeedProfile
 import com.tegenwind.app.ride.foldRidesIntoLine
+import com.tegenwind.app.ride.repairLine
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -120,6 +121,24 @@ class RouteRepository(
         }
         // A new stretch of road: its slopes, buildings and traffic lights are still to be looked up.
         if (rerouted) enrich(routeId)
+    }
+
+    /**
+     * Once at startup, before anything else learns from the lines: a line its own rides contradict
+     * is rebuilt from the latest of them (see [repairLine]).
+     */
+    suspend fun repairLines() {
+        for (route in dao.allRoutes()) {
+            if (isRiding()) return
+            try {
+                val repaired = lineLock.withLock { repairLine(rideDao, dao, route.id, commit = { !isRiding() }) }
+                if (repaired) android.util.Log.w("Tegenwind", "Rebuilt the line of route ${route.id} from its latest ride")
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                android.util.Log.w("Tegenwind", "Couldn't check the line of route ${route.id}", e)
+            }
+        }
     }
 
     /**
