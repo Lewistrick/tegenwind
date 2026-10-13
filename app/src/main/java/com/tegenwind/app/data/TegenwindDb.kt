@@ -211,6 +211,8 @@ data class LearningPass(
     val routeId: Long,
     val segIdx: Int,
     val movingMs: Long,
+    val enterMs: Long,
+    val exitMs: Long,
     val headwindMps: Double?,
     val expectedMovingMs: Long?,
     val startM: Double,
@@ -269,6 +271,7 @@ interface RideDao {
     /** Every real pass over a segment with the segment's own details: what the rider fits are learned from. */
     @Query(
         "SELECT t.rideId AS rideId, t.routeId AS routeId, t.segIdx AS segIdx, t.movingMs AS movingMs, " +
+            "t.enterMs AS enterMs, t.exitMs AS exitMs, " +
             "t.headwindMps AS headwindMps, t.expectedMovingMs AS expectedMovingMs, s.startM AS startM, " +
             "s.endM AS endM, s.gradePct AS gradePct, s.learnedLogVar AS learnedLogVar " +
             "FROM segment_traversals t " +

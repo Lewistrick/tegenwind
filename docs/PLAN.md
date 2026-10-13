@@ -283,6 +283,10 @@ The bottom bar is **Ride · Rides · Routes · Stats**. Rides replaced Map.
     the last 2 minutes. Tapping it shows the whole ride on a reverse-log time axis. Under them, in
     amber, the speed the ETA expects: one line per segment, shaped within the segment by the
     route's learned speed profile (below). A small legend explains the lines.
+  - On the start screen the route that fits is chosen for you when the screen comes up: the one
+    that starts within 500 m, and of several the one you ride most around this hour
+    (`RouteFit.best`). Not when the picker is on Auto-select, nor within ten minutes of picking a
+    route yourself. A muted line says it was chosen for you.
   - On the start screen, a red line under the route picker when the chosen route doesn't fit: you
     are more than 500 m from its start, or you never ride it around this hour while you do ride
     another (`routes/RouteDoubt.kt`). A text button switches to the route that fits.
@@ -396,8 +400,14 @@ The bottom bar is **Ride · Rides · Routes · Stats**. Rides replaced Map.
     much the averages of runs of 9 passes vary beyond what pass noise explains. It sets how fast
     the live form estimate forgets: the fixed guess let form wander about 15% over a ride, which
     kept the estimate at about ±5% however long you rode; your rides show about a tenth of that.
-  - **Time at lights:** stopped time over lights passed, and its spread (was 12 s ± 15 s per light;
-    now 7.5 s ± 18 s).
+  - **Standing still, per segment** (13 Oct 2026, `eta/StopLearner.kt`): how long you stood on each
+    segment's latest 10 passes (a pass's time minus its moving time) replaces the map's lights.
+    Without passes a light costs 12 s ± 15 s; with passes the segment's own average takes over,
+    lights or not, so a crossing the map doesn't know gets its wait. A segment with 3 or more
+    passes and no standing in any has its lights dropped, from the ETA and from the route's page:
+    all 8 lights on woon-werk and werk-woon went this way. The allowance per ride went from 60 s to
+    21 s (woon-werk) and from 36 s to 4 s (werk-woon), now placed where the standing happens, such as
+    the crossing at km 10.8 on woon-werk, one segment past two of the mapped lights.
 - **Output:** the band is 1.28σ from form, segment, traffic-light and pass-noise uncertainty, all
   learned as above. There is no backtest and no log of predictions yet.
 

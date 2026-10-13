@@ -46,4 +46,26 @@ class RouteDoubtTest {
         assertNull(RouteFit.doubt(1, starts, home, emptyMap()))
         assertNull(RouteFit.doubt(1, starts, home, mapOf(2L to 1)))
     }
+
+    @Test
+    fun theRouteThatStartsHereIsOffered() {
+        assertEquals(1L, RouteFit.best(starts, home, emptyMap()))
+        assertEquals(2L, RouteFit.best(starts, work, mapOf(1L to 9)))
+        // Nowhere near any route.
+        assertNull(RouteFit.best(starts, GeoPoint(52.2, 4.9), mapOf(1L to 9)))
+    }
+
+    @Test
+    fun ofTwoRoutesFromHereTheHabitAtThisHourWins() {
+        val both = mapOf(1L to home, 3L to home, 2L to work)
+        assertEquals(3L, RouteFit.best(both, home, mapOf(3L to 4, 1L to 1)))
+        // Nothing to tell them apart: leave the choice alone.
+        assertNull(RouteFit.best(both, home, emptyMap()))
+    }
+
+    @Test
+    fun withoutAPositionOnlyAClearHabitIsOffered() {
+        assertEquals(2L, RouteFit.best(starts, null, mapOf(2L to 5, 1L to 1)))
+        assertNull(RouteFit.best(starts, null, mapOf(2L to 1)))
+    }
 }

@@ -24,17 +24,32 @@ data class RiderLearned(
      * decides how fast the form estimate forgets what it measured earlier in the ride.
      */
     val formDrift: Double = DEFAULT_FORM_DRIFT,
-    /** Time standing still per traffic light on the route, on average, and its variance. */
+    /**
+     * Time standing still per traffic light, and its variance: the guess for a light you haven't
+     * passed yet. Once a segment has passes, [stops] says what really happens there.
+     */
     val stopMeanS: Double = 12.0,
     val stopVarS2: Double = 15.0 * 15.0,
+    /** How long you stood still on each segment's latest passes, seconds, by [stopKey]. See [StopLearner]. */
+    val stops: Map<Long, List<Double>> = emptyMap(),
     /** How many rides these came from, for the log. */
     val rides: Int = 0,
 ) {
+    /** What the ETA allows for standing still on a segment the map gives [signals] lights. */
+    fun stop(routeId: Long, segIdx: Int, signals: Int): StopExpectation =
+        StopLearner.expect(stops[stopKey(routeId, segIdx)].orEmpty(), signals, stopMeanS, stopVarS2)
+
+    /** The lights that count on a segment: the map's, unless your passes say they never stop you. */
+    fun lights(routeId: Long, segIdx: Int, signals: Int): Int =
+        StopLearner.lights(stops[stopKey(routeId, segIdx)].orEmpty(), signals)
+
     companion object {
         const val DEFAULT_FORM_SD = 0.10
         const val DEFAULT_PASS_NOISE = 0.15
         const val DEFAULT_PASS_EXTRA = 0.10
         const val DEFAULT_FORM_DRIFT = 0.0004
+
+        fun stopKey(routeId: Long, segIdx: Int): Long = routeId * 10_000 + segIdx
     }
 }
 
@@ -179,20 +194,6 @@ object RiderFit {
         return v.coerceIn(0.00001, 0.002)
     }
 
-    /**
-     * Time standing still per traffic light on the route: total stopped time over total lights
-     * passed, and the spread around that. Stopped time is a ride's length minus its moving time, so
-     * it includes anything that made you stop, not just lights. Shrunk toward the old guess.
-     */
-    fun stops(rides: List<RideFacts>): Pair<Double, Double> {
-        val used = rides.filter { it.signals > 0 && it.stoppedS >= 0 }
-        val lights = used.sumOf { it.signals }.toDouble()
-        val mean = (used.sumOf { it.stoppedS } + STOP_PSEUDO * 12.0) / (lights + STOP_PSEUDO)
-        val spread = used.sumOf { (it.stoppedS - mean * it.signals).sq() }
-        val variance = (spread + STOP_PSEUDO * 225.0) / (lights + STOP_PSEUDO)
-        return mean to variance
-    }
-
     /** [rides] oldest first. */
     fun learn(
         windPasses: List<WindPass>,
@@ -200,18 +201,17 @@ object RiderFit {
         passes: List<PassFacts>,
         meanSegmentLogVar: Double,
         passesByRide: List<List<Double>> = emptyList(),
+        stops: Map<Long, List<Double>> = emptyMap(),
         params: RiderParams = RiderParams(),
     ): RiderLearned {
         val (noise, extra) = passNoise(passes, meanSegmentLogVar)
-        val (stopMean, stopVar) = stops(rides)
         return RiderLearned(
             windFeel = windFeel(windPasses, params),
             formSd = formSd(rides.mapNotNull { it.formFactor }),
             passNoise = noise,
             passExtra = extra,
             formDrift = formDrift(passesByRide),
-            stopMeanS = stopMean,
-            stopVarS2 = stopVar,
+            stops = stops,
             rides = rides.size,
         )
     }
@@ -223,6 +223,5 @@ object RiderFit {
     private const val WINDOW = 20
     private const val PSEUDO = 2
     private const val PASS_PSEUDO = 20
-    private const val STOP_PSEUDO = 10.0
     private fun Double.sq() = this * this
 }

@@ -15,6 +15,21 @@ object RouteFit {
     const val HABIT_RIDES = 2
 
     /**
+     * The route to offer for a ride from [here] at this hour: one that starts here, and among those
+     * the one ridden most around now ([habit]). Without a position, the one that is the habit now.
+     * Null when nothing stands out: no route starts here, or several do and none is the habit.
+     */
+    fun best(starts: Map<Long, GeoPoint>, here: GeoPoint?, habit: Map<Long, Int>): Long? {
+        if (here == null) {
+            return starts.keys.filter { (habit[it] ?: 0) >= HABIT_RIDES }.maxByOrNull { habit[it] ?: 0 }
+        }
+        val near = starts.filter { distanceM(here, it.value) <= FAR_M }.keys
+        if (near.size <= 1) return near.firstOrNull()
+        val ranked = near.sortedByDescending { habit[it] ?: 0 }
+        return ranked.first().takeIf { (habit[it] ?: 0) > (habit[ranked[1]] ?: 0) }
+    }
+
+    /**
      * Null when [selected] fits. [starts] is where each route begins, [here] where you are (null when
      * unknown, and then only the hour is judged), [habit] how often each route was ridden around
      * this time of day ([habitByRoute]).

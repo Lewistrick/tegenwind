@@ -77,7 +77,7 @@ fun RouteDoubtWarning(selectedRouteId: Long, routes: List<RouteEntity>, location
 
 /** Roughly where the phone is now, or null when that can't be told in a few seconds. Stays on the phone. */
 @SuppressLint("MissingPermission")
-private suspend fun whereAmI(context: Context): GeoPoint? = suspendCancellableCoroutine { cont ->
+internal suspend fun whereAmI(context: Context): GeoPoint? = suspendCancellableCoroutine { cont ->
     val request = CurrentLocationRequest.Builder()
         .setPriority(Priority.PRIORITY_BALANCED_POWER_ACCURACY)
         .setMaxUpdateAgeMillis(120_000)

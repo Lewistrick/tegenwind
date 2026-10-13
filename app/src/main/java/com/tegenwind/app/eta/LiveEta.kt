@@ -34,8 +34,9 @@ fun LoadedRoute.etaModel(learned: RiderLearned = RiderLearned(), params: RiderPa
             // Until the lookup has finished: flat, half-sheltered, no lights.
             gradePct = s.gradePct ?: 0.0,
             exposure = s.exposure ?: UNKNOWN_EXPOSURE,
-            signals = s.signals ?: 0,
+            signals = learned.lights(route.id, s.idx, s.signals ?: 0),
             learned = SegmentCorrection(s.learnedLogMean, s.learnedLogVar, s.learnedPasses),
+            stop = learned.stop(route.id, s.idx, s.signals ?: 0),
         )
     },
     params,

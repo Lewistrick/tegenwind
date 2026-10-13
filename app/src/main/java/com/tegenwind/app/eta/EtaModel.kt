@@ -14,6 +14,8 @@ data class EtaSegment(
     val signals: Int,
     /** What riding it has taught us on top of the physics; see [SegmentLearner]. */
     val learned: SegmentCorrection = SegmentCorrection(),
+    /** Standing still here, as learned from passes; null for the guess from [signals]. */
+    val stop: StopExpectation? = null,
 ) {
     val lengthM: Double get() = endM - startM
     val midM: Double get() = (startM + endM) / 2
@@ -133,10 +135,11 @@ class EtaModel(
             // it. Segments are unrelated to each other, so unlike form these errors partly cancel
             // out over a long route.
             segVar += t * t * (s.learned.logVar + learned.passExtra * learned.passExtra)
-            // Signals are counted at the end of their segment.
-            stops += s.signals * learned.stopMeanS
-            stopVar += s.signals * learned.stopVarS2
-            clockMs += s.signals * learned.stopMeanS * 1000
+            // Standing still is counted at the end of its segment.
+            val stop = s.stop ?: StopExpectation(s.signals * learned.stopMeanS, s.signals * learned.stopVarS2)
+            stops += stop.meanS
+            stopVar += stop.varS2
+            clockMs += stop.meanS * 1000
         }
         val formSd = sqrt(form.variance) / form.mean
         val sigma = sqrt((moving * formSd).let { it * it } + stopVar + segVar)

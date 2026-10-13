@@ -81,12 +81,38 @@ class RiderFitTest {
     }
 
     @Test
-    fun stopsAreLearnedPerLight() {
-        val rides = List(30) { RideFacts(0.9, stoppedS = 20.0, signals = 4) } // 5 s per light
-        val (mean, variance) = RiderFit.stops(rides)
-        assertEquals(5.0, mean, 1.5)
-        assertTrue(variance < 225.0)
-        assertEquals(12.0, RiderFit.stops(emptyList()).first, 1e-9)
+    fun lightsYouNeverStandAtStopCounting() {
+        val never = List(5) { 0.0 }
+        assertTrue(StopLearner.ignoresLights(never))
+        assertEquals(0, StopLearner.lights(never, 2))
+        assertEquals(StopExpectation(0.0, 0.0), StopLearner.expect(never, 2, 12.0, 225.0))
+        // Too few passes to say, or one real wait among them: the lights stay.
+        assertEquals(2, StopLearner.lights(listOf(0.0, 0.0), 2))
+        assertEquals(1, StopLearner.lights(listOf(0.0, 0.0, 25.0, 0.0), 1))
+    }
+
+    @Test
+    fun stopsAreLearnedWhereYouReallyStand() {
+        // No passes yet: the map's guess.
+        assertEquals(24.0, StopLearner.expect(emptyList(), 2, 12.0, 225.0).meanS, 1e-9)
+        // A crossing the map knows nothing of, where you wait about 20 s every time.
+        val crossing = StopLearner.expect(List(10) { 20.0 }, 0, 12.0, 225.0)
+        assertEquals(20.0, crossing.meanS, 4.0)
+        // A light that stops you now and then: its average, not the map's guess.
+        val sometimes = StopLearner.expect(listOf(0.0, 30.0, 0.0, 0.0, 30.0, 0.0, 0.0, 0.0, 0.0, 0.0), 1, 12.0, 225.0)
+        assertEquals(7.0, sometimes.meanS, 1.0)
+        assertTrue(sometimes.varS2 > 50)
+        // A long break isn't expected again in full.
+        assertTrue(StopLearner.expect(listOf(600.0, 0.0, 0.0), 0, 12.0, 225.0).meanS <= 24.0 + 1e-9)
+    }
+
+    @Test
+    fun theEtaUsesTheLearnedStopOfASegment() {
+        val seg = EtaSegment(0.0, 1000.0, 90.0, 0.0, 1.0, 2)
+        val form = FormEstimate(1.0, 0.0)
+        val guess = EtaModel(listOf(seg)).predict(0.0, 0, null, form)
+        val learned = EtaModel(listOf(seg.copy(stop = StopExpectation(0.0, 0.0)))).predict(0.0, 0, null, form)
+        assertEquals(24.0, guess.remainingS - learned.remainingS, 1e-6)
     }
 
     @Test

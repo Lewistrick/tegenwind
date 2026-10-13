@@ -57,7 +57,10 @@ fun RouteDetailScreen(routeId: Long, onBack: () -> Unit, onOpen: (Long) -> Unit)
     val repo = container.routes
     val scope = rememberCoroutineScope()
     val route by remember(routeId) { dao.routeFlow(routeId) }.collectAsStateWithLifecycle(null)
-    val segments by remember(routeId) { dao.segmentsFlow(routeId) }.collectAsStateWithLifecycle(emptyList())
+    val stored by remember(routeId) { dao.segmentsFlow(routeId) }.collectAsStateWithLifecycle(emptyList())
+    // Lights your rides show you never stop at don't count, and aren't shown.
+    val learned by LocalContext.current.appContainer.riderModel.learned.collectAsStateWithLifecycle()
+    val segments = stored.map { it.copy(signals = it.signals?.let { n -> learned.lights(routeId, it.idx, n) }) }
     // The second tap has to follow soon, or Delete goes back to asking.
     var confirmDelete by rememberConfirmTap()
 

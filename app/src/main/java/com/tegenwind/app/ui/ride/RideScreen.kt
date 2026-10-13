@@ -39,6 +39,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -86,6 +88,9 @@ import com.tegenwind.app.ride.SegmentWeather
 import com.tegenwind.app.ride.TWO_MINUTES_MS
 import com.tegenwind.app.ride.formatClock
 import com.tegenwind.app.ride.formatElapsed
+import com.tegenwind.app.routes.GeoPoint
+import com.tegenwind.app.routes.RouteFit
+import com.tegenwind.app.routes.habitByRoute
 import com.tegenwind.app.ui.ChartCard
 import com.tegenwind.app.ui.ArrivalChart
 import com.tegenwind.app.ui.TimeSeriesChart
@@ -106,6 +111,9 @@ import kotlinx.coroutines.delay
 
 private const val PREF_ROUTE = "lastRouteId"
 private const val PREF_SHARE_LIVE = "shareLive"
+
+/** A route you picked yourself isn't replaced by the automatic choice for this long. */
+private const val PICK_HOLDS_MS = 10 * 60_000L
 
 private val etaNumber = TextStyle(fontSize = 48.sp, fontWeight = FontWeight.Bold, fontFeatureSettings = "tnum", lineHeight = 50.sp)
 
@@ -141,6 +149,30 @@ fun RideScreen() {
     var shareLive by remember { mutableStateOf(prefs.getBoolean(PREF_SHARE_LIVE, false)) }
     val justFinished by recorder.justFinished.collectAsStateWithLifecycle()
 
+    // The route that fits where you are and the hour is chosen for you whenever the screen comes
+    // up, unless you've set it to Auto-select or picked one yourself in the last ten minutes.
+    var resumed by remember { mutableIntStateOf(0) }
+    var pickedAtMs by remember { mutableLongStateOf(0L) }
+    var chosenForYou by remember { mutableStateOf(false) }
+    LifecycleResumeEffect(Unit) {
+        resumed++
+        onPauseOrDispose { }
+    }
+    LaunchedEffect(resumed, routes, locationOk, live == null) {
+        if (live != null || routes.isEmpty() || routeId == RideService.AUTO_ROUTE) return@LaunchedEffect
+        if (System.currentTimeMillis() - pickedAtMs < PICK_HOLDS_MS) return@LaunchedEffect
+        val container = context.appContainer
+        val starts = container.db.routes().routeStarts().associate { it.routeId to GeoPoint(it.lat, it.lon) }
+        val here = if (locationOk) whereAmI(context) else null
+        val habit = habitByRoute(container.db.rides().recentRouteStarts(), System.currentTimeMillis())
+        val best = RouteFit.best(starts, here, habit) ?: return@LaunchedEffect
+        if (best != routeId && System.currentTimeMillis() - pickedAtMs >= PICK_HOLDS_MS) {
+            routeId = best
+            prefs.edit().putLong(PREF_ROUTE, best).apply()
+            chosenForYou = true
+        }
+    }
+
     val ride = live
     val finished = justFinished
     if (finished != null) {
@@ -153,8 +185,11 @@ fun RideScreen() {
             selectedRouteId = routeId?.takeIf { id -> id == RideService.AUTO_ROUTE || routes.any { it.id == id } },
             onSelectRoute = { id ->
                 routeId = id
+                pickedAtMs = System.currentTimeMillis()
+                chosenForYou = false
                 prefs.edit().putLong(PREF_ROUTE, id ?: -1L).apply()
             },
+            chosenForYou = chosenForYou,
             canShareLive = liveShare.configured,
             shareLive = shareLive,
             onShareLive = {
@@ -190,6 +225,7 @@ private fun IdleView(
     routes: List<RouteEntity>,
     selectedRouteId: Long?,
     onSelectRoute: (Long?) -> Unit,
+    chosenForYou: Boolean,
     canShareLive: Boolean,
     shareLive: Boolean,
     onShareLive: (Boolean) -> Unit,
@@ -222,6 +258,14 @@ private fun IdleView(
                     textAlign = TextAlign.Center,
                 )
             } else {
+                if (chosenForYou && selectedRouteId != null) {
+                    Text(
+                        "Chosen for where you are and the time of day.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center,
+                    )
+                }
                 selectedRouteId?.let {
                     RouteDoubtWarning(it, routes, locationOk, onSelectRoute = { id -> onSelectRoute(id) })
                     LeaveNowPreview(it)

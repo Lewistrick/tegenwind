@@ -104,7 +104,10 @@ fun RideDetailScreen(rideId: Long, onBack: () -> Unit, backLabel: String = "Ride
         // The passes belong to the route they were ridden on, which "Edit route" doesn't alter.
         val passes = dao.traversals(rideId)
         taught = if (loaded == null) null else passes.firstOrNull()?.routeId?.let { routeId ->
-            taughtBy(loaded, passes, container.db.routes().segments(routeId))
+            taughtBy(loaded, passes, container.db.routes().segments(routeId).map { s ->
+                val learned = container.riderModel.learned.value
+                s.copy(signals = s.signals?.let { n -> learned.lights(routeId, s.idx, n) })
+            })
         }
     }
     val r = ride
