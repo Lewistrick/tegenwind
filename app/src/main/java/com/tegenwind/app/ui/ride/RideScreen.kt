@@ -87,7 +87,7 @@ import com.tegenwind.app.ride.TWO_MINUTES_MS
 import com.tegenwind.app.ride.formatClock
 import com.tegenwind.app.ride.formatElapsed
 import com.tegenwind.app.ui.ChartCard
-import com.tegenwind.app.ui.FormArrivalScatter
+import com.tegenwind.app.ui.ArrivalChart
 import com.tegenwind.app.ui.TimeSeriesChart
 import com.tegenwind.app.ui.Picker
 import com.tegenwind.app.ui.rides.RideDetailScreen
@@ -373,19 +373,20 @@ private fun LiveView(ride: LiveRide, onStop: () -> Unit) {
                 }
             }
 
+            // How the arrival time and its band have moved over the ride. Stop comes after it, behind
+            // the scroll.
+            if (ride.route != null) {
+                ChartCard("Arrival time", "predicted arrival and its ± over the ride so far") {
+                    ArrivalChart(ride.arrivalTrail, Modifier.fillMaxWidth().height(180.dp))
+                }
+            }
+
             Button(
                 onClick = { if (confirmStop) onStop() else confirmStop = true },
                 modifier = Modifier.fillMaxWidth().height(56.dp),
                 colors = if (confirmStop) ButtonDefaults.buttonColors(containerColor = Danger)
                 else ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surfaceVariant, contentColor = MaterialTheme.colorScheme.onSurface),
             ) { Text(if (confirmStop) "Tap again to stop" else "Stop ride", style = MaterialTheme.typography.titleMedium) }
-
-            // Behind the scroll, so Stop stays on the first screen.
-            if (ride.route != null) {
-                ChartCard("Form and arrival", "arrival time across, form up") {
-                    FormArrivalScatter(ride.formTrail, Modifier.fillMaxWidth().height(180.dp))
-                }
-            }
         }
 
         // Above the page rather than in it, so it can't be scrolled out of sight.

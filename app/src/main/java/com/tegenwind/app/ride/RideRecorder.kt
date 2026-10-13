@@ -71,8 +71,8 @@ data class LiveRide(
      * segment ridden, each its own line. Only while on a route; never stored.
      */
     val expectedSpeeds: List<List<Sample>> = emptyList(),
-    /** The last minute of arrival time and form, a dot every 5 s, for the ride screen's scatterplot. Never stored. */
-    val formTrail: List<FormDot> = emptyList(),
+    /** The predicted arrival and its band over the ride so far, a point every 5 s, for the ride screen's chart. Never stored. */
+    val arrivalTrail: List<ArrivalPoint> = emptyList(),
 )
 
 /**
@@ -118,7 +118,7 @@ class RideRecorder(
     private val pending = ArrayList<TrackPointEntity>()
     private val traversals = ArrayList<SegmentTraversalEntity>()
     private val expected = ArrayList<ArrayList<Sample>>()
-    private val formTrail = FormTrail()
+    private val arrivalTrail = ArrivalTrail()
     /** Every fix of this ride, for learning the route's speed profile when it ends. */
     private val ridePoints = ArrayList<TrackPointEntity>()
     /** The segment the expected line is on, and the speed it holds there: one level per segment. */
@@ -173,7 +173,7 @@ class RideRecorder(
         weather = null
         traversals.clear()
         expected.clear()
-        formTrail.clear()
+        arrivalTrail.clear()
         ridePoints.clear()
         expectedOn = null
         segIdx = -1
@@ -417,7 +417,7 @@ class RideRecorder(
         model = null
         traversals.clear()
         expected.clear()
-        formTrail.clear()
+        arrivalTrail.clear()
         ridePoints.clear()
         pending.clear()
         _live.value = null
@@ -439,12 +439,12 @@ class RideRecorder(
             form = form.estimate().mean,
             wind = windNow(m, progress.progressM, nowMs, weather),
         )
-        if (ride.started) formTrail.record(nowMs, eta.arrivalMs, live.form)
+        if (ride.started) arrivalTrail.record(nowMs, eta.arrivalMs, (eta.bandS * 1000).toLong())
         // Once offered the prompt stays until answered, even if the band widens again (off route).
         val firm = progress.onRouteYet && !progress.offRoute && eta.bandS < Eta.FIRM_BAND_S
         _live.value = ride.copy(
             eta = live,
-            formTrail = formTrail.dots,
+            arrivalTrail = arrivalTrail.points,
             offerShare = !sharePromptAnswered && (ride.offerShare || firm),
             route = rideRoute.copy(weather = weatherAlongRoute(m, eta)),
         )

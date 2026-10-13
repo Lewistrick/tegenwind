@@ -286,9 +286,10 @@ The bottom bar is **Ride · Rides · Routes · Stats**. Rides replaced Map.
   - On the start screen, a red line under the route picker when the chosen route doesn't fit: you
     are more than 500 m from its start, or you never ride it around this hour while you do ride
     another (`routes/RouteDoubt.kt`). A text button switches to the route that fits.
-  - A Stop button that needs two taps. The whole screen down to Stop fits without scrolling.
-  - Below Stop, behind the scroll: "Form and arrival", a scatterplot of the ETA's arrival time against
-    today's form, a dot every 5 s for the last minute (live only, never stored).
+  - Below the speed chart, behind the scroll: "Arrival time", the predicted arrival over the ride so
+    far as a thick blue line with its ± band (thin lines, filled between), a point every 5 s (live
+    only, never stored).
+  - Under that, a Stop button that needs two taps.
   - Once the ETA is firm, a one-time "Share ETA via WhatsApp?" prompt.
   - The large speed number, 2-minute average and live heart rate from the plan are gone: the ETA
     is what you read on the handlebar.

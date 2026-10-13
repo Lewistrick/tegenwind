@@ -48,8 +48,7 @@ there. Don't use a hex value in a screen.
   - the wind arrow
   - what the model expects (the expected-speed line)
   - traffic lights
-- **Blue** is speed, and nothing else, except the dots of the form-and-arrival scatterplot on the
-  ride screen.
+- **Blue** is speed, and nothing else, except the arrival-time chart on the ride screen.
 - **Green** is good: faster than expected, a tailwind, the fastest ride, a ride in the top x% of its
   route, "Recording".
 - **Red** is bad or dangerous:
@@ -119,7 +118,7 @@ One scheme:
 | Action table | `ActionCard`: equal outlined buttons on the left, what they do on the right | Everything you can do with a ride or a route |
 | In-place | Outlined | Small actions inside a card (Refresh, Allow access, Import GPX) and pickers |
 | Text | Amber text | Navigation ("‹ Routes") and optional extras ("Try a simulated ride", "Rename", "Show all") |
-| Ride controls | Full width, 56 dp | Stop ride (grey at rest, red once armed) |
+| Ride controls | Full width, 56 dp | Stop ride (grey at rest, red once armed), at the bottom of the ride screen, behind the scroll |
 
 - **Deleting and stopping take two taps.** The first tap arms the button: it turns filled red and
   says "Sure? Tap again" (or "Tap again to stop"). The second tap within 3 seconds acts; otherwise it
@@ -145,11 +144,9 @@ One scheme:
   measurements always stay on top. Each segment is a line of its own: the speed the ETA uses
   there, shaped within the segment by the route's learned speed profile (slower up a bridge, faster
   down). Nothing joins one segment's line to the next: never draw a slope between two segments.
-- **Scatter trail** (the ride screen's "Form and arrival"): one dot every 5 s for the last minute, in
-  blue. The oldest is small (2 dp) and nearly transparent, the newest larger (5 dp) and nearly
-  solid. Arrival time (HH:mm) runs across and form (change from 1.0, whole percent) upward; both axes
-  are centred on the newest dot and wide enough for every dot, with whole-number ticks. It sits
-  below Stop, behind the scroll.
+- **A value with a band** (the ride screen's "Arrival time"): the value as a 3 dp line, the band's
+  edges as 1 dp lines in the same colour, and the area between them filled with that colour at 18%.
+  Arrival time (HH:mm, ticks on whole minutes) runs upward, minutes since the start across.
 - **Axes:**
   - labels at 10 sp, muted
   - grid lines 1 px in `Line`
@@ -185,6 +182,6 @@ One scheme:
 1. Build, install, and look at it on the phone (360 × 780 dp): every screen you touched, scrolled
    to the bottom, and in each state it can be in (for example empty, loading, a simulated ride).
 2. Nothing is cut off or hidden under the tab bar. `uiautomator dump` shows each element's bounds.
-3. On the ride screen, everything down to Stop fits without scrolling (pause and arrival bars
-   aside). What is below Stop may scroll.
+3. On the ride screen, the arrival card and the speed chart fit without scrolling (pause and
+   arrival bars aside). The arrival-time chart and Stop come after them, behind the scroll.
 4. Take before and after screenshots of what changed.
