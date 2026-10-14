@@ -298,7 +298,7 @@ The bottom bar is **Ride · Rides · Routes · Stats**. Rides replaced Map.
   - The large speed number, 2-minute average and live heart rate from the plan are gone: the ETA
     is what you read on the handlebar.
 - **Rides** (not in the plan): the list of finished rides. A ride's page shows distance, moving and
-  total time, average speed, form and average heart rate. Under the total time it says where the
+  total time, average speed, pace and average heart rate. Under the total time it says where the
   ride ranks among the rides on its route: top or bottom x%, from five rides on. Then the speed
   chart and the heart-rate chart from Health Connect, and the "What this ride taught" card. It can
   also save the ride as a route, change which route it belongs to, give its route the line you
@@ -382,6 +382,10 @@ The bottom bar is **Ride · Rides · Routes · Stats**. Rides replaced Map.
 - **Layer 3:** the Kalman filter on today's form, as planned. The Banister model sets the starting
   form (±5% at most) instead of adjusting `P_rider`. There is no fatigue term within a ride and no
   cardiac drift.
+  - Form is measured against the model's rider, and since `P_rider` was never built it carries your
+    fixed level as well as today's. So screens show **pace** instead (14 Oct 2026): form as a share
+    of your usual form, the median of the ten real rides before. 100% is your usual speed, 50% half,
+    200% double. The ETA still works with form.
 - **Learned from rides (8 Oct 2026, `eta/RiderLearned.kt`, `RiderModel`):** a few numbers that were
   fixed guesses are now fitted to the stored rides, at startup and after every real ride, and
   start at the old guess until there is data. Nothing is stored for them: they are worked out again

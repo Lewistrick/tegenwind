@@ -24,6 +24,7 @@ import com.tegenwind.app.R
 import com.tegenwind.app.appContainer
 import com.tegenwind.app.eta.Banister
 import com.tegenwind.app.eta.startingForm
+import com.tegenwind.app.eta.usualForm
 import com.tegenwind.app.routes.GeoPoint
 import com.tegenwind.app.routes.habitByRoute
 import com.tegenwind.app.weather.RouteWeather
@@ -86,12 +87,14 @@ class RideService : Service() {
             val now = System.currentTimeMillis()
             // Auto-select: every saved route is a candidate until riding rules it out.
             val candidates = if (routeId == AUTO_ROUTE) container.routes.loadAll() else emptyList()
+            val recentForms = rides.recentForms()
             recorder.start(
                 simulated = simulated,
                 route = route,
-                priorForm = startingForm(rides.recentForms(), rides.loadsSince(now - Banister.WINDOW_DAYS * 86_400_000L), now),
+                priorForm = startingForm(recentForms, rides.loadsSince(now - Banister.WINDOW_DAYS * 86_400_000L), now),
                 candidates = candidates,
                 habit = habitByRoute(rides.recentRouteStarts(), now),
+                usualForm = usualForm(recentForms),
             )
             // Forecast refreshed every 15 minutes: every ~2 km along the route being ridden, or on a
             // free ride for wherever you are by then (which also means waiting for the first fix).

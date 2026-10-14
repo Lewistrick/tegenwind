@@ -111,6 +111,8 @@ class RideRecorder(
     private var matcher: RouteMatcher? = null
     private var model: EtaModel? = null
     private var form = FormEstimator()
+    /** Your usual form going into this ride: what its pace is measured against. */
+    private var usualForm: Double? = null
     /** Metres of route today's form has been measured on. */
     private var formObservedM = 0.0
     private val stretches = StretchClock()
@@ -151,6 +153,7 @@ class RideRecorder(
         priorForm: Double,
         candidates: List<LoadedRoute> = emptyList(),
         habit: Map<Long, Int> = emptyMap(),
+        usualForm: Double? = null,
     ) {
         if (_live.value != null) return
         closeUnfinished()
@@ -163,6 +166,7 @@ class RideRecorder(
         routeTracker = route?.let { RouteTracker(it.line) }
         val learnedNow = learned()
         model = route?.etaModel(learnedNow)
+        this.usualForm = usualForm
         form = FormEstimator(prior = priorForm, priorSd = learnedNow.formSd * priorForm, obsSd = learnedNow.passNoise * priorForm, drift = learnedNow.formDrift)
         formObservedM = 0.0
         stretches.reset()
@@ -438,6 +442,7 @@ class RideRecorder(
             eta = eta,
             form = form.estimate().mean,
             wind = windNow(m, progress.progressM, nowMs, weather),
+            usualForm = usualForm,
         )
         if (ride.started) arrivalTrail.record(nowMs, eta.arrivalMs, (eta.bandS * 1000).toLong())
         // Once offered the prompt stays until answered, even if the band widens again (off route).

@@ -26,6 +26,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.tegenwind.app.appContainer
 import com.tegenwind.app.data.RideEntity
+import com.tegenwind.app.eta.pacePercent
+import com.tegenwind.app.eta.usualFormBefore
 import com.tegenwind.app.ride.formatElapsed
 import java.time.Instant
 import java.time.ZoneId
@@ -41,6 +43,7 @@ fun RidesScreen() {
     val rides by remember { db.rides().finishedRides() }.collectAsStateWithLifecycle(emptyList())
     val routes by remember { db.routes().routes() }.collectAsStateWithLifecycle(emptyList())
     val routeNames = remember(routes) { routes.associate { it.id to it.name } }
+    val forms = remember(rides) { formsByStart(rides) }
     var openId by rememberSaveable { mutableStateOf<Long?>(null) }
 
     val id = openId
@@ -64,13 +67,13 @@ fun RidesScreen() {
             }
         }
         items(rides, key = { it.id }) { ride ->
-            RideRow(ride, routeNames[ride.routeId]) { openId = ride.id }
+            RideRow(ride, routeNames[ride.routeId], ridePace(ride, forms)) { openId = ride.id }
         }
     }
 }
 
 @Composable
-private fun RideRow(ride: RideEntity, routeName: String?, onClick: () -> Unit) {
+private fun RideRow(ride: RideEntity, routeName: String?, pace: String?, onClick: () -> Unit) {
     // Simulated rides stay in the list but step back, so the real ones stand out.
     val ink = if (ride.simulated) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
@@ -85,12 +88,12 @@ private fun RideRow(ride: RideEntity, routeName: String?, onClick: () -> Unit) {
                 style = MaterialTheme.typography.bodyMedium,
                 color = muted,
             )
-            // Each item keeps its words together ("form -16%"), so a line can only break between items.
+            // Each item keeps its words together ("pace 97%"), so a line can only break between items.
             Text(
                 listOfNotNull(
                     "%.1f km".format(ride.distanceM / 1000),
                     "${formatElapsed(ride.movingMs)} moving",
-                    formPercent(ride.formFactor)?.let { "form $it" },
+                    pace?.let { "pace $it" },
                 ).joinToString(" · ") { it.replace(' ', ' ') },
                 style = MaterialTheme.typography.bodyMedium.copy(fontFeatureSettings = "tnum"),
                 color = muted,
@@ -99,12 +102,16 @@ private fun RideRow(ride: RideEntity, routeName: String?, onClick: () -> Unit) {
     }
 }
 
+/** Each real ride's form by its start time: what every ride's pace is measured against. */
+fun formsByStart(rides: List<RideEntity>): List<Pair<Long, Double>> =
+    rides.filter { !it.simulated && it.formFactor != null }.map { it.startedAtMs to it.formFactor!! }
+
 /**
- * Speed compared with the physics model at the end of that ride: "+3%" means 3% faster than predicted.
- * Null for rides too short to judge (fewer than three complete route segments).
+ * A ride's pace, "103%": its form as a share of your usual form going into it, the median of the ten
+ * real rides before it. Null for a ride too short to judge, or one with no rides before it to compare.
  */
-fun formPercent(formFactor: Double?): String? =
-    formFactor?.let { "%+d%%".format(kotlin.math.round((it - 1) * 100).toInt()) }
+fun ridePace(ride: RideEntity, forms: List<Pair<Long, Double>>): String? =
+    pacePercent(ride.formFactor, usualFormBefore(forms, ride.startedAtMs))
 
 fun avgSpeedText(ride: RideEntity): String =
     if (ride.movingMs > 0) "%.1f km/h".format(ride.distanceM / (ride.movingMs / 1000.0) * 3.6) else "--"

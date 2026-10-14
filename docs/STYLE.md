@@ -169,6 +169,9 @@ One scheme:
   is about 100). Times are m:ss or h:mm:ss; clock times HH:mm.
   - A unit that is a word, like load/day, follows the value in the label's size, muted and not
     bold, so the value stays on one line: "42 load/day".
+- **Pace** is shown as a percentage of your usual speed: "pace 103%". 100% is your usual (the median
+  form of the ten real rides before), 50% half as fast, 200% twice as fast. The word "form" is not
+  shown: form is the model's number against its 130 W rider, and only pace is about you.
 - **Separators:** a middle dot with spaces between items: "13.6 km · 6 rides · usually 37:43".
   - Keep each item on one line: join its words with a non-breaking space, so a line can only break
     between items.

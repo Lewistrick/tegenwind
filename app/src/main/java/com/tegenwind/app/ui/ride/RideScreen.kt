@@ -79,6 +79,7 @@ import com.tegenwind.app.eta.LiveEta
 import com.tegenwind.app.eta.WindNow
 import com.tegenwind.app.eta.etaModel
 import com.tegenwind.app.eta.Banister
+import com.tegenwind.app.eta.pacePercent
 import com.tegenwind.app.eta.startingForm
 import com.tegenwind.app.ride.AutoFinish
 import com.tegenwind.app.ride.LiveRide
@@ -633,9 +634,10 @@ private fun EtaCard(r: RideRoute, live: LiveEta?, lat: Double?, lon: Double?, li
                 )
                 Spacer(Modifier.weight(1f))
                 live?.let {
-                    val formPct = ((it.form - 1) * 100).roundToInt()
+                    // Pace against your usual form; nothing until there are earlier rides to compare.
+                    val pace = pacePercent(it.form, it.usualForm)?.let { pct -> "pace $pct · " } ?: ""
                     Text(
-                        "form %+d%% · %s".format(formPct, windEffect(it.eta.windCostS)),
+                        pace + windEffect(it.eta.windCostS),
                         style = MaterialTheme.typography.bodyMedium.copy(fontFeatureSettings = "tnum"),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
