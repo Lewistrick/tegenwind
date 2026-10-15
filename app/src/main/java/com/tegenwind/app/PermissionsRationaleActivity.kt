@@ -33,7 +33,8 @@ class PermissionsRationaleActivity : ComponentActivity() {
                                 "with your rides and to estimate your fitness for arrival-time predictions. " +
                                 "The heart rate of your rides is kept on this phone for 14 days, to learn how " +
                                 "your heart responds to effort, and then deleted. It isn't uploaded or shared " +
-                                "with anyone."
+                                "with anyone. If you ask it to on the Rider and bike screen, it also reads your " +
+                                "latest weight, to work out your speed and watts."
                         )
                         Button(onClick = ::finish) { Text("Close") }
                     }

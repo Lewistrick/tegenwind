@@ -134,6 +134,16 @@ One scheme:
 - **Choosing one of a list** uses `Picker`: a button showing the current choice with a chevron,
   opening a menu as wide as the button, with a tick at the current choice.
 
+- **Settings** ("Rider and bike") are a detail screen like any other: "‹ Ride", the title, a muted
+  line, then a card per thing being set.
+  - Numbers are `OutlinedTextField`s with their unit as a suffix ("84 kg"). What reads as a number
+    is kept at once; there is no Save button.
+  - Choices are `Picker`s under a small label. A muted line under each says what the current
+    choice means ("Forearms or hands forward, back bent.").
+  - Fields that only matter for one choice (a motor's power and cut-off speed) only show with it.
+  - What you can do with the thing (ride this bike, delete it) goes in an `ActionCard` under its
+    card, deleting with two taps as everywhere.
+
 ## 6. Charts
 
 - **Measurements:** raw values as solid dots in the series colour, and a 2-minute centred rolling

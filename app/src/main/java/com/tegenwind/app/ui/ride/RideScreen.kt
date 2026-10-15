@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import androidx.activity.compose.BackHandler
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
@@ -81,6 +82,8 @@ import com.tegenwind.app.eta.etaModel
 import com.tegenwind.app.eta.Banister
 import com.tegenwind.app.eta.startingForm
 import com.tegenwind.app.ui.rides.powerText
+import com.tegenwind.app.ui.settings.RiderBikeScreen
+import com.tegenwind.app.data.RiderSetup
 import com.tegenwind.app.ride.AutoFinish
 import com.tegenwind.app.ride.LiveRide
 import com.tegenwind.app.ride.RideRoute
@@ -149,6 +152,9 @@ fun RideScreen() {
     val liveShare = remember { context.appContainer.liveShare }
     var shareLive by remember { mutableStateOf(prefs.getBoolean(PREF_SHARE_LIVE, false)) }
     val justFinished by recorder.justFinished.collectAsStateWithLifecycle()
+    val riderSetup = remember { context.appContainer.riderSetup }
+    val setup by riderSetup.setup.collectAsStateWithLifecycle()
+    var settingsOpen by rememberSaveable { mutableStateOf(false) }
 
     // The route that fits where you are and the hour is chosen for you whenever the screen comes
     // up, unless you've set it to Auto-select or picked one yourself in the last ten minutes.
@@ -180,6 +186,9 @@ fun RideScreen() {
         // A ride just ended: show what it was rather than dropping back to the start screen.
         BackHandler { recorder.clearJustFinished() }
         RideDetailScreen(rideId = finished, onBack = { recorder.clearJustFinished() }, backLabel = "Ride")
+    } else if (ride == null && settingsOpen) {
+        BackHandler { settingsOpen = false }
+        RiderBikeScreen(onBack = { settingsOpen = false })
     } else if (ride == null) {
         IdleView(
             routes = routes,
@@ -191,6 +200,9 @@ fun RideScreen() {
                 prefs.edit().putLong(PREF_ROUTE, id ?: -1L).apply()
             },
             chosenForYou = chosenForYou,
+            setup = setup,
+            onSelectBike = { id -> riderSetup.update { it.copy(activeBikeId = id) } },
+            onOpenSettings = { settingsOpen = true },
             canShareLive = liveShare.configured,
             shareLive = shareLive,
             onShareLive = {
@@ -227,6 +239,9 @@ private fun IdleView(
     selectedRouteId: Long?,
     onSelectRoute: (Long?) -> Unit,
     chosenForYou: Boolean,
+    setup: RiderSetup,
+    onSelectBike: (Long) -> Unit,
+    onOpenSettings: () -> Unit,
     canShareLive: Boolean,
     shareLive: Boolean,
     onShareLive: (Boolean) -> Unit,
@@ -271,6 +286,25 @@ private fun IdleView(
                     RouteDoubtWarning(it, routes, locationOk, onSelectRoute = { id -> onSelectRoute(id) })
                     LeaveNowPreview(it)
                 }
+            }
+            // Which bike the ride is on, and who rides it: what the arrival time is worked out with.
+            if (setup.bikes.size > 1) {
+                Picker(
+                    selected = setup.activeBikeId,
+                    options = setup.bikes.map { it.id to "On ${it.name}" },
+                    onSelect = onSelectBike,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "${setup.activeBike.name} · %s kg".format(
+                        if (setup.riderKg == Math.rint(setup.riderKg)) setup.riderKg.toLong().toString() else "%.1f".format(setup.riderKg)
+                    ).replace(' ', '\u00A0'),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                TextButton(onClick = onOpenSettings) { Text("Rider and bike") }
             }
             if (canShareLive) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -459,10 +493,12 @@ private data class Preview(val eta: Eta, val wind: WindSample?)
 @Composable
 private fun LeaveNowPreview(routeId: Long) {
     val container = LocalContext.current.appContainer
-    val preview by produceState<Preview?>(null, routeId) {
+    // Worked out again when the rider or bike changes, e.g. picking another bike on this screen.
+    val setup by container.riderSetup.setup.collectAsStateWithLifecycle()
+    val preview by produceState<Preview?>(null, routeId, setup) {
         val route = container.routes.load(routeId) ?: return@produceState
         val learned = container.riderModel.learned.value
-        val model = route.etaModel(learned)
+        val model = route.etaModel(learned, setup.params())
         val rides = container.db.rides()
         val since = System.currentTimeMillis() - Banister.WINDOW_DAYS * 86_400_000L
         val start = startingForm(rides.recentForms(), rides.loadsSince(since), System.currentTimeMillis())
@@ -635,8 +671,8 @@ private fun EtaCard(r: RideRoute, live: LiveEta?, lat: Double?, lon: Double?, li
                 Spacer(Modifier.weight(1f))
                 live?.let {
                     Text(
-                        // The pedal power behind today's form so far: see powerText.
-                        "%s · %s".format(powerText(it.form), windEffect(it.eta.windCostS)),
+                        // Your pedal power behind today's form so far; none on a bike that rides itself.
+                        listOfNotNull(powerText(it.pedalPowerW), windEffect(it.eta.windCostS)).joinToString(" · "),
                         style = MaterialTheme.typography.bodyMedium.copy(fontFeatureSettings = "tnum"),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )

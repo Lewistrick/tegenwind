@@ -24,11 +24,11 @@ class EtaTest {
 
     @Test
     fun formTurnsIntoThePedalPowerBehindIt() {
-        // Form 1.0 is the model rider's 25 km/h: on the Gazelle with bags that takes about 165 W.
-        assertEquals(p.powerW, p.powerAtFormW(1.0), 1e-9)
-        assertEquals(165.0, p.powerW, 3.0)
+        // Form 1.0 is the model rider's 165 W: on the Gazelle with bags that holds about 25 km/h.
+        assertEquals(p.powerW, p.powerAtFormW(1.0)!!, 1e-6)
+        assertEquals(25.0, p.modelSpeedMps() * 3.6, 0.3)
         // 0.88 of it, about 22 km/h, takes about 125 W: drag grows with speed cubed.
-        assertEquals(124.0, p.powerAtFormW(0.88), 3.0)
+        assertEquals(124.0, p.powerAtFormW(0.88)!!, 3.0)
         // Power and speed are each other's inverse.
         val v = Physics.speedMps(150.0, 1.0, 2.0, rho, p)
         assertEquals(150.0, Physics.pedalPowerW(v, 1.0, 2.0, rho, p), 0.01)

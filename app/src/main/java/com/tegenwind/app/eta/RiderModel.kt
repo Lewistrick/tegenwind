@@ -14,7 +14,11 @@ import kotlin.math.ln
  * it is worked out again from the stored rides at start-up and after every real ride, so it can
  * never disagree with them.
  */
-class RiderModel(private val rides: RideDao) {
+class RiderModel(
+    private val rides: RideDao,
+    /** The physics of the rider and bike now set, for fitting how much of the wind you feel. */
+    private val params: () -> RiderParams = { RiderParams() },
+) {
     private val _learned = MutableStateFlow(RiderLearned())
     val learned: StateFlow<RiderLearned> = _learned.asStateFlow()
 
@@ -41,7 +45,7 @@ class RiderModel(private val rides: RideDao) {
             p.sortedByDescending { it.enterMs }.take(StopLearner.RECENT)
                 .map { ((it.exitMs - it.enterMs - it.movingMs) / 1000.0).coerceAtLeast(0.0) }
         }
-        val learned = RiderFit.learn(windPasses, rides.rideFacts(), facts, meanLogVar, byRide, stops)
+        val learned = RiderFit.learn(windPasses, rides.rideFacts(), facts, meanLogVar, byRide, stops, params())
         _learned.value = learned
         Log.i(
             "RiderModel",

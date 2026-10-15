@@ -26,7 +26,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.tegenwind.app.appContainer
 import com.tegenwind.app.data.RideEntity
-import com.tegenwind.app.eta.RiderParams
+import com.tegenwind.app.data.RiderSetup
 import com.tegenwind.app.ride.formatElapsed
 import java.time.Instant
 import java.time.ZoneId
@@ -91,7 +91,7 @@ private fun RideRow(ride: RideEntity, routeName: String?, onClick: () -> Unit) {
                 listOfNotNull(
                     "%.1f km".format(ride.distanceM / 1000),
                     "${formatElapsed(ride.movingMs)} moving",
-                    powerText(ride.formFactor),
+                    powerText(rideWatts(ride)),
                 ).joinToString(" · ") { it.replace(' ', ' ') },
                 style = MaterialTheme.typography.bodyMedium.copy(fontFeatureSettings = "tnum"),
                 color = muted,
@@ -101,12 +101,18 @@ private fun RideRow(ride: RideEntity, routeName: String?, onClick: () -> Unit) {
 }
 
 /**
- * The pedal power behind a ride's form, "≈125 W": what holds that speed on your bike on flat ground in
- * still air (see [RiderParams.powerAtFormW]). Rounded to 5 W, since it's an estimate from speed, not a
- * measurement. Null for rides too short to judge (fewer than three segments' worth measured).
+ * Pedal power as shown, "≈125 W": an estimate from speed, not a measurement, so rounded to 5 W.
+ * Null when there is none to show.
  */
-fun powerText(formFactor: Double?): String? =
-    formFactor?.let { "≈%d W".format((Math.round(RiderParams().powerAtFormW(it) / 5) * 5).toInt()) }
+fun powerText(watts: Double?): String? = watts?.let { "≈%d W".format((Math.round(it / 5) * 5).toInt()) }
+
+/**
+ * Your pedal power behind a ride's form: as worked out with the rider and bike set when it was
+ * ridden. A ride from before bikes could be set was ridden on the first setup, the Gazelle. Null for
+ * rides too short to judge (fewer than three segments' worth measured) and on a bike that rides itself.
+ */
+fun rideWatts(ride: RideEntity): Double? =
+    ride.pedalPowerW ?: ride.formFactor?.takeIf { ride.bikeName == null }?.let { RiderSetup().params().powerAtFormW(it) }
 
 fun avgSpeedText(ride: RideEntity): String =
     if (ride.movingMs > 0) "%.1f km/h".format(ride.distanceM / (ride.movingMs / 1000.0) * 3.6) else "--"
