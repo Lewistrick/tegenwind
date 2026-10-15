@@ -125,6 +125,7 @@ One scheme:
 | In-place | Outlined | Small actions inside a card (Refresh, Allow access, Import GPX) and pickers |
 | Text | Amber text | Navigation ("‹ Routes") and optional extras ("Try a simulated ride", "Rename", "Show all") |
 | Ride controls | Full width, 56 dp | Stop ride (grey at rest, red once armed), at the bottom of the ride screen, behind the scroll |
+| Music buttons | Five equal, 56 dp high, icons only | Previous, play/pause, next, volume down, volume up, in a card above Stop: a tick under the finger, volume repeats while held |
 
 - **Deleting and stopping take two taps.** The first tap arms the button: it turns filled red and
   says "Sure? Tap again" (or "Tap again to stop"). The second tap within 3 seconds acts; otherwise it
