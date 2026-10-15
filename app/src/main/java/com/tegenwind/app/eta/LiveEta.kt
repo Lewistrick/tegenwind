@@ -23,16 +23,7 @@ data class WindNow(
         }
 }
 
-data class LiveEta(
-    val eta: Eta,
-    val form: Double,
-    val wind: WindNow?,
-    /** Your usual form going into this ride (see [usualForm]); null without earlier rides to say. */
-    val usualForm: Double? = null,
-) {
-    /** Today's form as a share of your usual: see [pace]. */
-    val pace: Double? get() = usualForm?.let { pace(form, it) }
-}
+data class LiveEta(val eta: Eta, val form: Double, val wind: WindNow?)
 
 fun LoadedRoute.etaModel(learned: RiderLearned = RiderLearned(), params: RiderParams = RiderParams()) = EtaModel(
     segments.map { s ->
@@ -80,26 +71,3 @@ const val UNKNOWN_EXPOSURE = 0.6
  */
 fun priorForm(recent: List<Double>): Double =
     if (recent.isEmpty()) 1.0 else recent.sorted()[recent.size / 2].coerceIn(0.5, 1.6)
-
-/** How many recent rides make up "your usual": the same ones [priorForm] starts each ride from. */
-const val USUAL_RIDES = 10
-
-/** Your usual form: the median of your recent rides' form, or null when no ride has one yet. */
-fun usualForm(recent: List<Double>): Double? = if (recent.isEmpty()) null else priorForm(recent)
-
-/**
- * The usual form a ride was compared with: [usualForm] of the up to [USUAL_RIDES] rides with a form
- * that started before it. [forms] pairs each real ride's start time with its form.
- */
-fun usualFormBefore(forms: List<Pair<Long, Double>>, startedAtMs: Long): Double? =
-    usualForm(forms.filter { it.first < startedAtMs }.sortedByDescending { it.first }.take(USUAL_RIDES).map { it.second })
-
-/**
- * Pace: [form] as a share of your [usual] form. 1.0 is your usual speed for the conditions, 0.5 half
- * as fast, 2.0 twice as fast. Form itself is measured against the model rider; pace is against you.
- */
-fun pace(form: Double, usual: Double): Double = form / usual
-
-/** Pace as shown: "103%". Null when either is unknown. */
-fun pacePercent(form: Double?, usual: Double?): String? =
-    if (form == null || usual == null || usual <= 0) null else "%d%%".format(Math.round(pace(form, usual) * 100))

@@ -111,8 +111,6 @@ fun RideDetailScreen(rideId: Long, onBack: () -> Unit, backLabel: String = "Ride
         }
     }
     val r = ride
-    // Every ride's form, for this one's pace: its form against the usual one going into it.
-    val allRides by remember { dao.finishedRides() }.collectAsStateWithLifecycle(emptyList())
     // The real rides on this ride's route, to say where its time falls among them.
     val routeRides by remember(r?.routeId) {
         r?.routeId?.let { dao.ridesForRoute(it) } ?: flowOf(emptyList())
@@ -174,7 +172,7 @@ fun RideDetailScreen(rideId: Long, onBack: () -> Unit, backLabel: String = "Ride
         }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             StatTile("Avg speed", avgSpeedText(r), Modifier.weight(1f))
-            StatTile("Pace", ridePace(r, formsByStart(allRides)) ?: "–", Modifier.weight(1f))
+            StatTile("Power", powerText(r.formFactor) ?: "–", Modifier.weight(1f))
             val hrSamples = (hr as? HrState.Loaded)?.samples
             StatTile("Avg HR", hrSamples?.let { "${it.map { s -> s.value }.average().toInt()} bpm" } ?: "--", Modifier.weight(1f))
         }
@@ -294,7 +292,7 @@ fun RideDetailScreen(rideId: Long, onBack: () -> Unit, backLabel: String = "Ride
                     "The route starts following the track you rode today. It keeps its name and all " +
                         "its rides, and elevation, buildings and traffic lights are looked up again.\n\n" +
                         "The segment times measured on the old line are dropped: they belong to roads " +
-                        "this route no longer follows. Your rides themselves, and your pace, stay as they are.",
+                        "this route no longer follows. Your rides themselves, and their power, stay as they are.",
                 )
             },
             confirmButton = {
