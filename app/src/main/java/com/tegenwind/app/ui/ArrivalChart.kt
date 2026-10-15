@@ -24,16 +24,31 @@ import kotlin.math.ceil
 import kotlin.math.floor
 
 private val clock: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
+private val minuteSecond: DateTimeFormatter = DateTimeFormatter.ofPattern("mm:ss")
 
-/** The arrival axis: whole minutes since 1970 from [lo] to [hi], a tick every [step]. */
-data class ArrivalAxis(val lo: Double, val hi: Double, val step: Double)
+/** The arrival axis: seconds since 1970 from [lo] to [hi], a tick every [step]. */
+data class ArrivalAxis(val lo: Double, val hi: Double, val step: Double) {
+    /** True when ticks fall between whole minutes, so they read as minutes and seconds ("59:30"), without the hour. */
+    val inSeconds: Boolean get() = step < 60
 
-/** An axis in whole minutes that holds every point's band, with ticks on round minutes. */
+    /** The label of the tick at [seconds] since 1970: "07:45", or "59:30" once the ticks are under a minute apart. */
+    fun label(seconds: Double): String =
+        Instant.ofEpochSecond(Math.round(seconds)).atZone(ZoneId.systemDefault()).format(if (inSeconds) minuteSecond else clock)
+}
+
+/** Tick steps, seconds: from 5 s, where a band is a few seconds wide, up to hours. */
+private val ARRIVAL_STEPS_S = doubleArrayOf(5.0, 10.0, 15.0, 30.0, 60.0, 120.0, 300.0, 600.0, 900.0, 1800.0, 3600.0, 7200.0)
+
+/**
+ * An axis that holds every point's band, with ticks on round times: the finest step that gives about
+ * four intervals, so a band under a minute wide gets ticks every 5, 10, 15 or 30 seconds.
+ */
 fun arrivalAxis(points: List<ArrivalPoint>): ArrivalAxis? {
     if (points.isEmpty()) return null
-    val mn = points.minOf { it.arrivalMs - it.bandMs } / 60_000.0
-    val mx = points.maxOf { it.arrivalMs + it.bandMs } / 60_000.0
-    val step = niceIntStep(mn, mx)
+    val mn = points.minOf { it.arrivalMs - it.bandMs } / 1000.0
+    val mx = points.maxOf { it.arrivalMs + it.bandMs } / 1000.0
+    val range = maxOf(mx - mn, 10.0)
+    val step = ARRIVAL_STEPS_S.firstOrNull { range / it <= 4 } ?: ARRIVAL_STEPS_S.last()
     val lo = floor(mn / step) * step
     val hi = maxOf(ceil(mx / step) * step, lo + 2 * step)
     return ArrivalAxis(lo, hi, step)
@@ -67,18 +82,22 @@ fun ArrivalChart(points: List<ArrivalPoint>, axis: TimeAxis?, modifier: Modifier
         val plotW = size.width - padL - padR
         val plotH = size.height - padT - padB
         fun x(t: Long) = padL + axis.fraction(t) * plotW
-        fun y(ms: Long) = padT + (1 - ((ms / 60_000.0 - yAxis.lo) / (yAxis.hi - yAxis.lo))).toFloat() * plotH
+        fun y(ms: Long) = padT + (1 - ((ms / 1000.0 - yAxis.lo) / (yAxis.hi - yAxis.lo))).toFloat() * plotH
 
         var v = yAxis.lo
         while (v <= yAxis.hi + 1e-9) {
-            val yy = y((v * 60_000).toLong())
+            val yy = y((v * 1000).toLong())
             drawLine(gridColor, Offset(padL, yy), Offset(size.width - padR, yy), strokeWidth = 1f)
-            val text = Instant.ofEpochMilli((v * 60_000).toLong()).atZone(ZoneId.systemDefault()).format(clock)
-            val layout = measurer.measure(text, labelStyle)
+            val layout = measurer.measure(yAxis.label(v), labelStyle)
             drawText(layout, topLeft = Offset(padL - 5.dp.toPx() - layout.size.width, yy - layout.size.height / 2))
             v += yAxis.step
         }
         with(axis) { drawLabels(measurer, labelStyle, padL, plotW) }
+        // The hour is left off once ticks are seconds apart: say what the labels are, in the corner no time label uses.
+        if (yAxis.inSeconds) {
+            val unit = measurer.measure("min:s", labelStyle)
+            drawText(unit, topLeft = Offset(padL - 5.dp.toPx() - unit.size.width, size.height - unit.size.height))
+        }
 
         clipRect(left = padL, top = 0f, right = size.width, bottom = padT + plotH + 2.dp.toPx()) {
             fun line(value: (ArrivalPoint) -> Long) = Path().apply {
