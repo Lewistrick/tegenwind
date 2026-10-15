@@ -86,7 +86,7 @@ private fun RideRow(ride: RideEntity, routeName: String?, onClick: () -> Unit) {
                 style = MaterialTheme.typography.bodyMedium,
                 color = muted,
             )
-            // Each item keeps its words together ("≈140 W"), so a line can only break between items.
+            // Each item keeps its words together ("≈125 W"), so a line can only break between items.
             Text(
                 listOfNotNull(
                     "%.1f km".format(ride.distanceM / 1000),
@@ -101,7 +101,7 @@ private fun RideRow(ride: RideEntity, routeName: String?, onClick: () -> Unit) {
 }
 
 /**
- * The pedal power behind a ride's form, "≈140 W": what holds that speed on your bike on flat ground in
+ * The pedal power behind a ride's form, "≈125 W": what holds that speed on your bike on flat ground in
  * still air (see [RiderParams.powerAtFormW]). Rounded to 5 W, since it's an estimate from speed, not a
  * measurement. Null for rides too short to judge (fewer than three segments' worth measured).
  */

@@ -367,13 +367,15 @@ The bottom bar is **Ride · Rides · Routes · Stats**. Rides replaced Map.
     rider holds 25 km/h. That is faster than nearly every Dutch commuter: SWOV measured 17.6 km/h
     on ordinary bikes. So a good day still read as "form −12%".
   - Since then they describe the real rider and bike: 84 kg on a Gazelle Orange (city bike, hub
-    gears, hub dynamo, 28" city tyres at about 5 bar) with locks and bags, 110 kg in all, sitting
-    upright (CdA 0.58), Crr 0.0075, 94% drivetrain efficiency. The model rider still holds 25 km/h,
-    so stored forms keep their meaning; on this bike that takes about 185 W.
+    gears, hub dynamo, 28" city tyres at about 5 bar) with locks and the backpack in the pannier,
+    110 kg in all, leaning on the handlebars (CdA 0.48), Crr 0.0075, 94% drivetrain efficiency. The
+    model rider still holds 25 km/h, so stored forms keep their meaning; on this bike that takes
+    about 165 W.
   - Screens show form as **pedal power**: the watts that hold form × 25 km/h on that bike on flat
-    ground in still air ("≈140 W" for form 0.88). It's an estimate from speed, rounded to 5 W. Air density follows the
-  temperature. Wind at rider height uses a log profile whose surface roughness follows the segment's
-  exposure: about 65% of the 10 m wind in the open, about 30% between buildings.
+    ground in still air ("≈125 W" for form 0.88). It's an estimate from speed, rounded to 5 W.
+  - Air density follows the temperature. Wind at rider height uses a log profile whose surface
+    roughness follows the segment's exposure: about 65% of the 10 m wind in the open, about 30%
+    between buildings.
 - **Layer 2** is a single learned offset per segment (see Phase 6), learned from moving time with
   the day's form divided out.
   - Form and the offsets multiply, so a slowness all segments share could sit in either one.

@@ -6,13 +6,16 @@ import kotlin.math.ln
 /**
  * Rider + bike, as measured or guessed for the one rider this app is for (15 Oct 2026): 84 kg on a
  * Gazelle Orange, a Dutch city bike with hub gears, a hub dynamo, 28" city tyres pumped to about 5
- * bar, locks, a backpack and a pannier. Sitting fully upright.
+ * bar, locks, and the backpack in the pannier. Leaning on the handlebars rather than sitting up.
  */
 data class RiderParams(
-    /** Rider 84 kg, bike with its locks about 20 kg, backpack and pannier 5–8 kg. */
+    /** Rider 84 kg, bike with its locks about 20 kg, pannier with the backpack in it 5–8 kg. */
     val massKg: Double = 110.0,
-    /** Drag area, m²: fully upright behind swept-back bars, with a backpack: ~0.55–0.6. */
-    val cdA: Double = 0.58,
+    /**
+     * Drag area, m²: leaning on the handlebars, no backpack on your back. Fully upright on a city bike
+     * is ~0.55–0.6, a road bike on the tops ~0.4.
+     */
+    val cdA: Double = 0.48,
     /** City tyres of ~37–40 mm at about 5 bar. */
     val crr: Double = 0.0075,
     /** Share of the power at the pedals that reaches the road: a hub gear and a hub dynamo take ~6%. */

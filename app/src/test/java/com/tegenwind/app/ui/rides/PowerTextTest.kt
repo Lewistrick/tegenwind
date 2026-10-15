@@ -7,8 +7,8 @@ import org.junit.Test
 class PowerTextTest {
     @Test
     fun showsFormAsRoundedPedalPower() {
-        // 0.88 of the model rider's 25 km/h, on the Gazelle with bags: about 140 W.
-        assertEquals("≈140 W", powerText(0.88))
+        // 0.88 of the model rider's 25 km/h, on the Gazelle with bags: about 125 W.
+        assertEquals("≈125 W", powerText(0.88))
         assertNull(powerText(null)) // ride too short to judge
     }
 }
