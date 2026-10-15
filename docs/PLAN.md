@@ -301,6 +301,10 @@ The bottom bar is **Ride · Rides · Routes · Stats**. Rides replaced Map.
     road ahead plain, you as a blue arrow, and a faint grey arrow for the ghost of an
     earlier ride on the route (your median, best or last, chosen with a picker), where it was this
     long after setting off. The card says how far ahead of or behind it you are.
+  - Above Stop, a card of music buttons (previous, play/pause, next, volume down and up) for whichever
+    app is playing: sent as media keys, like a Bluetooth headset, with the phone's own volume, so no
+    permission is needed. It can't see the track or whether music is playing, so play and pause are
+    one button. Showing the track would need notification access.
   - Under that, a Stop button that needs two taps.
   - Once the ETA is firm, a one-time "Share ETA via WhatsApp?" prompt.
   - The large speed number, 2-minute average and live heart rate from the plan are gone: the ETA

@@ -479,6 +479,9 @@ private fun LiveView(ride: LiveRide, onStop: () -> Unit) {
 
             if (ride.route != null) LiveMapCard(ride, now)
 
+            // Music: last before Stop, so the screen down to the speed chart stays as calm as it was.
+            MediaCard(context.appContainer.mediaControls)
+
             Button(
                 onClick = { if (confirmStop) onStop() else confirmStop = true },
                 modifier = Modifier.fillMaxWidth().height(56.dp),
