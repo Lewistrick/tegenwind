@@ -23,7 +23,12 @@ import com.tegenwind.app.ride.pickGhostRide
 import com.tegenwind.app.routes.GeoPoint
 import com.tegenwind.app.ui.ChartCard
 import com.tegenwind.app.ui.Picker
+import com.tegenwind.app.ui.HeadingMap
+import com.tegenwind.app.ui.MapFlag
 import com.tegenwind.app.ui.RouteMap
+import com.tegenwind.app.ui.aheadM
+import com.tegenwind.app.ui.routeBearingAt
+import com.tegenwind.app.ui.theme.SpeedColor
 import com.tegenwind.app.ui.mapAspect
 import com.tegenwind.app.ui.routes.FULL_LEARNED
 import com.tegenwind.app.ui.theme.scaleColor
@@ -34,6 +39,9 @@ import kotlin.math.abs
 import kotlin.math.roundToInt
 
 private const val PREF_GHOST = "ghost"
+
+/** Width over height of the live map: a little taller than wide would be too much on the ride screen. */
+private const val LIVE_MAP_ASPECT = 1.25f
 
 /** "40 m" up to a kilometre, "1.2 km" beyond. */
 fun gapText(metres: Double): String =
@@ -48,9 +56,10 @@ fun ghostLine(gapM: Double?, choice: GhostChoice): String = when {
 }
 
 /**
- * The route being ridden as a line: the road behind you coloured by the time gained or lost on each
- * stretch, the road ahead plain, you as a dot, and as a ring the ghost of an earlier ride, where it
- * was this long after setting off.
+ * The route around you, turned to the way you're going and zoomed to your speed: the road behind
+ * you coloured by the time gained or lost on each stretch, the road ahead plain, you as a blue
+ * arrow, and as a faint grey arrow the ghost of an earlier ride, where it was this long after
+ * setting off.
  */
 @Composable
 fun LiveMapCard(ride: LiveRide, nowMs: Long) {
@@ -75,16 +84,42 @@ fun LiveMapCard(ride: LiveRide, nowMs: Long) {
     val ghostAlongM = ghost?.alongAt(elapsedS)
     val gapM = if (ghostAlongM != null && progress?.onRouteYet == true) progress.progressM - ghostAlongM else null
     val s = ride.snapshot
-    ChartCard("Map", if (ghost == null || gapM != null) ghostLine(gapM, choice) else "The ring is ${choice.words}.") {
+    ChartCard("Map", if (ghost == null || gapM != null) ghostLine(gapM, choice) else "The grey arrow is ${choice.words}.") {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            RouteMap(
-                line = loaded.line,
-                modifier = Modifier.fillMaxWidth().aspectRatio(mapAspect(loaded.line.points)),
-                spans = loaded.segments.map { it.startM to it.endM },
-                colors = loaded.segments.map { seg -> ride.segmentGains[seg.idx]?.let { scaleColor(it / FULL_LEARNED) } },
-                you = if (s.lastLat != null && s.lastLon != null) GeoPoint(s.lastLat, s.lastLon) else null,
-                ghost = ghostAlongM?.let(loaded.line::pointAt),
-            )
+            val spans = loaded.segments.map { it.startM to it.endM }
+            val colors = loaded.segments.map { seg -> ride.segmentGains[seg.idx]?.let { scaleColor(it / FULL_LEARNED) } }
+            val you = if (s.lastLat != null && s.lastLon != null) GeoPoint(s.lastLat, s.lastLon) else null
+            if (you == null) {
+                // No position yet: the whole route, north up, until there is one.
+                RouteMap(
+                    line = loaded.line,
+                    modifier = Modifier.fillMaxWidth().aspectRatio(mapAspect(loaded.line.points)),
+                    spans = spans,
+                    colors = colors,
+                )
+            } else {
+                // On the route it turns with the road, which is steadier than the GPS's own heading.
+                val heading = when {
+                    progress?.onRouteYet == true && !progress.offRoute -> routeBearingAt(loaded.line, progress.progressM)
+                    else -> s.headingDeg ?: 0.0
+                }
+                HeadingMap(
+                    line = loaded.line,
+                    you = you,
+                    headingDeg = heading,
+                    aheadM = aheadM(s.speedKmh?.let { it / 3.6 }, gapM),
+                    modifier = Modifier.fillMaxWidth().aspectRatio(LIVE_MAP_ASPECT),
+                    spans = spans,
+                    colors = colors,
+                    ghost = ghostAlongM?.let(loaded.line::pointAt),
+                    ghostHeadingDeg = ghostAlongM?.let { routeBearingAt(loaded.line, it) },
+                    // Each border is a checkpoint: a stretch takes its colour once you pass its end.
+                    flags = loaded.segments.drop(1).map { seg ->
+                        MapFlag(loaded.line.pointAt(seg.startM), passed = progress?.onRouteYet == true && progress.progressM >= seg.startM)
+                    },
+                    youColor = SpeedColor,
+                )
+            }
             Picker(
                 choice,
                 GhostChoice.entries.map { it to it.label },

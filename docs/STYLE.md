@@ -48,7 +48,8 @@ there. Don't use a hex value in a screen.
   - the wind arrow
   - what the model expects (the expected-speed line)
   - traffic lights
-- **Blue** is speed, and nothing else, except the arrival-time chart on the ride screen.
+- **Blue** is speed, and nothing else, except the arrival-time chart, and your arrow and the
+  checkpoint flags on the ride screen's map.
 - **Scales on maps** are listed in section 7.
 - **Green** is good: faster than expected, a tailwind, the fastest ride, a ride in the top x% of its
   route, "Recording".
@@ -187,11 +188,17 @@ no streets, no labels. For a road you ride every day the shape is enough.
 - **A ride's own track** is a thin light line over the road.
 - **Dots:** amber for a spot that matters (where you stood still, a light that stops you), grey for
   one that doesn't (a light that never stops you). The ends of the route are small grey dots.
-- **You** are a solid light dot; **the ghost** (an earlier ride, where it was this long after setting
-  off) is a hollow grey ring. Neither is a colour with a meaning: position is descriptive.
+- **You** are a solid light dot on a route's or ride's map. **On the ride screen** the map turns so
+  the way you're going points up and zooms to about the next 45 s at your speed (150–700 m ahead,
+  wider to keep a nearby ghost in view); turning and zooming glide. You are a blue arrow at 92%
+  with a dark rim, two-thirds of the way down; the ghost (an earlier ride, where it was this long
+  after setting off) is a grey arrow at 35%. An arrow is a triangle with a notch cut out of its
+  back, pointing the way of travel. Segment borders are small blue checkpoint flags (a pole with a
+  pennant, upright on screen): bright ahead, at 35% once passed, since a stretch only takes its
+  colour when you reach its end.
 - **Tapping a stretch** gives it a light edge and says what is known about it in one muted line
   under the map. That line keeps two lines of room, so the page doesn't jump.
-- Maps are as wide as the card and as tall as the route needs (between 1.3 and 2.8 times as wide as high).
+- The ride screen's map is 1.25 times as wide as high. Other maps are as wide as the card and as tall as the route needs (between 1.3 and 2.8 times as wide as high).
 
 ## 8. Words
 

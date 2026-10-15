@@ -293,8 +293,9 @@ The bottom bar is **Ride · Rides · Routes · Stats**. Rides replaced Map.
   - Below the speed chart, behind the scroll: "Arrival time", the predicted arrival over the ride so
     far as a thick blue line with its ± band (thin lines, filled between), a point every 5 s (live
     only, never stored).
-  - Under that, a map of the route (13 Oct 2026): the road behind you coloured by the time gained or
-    lost on each stretch, the road ahead plain, you as a dot, and a ring for the ghost of an
+  - Under that, a map of the route (13 Oct 2026), turned to the way you're going and zoomed to your
+    speed (15 Oct): the road behind you coloured by the time gained or lost on each stretch, the
+    road ahead plain, you as a blue arrow, and a faint grey arrow for the ghost of an
     earlier ride on the route (your median, best or last, chosen with a picker), where it was this
     long after setting off. The card says how far ahead of or behind it you are.
   - Under that, a Stop button that needs two taps.
