@@ -72,8 +72,8 @@ fun StatTile(
 
 /** A titled card around a chart, with an optional line under the title saying what it shows. */
 @Composable
-fun ChartCard(title: String, subtitle: String? = null, content: @Composable () -> Unit) {
-    Card(Modifier.fillMaxWidth()) {
+fun ChartCard(title: String, subtitle: String? = null, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+    Card(modifier.fillMaxWidth()) {
         Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
             Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             if (subtitle != null) {

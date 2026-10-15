@@ -174,6 +174,11 @@ One scheme:
   "?" and back. Use it instead of a caption that describes the lines.
 - **Annotations,** like "last 2 min", go on the same kind of chip in the top-right corner.
 - **A card around a chart** is `ChartCard(title, subtitle)`.
+- **Charts stacked on one time** share its axis (`TimeAxis`): on the ride screen the speed chart and
+  the arrival-time chart show the same stretch of the ride, laid out the same way and with the same
+  room for value labels (`CHART_PAD_LEFT`), so a moment sits above the same spot on both. Tapping
+  either switches both, between the last 2 minutes and the whole ride, and each says which with the
+  same chip in its top-right corner.
 - **Bars along a route** (exposure, sky, wind) are drawn left to right from start to finish. When
   there's room, a km axis runs underneath.
 

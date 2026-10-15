@@ -97,6 +97,7 @@ import com.tegenwind.app.routes.RouteFit
 import com.tegenwind.app.routes.habitByRoute
 import com.tegenwind.app.ui.ChartCard
 import com.tegenwind.app.ui.ArrivalChart
+import com.tegenwind.app.ui.TimeAxis
 import com.tegenwind.app.ui.TimeSeriesChart
 import com.tegenwind.app.ui.Picker
 import com.tegenwind.app.ui.rides.RideDetailScreen
@@ -368,6 +369,10 @@ private fun LiveView(ride: LiveRide, onStop: () -> Unit) {
         }
     }
     val gpsLost = s.lastFixMs == null || now - s.lastFixMs > 10_000
+    // One time axis for the speed and arrival charts, so a moment sits above the same spot on both.
+    val timeAxis = s.speeds.takeIf { it.isNotEmpty() }?.let {
+        TimeAxis(it.first().timeMs, it.last().timeMs, if (fullRide) null else TWO_MINUTES_MS, if (fullRide) null else now, logXWhenFull = true)
+    }
 
     val context = LocalContext.current
     val liveLink by remember { context.appContainer.liveShare.link }.collectAsStateWithLifecycle()
@@ -455,11 +460,20 @@ private fun LiveView(ride: LiveRide, onStop: () -> Unit) {
                 }
             }
 
-            // How the arrival time and its band have moved over the ride. Stop comes after it, behind
-            // the scroll.
+            // How the arrival time and its band have moved over the ride, on the speed chart's time
+            // axis: tapping either chart switches both. Stop comes after it, behind the scroll.
             if (ride.route != null) {
-                ChartCard("Arrival time", "predicted arrival and its ± over the ride so far") {
-                    ArrivalChart(ride.arrivalTrail, Modifier.fillMaxWidth().height(180.dp))
+                ChartCard(
+                    "Arrival time", "predicted arrival and its ± · same time axis as speed",
+                    Modifier.clickable { fullRide = !fullRide },
+                ) {
+                    Box(Modifier.fillMaxWidth().height(180.dp)) {
+                        ArrivalChart(ride.arrivalTrail, timeAxis, Modifier.fillMaxSize())
+                        ChartChip(
+                            if (fullRide) "full ride" else "last 2 min",
+                            Modifier.align(Alignment.TopEnd).padding(top = 8.dp, end = 8.dp),
+                        )
+                    }
                 }
             }
 
