@@ -181,7 +181,7 @@ One scheme:
   same chip in its top-right corner.
 - **The arrival chart's clock axis** fits what is shown, in round steps from 5 seconds up to hours.
   Ticks a minute or more apart are clock times with the hour ("07:45"); under a minute apart they are
-  minutes and seconds without the hour ("59:30", "00:00", "00:15"), and "min:s" in the corner says so.
+  minutes and seconds without the hour, with a leading colon (":59:30", ":00:00", ":00:15"), and "min:s" in the corner says so.
 - **Bars along a route** (exposure, sky, wind) are drawn left to right from start to finish. When
   there's room, a km axis runs underneath.
 

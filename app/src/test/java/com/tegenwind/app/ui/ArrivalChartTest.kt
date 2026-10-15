@@ -50,9 +50,9 @@ class ArrivalChartTest {
             // 07:59:30 and 08:00:45 as seconds since 1970 on some day.
             val day = 20_000L * 86_400
             val axis = ArrivalAxis(lo = (day + 7 * 3600 + 59 * 60 + 30).toDouble(), hi = (day + 8 * 3600 + 45).toDouble(), step = 15.0)
-            assertEquals("59:30", axis.label(axis.lo))
-            assertEquals("00:00", axis.label(axis.lo + 30))
-            assertEquals("00:45", axis.label(axis.hi))
+            assertEquals(":59:30", axis.label(axis.lo))
+            assertEquals(":00:00", axis.label(axis.lo + 30))
+            assertEquals(":00:45", axis.label(axis.hi))
             // From a minute apart on, it is clock time with the hour.
             assertEquals("07:59", ArrivalAxis(axis.lo, axis.hi, 60.0).label(axis.lo - 30))
         } finally {

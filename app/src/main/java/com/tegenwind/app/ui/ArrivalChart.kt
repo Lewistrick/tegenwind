@@ -24,14 +24,14 @@ import kotlin.math.ceil
 import kotlin.math.floor
 
 private val clock: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
-private val minuteSecond: DateTimeFormatter = DateTimeFormatter.ofPattern("mm:ss")
+private val minuteSecond: DateTimeFormatter = DateTimeFormatter.ofPattern("':'mm:ss")
 
 /** The arrival axis: seconds since 1970 from [lo] to [hi], a tick every [step]. */
 data class ArrivalAxis(val lo: Double, val hi: Double, val step: Double) {
-    /** True when ticks fall between whole minutes, so they read as minutes and seconds ("59:30"), without the hour. */
+    /** True when ticks fall between whole minutes, so they read as minutes and seconds (":59:30"), without the hour. */
     val inSeconds: Boolean get() = step < 60
 
-    /** The label of the tick at [seconds] since 1970: "07:45", or "59:30" once the ticks are under a minute apart. */
+    /** The label of the tick at [seconds] since 1970: "07:45", or ":59:30" once the ticks are under a minute apart. */
     fun label(seconds: Double): String =
         Instant.ofEpochSecond(Math.round(seconds)).atZone(ZoneId.systemDefault()).format(if (inSeconds) minuteSecond else clock)
 }
