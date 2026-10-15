@@ -425,6 +425,8 @@ private fun LiveView(ride: LiveRide, onStop: () -> Unit) {
                 }
             }
 
+            if (ride.route != null) LiveMapCard(ride, now)
+
             Button(
                 onClick = { if (confirmStop) onStop() else confirmStop = true },
                 modifier = Modifier.fillMaxWidth().height(56.dp),
@@ -458,9 +460,10 @@ private data class Preview(val eta: Eta, val wind: WindSample?)
 @Composable
 private fun LeaveNowPreview(routeId: Long) {
     val container = LocalContext.current.appContainer
-    val preview by produceState<Preview?>(null, routeId) {
+    // Worked out again once the rides have been read at start-up: before that it is the old guesses.
+    val learned by container.riderModel.learned.collectAsStateWithLifecycle()
+    val preview by produceState<Preview?>(null, routeId, learned) {
         val route = container.routes.load(routeId) ?: return@produceState
-        val learned = container.riderModel.learned.value
         val model = route.etaModel(learned)
         val rides = container.db.rides()
         val since = System.currentTimeMillis() - Banister.WINDOW_DAYS * 86_400_000L

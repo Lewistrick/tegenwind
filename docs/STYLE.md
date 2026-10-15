@@ -49,6 +49,7 @@ there. Don't use a hex value in a screen.
   - what the model expects (the expected-speed line)
   - traffic lights
 - **Blue** is speed, and nothing else, except the arrival-time chart on the ride screen.
+- **Scales on maps** are listed in section 7.
 - **Green** is good: faster than expected, a tailwind, the fastest ride, a ride in the top x% of its
   route, "Recording".
 - **Red** is bad or dangerous:
@@ -87,7 +88,7 @@ Material 3's default scale, used like this:
 | 10 sp, muted | Chart axis labels, legend, chart chips |
 
 - Any number that changes or sits in a column uses tabular figures: `fontFeatureSettings = "tnum"`.
-- Text never gets cut off or pushed off screen. Test at 360 dp wide (see section 8).
+- Text never gets cut off or pushed off screen. Test at 360 dp wide (see section 9).
 
 ## 4. Layout and spacing
 
@@ -161,7 +162,28 @@ One scheme:
 - **Bars along a route** (exposure, sky, wind) are drawn left to right from start to finish. When
   there's room, a km axis runs underneath.
 
-## 7. Words
+## 7. Maps
+
+`RouteMap` (`ui/RouteMap.kt`) draws a route as a line on the card: north up, one scale both ways,
+no streets, no labels. For a road you ride every day the shape is enough.
+
+- **The road** is 5 dp, in the outline grey where there is nothing to say about a stretch.
+- **One thing at a time** colours the stretches, chosen with a `Picker` above the map when there is
+  a choice. The card's subtitle says what the colours mean.
+  - Time gained or lost against what was expected (a ride), learned pace (a route) and slope use
+    the red–yellow–green scale: green gains, red costs, fully from a quarter (time) or 2% (slope).
+  - Standing still runs from yellow to red by seconds, fully at 10 s; nothing where you never stand.
+  - Wind exposure is descriptive, so grey: bright is open, dim is sheltered.
+- **A ride's own track** is a thin light line over the road.
+- **Dots:** amber for a spot that matters (where you stood still, a light that stops you), grey for
+  one that doesn't (a light that never stops you). The ends of the route are small grey dots.
+- **You** are a solid light dot; **the ghost** (an earlier ride, where it was this long after setting
+  off) is a hollow grey ring. Neither is a colour with a meaning: position is descriptive.
+- **Tapping a stretch** gives it a light edge and says what is known about it in one muted line
+  under the map. That line keeps two lines of room, so the page doesn't jump.
+- Maps are as wide as the card and as tall as the route needs (between 1.3 and 2.8 times as wide as high).
+
+## 8. Words
 
 - **Sentence case** everywhere ("Share live", not "Share Live"). No capitals for emphasis. The one
   exception is the YES / NO of the almost-there prompt, which is read while riding.
@@ -177,7 +199,7 @@ One scheme:
 - **Tone:** plain and short. Explain what something does and why, in the rider's terms ("wind costs
   1:40"), not the model's.
 
-## 8. Checking a visual change
+## 9. Checking a visual change
 
 1. Build, install, and look at it on the phone (360 × 780 dp): every screen you touched, scrolled
    to the bottom, and in each state it can be in (for example empty, loading, a simulated ride).

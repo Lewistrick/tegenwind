@@ -293,6 +293,10 @@ The bottom bar is **Ride · Rides · Routes · Stats**. Rides replaced Map.
   - Below the speed chart, behind the scroll: "Arrival time", the predicted arrival over the ride so
     far as a thick blue line with its ± band (thin lines, filled between), a point every 5 s (live
     only, never stored).
+  - Under that, a map of the route (13 Oct 2026): the road behind you coloured by the time gained or
+    lost on each stretch, the road ahead plain, you as a dot, and a ring for the ghost of an
+    earlier ride on the route (your median, best or last, chosen with a picker), where it was this
+    long after setting off. The card says how far ahead of or behind it you are.
   - Under that, a Stop button that needs two taps.
   - Once the ETA is firm, a one-time "Share ETA via WhatsApp?" prompt.
   - The large speed number, 2-minute average and live heart rate from the plan are gone: the ETA
@@ -315,6 +319,21 @@ The bottom bar is **Ride · Rides · Routes · Stats**. Rides replaced Map.
   Its fitness and fatigue are in load/day: an hour of solid riding is about 100.
   Durations are start to finish, standing still included. "Slowest segments" compares against
   physics alone, not the learned expectation.
+
+### Maps (13 Oct 2026)
+
+The Map tab of the plan was never built, and still isn't: maps sit where their subject is. They are
+drawn by the app (`ui/RouteMap.kt`, `ui/MapProjection.kt`): the route as a line on the dark card,
+without street tiles, so they work offline and need no library. Tiles (MapLibre with OpenFreeMap)
+can go underneath later.
+- **A route's page:** the route coloured by learned pace, wind exposure, slope or standing still;
+  tapping a stretch says what is known about it. Under "Standing still" the mapped lights show as
+  dots, grey when they never stop you.
+- **A finished ride's page:** each stretch coloured by the time gained or lost against what was
+  expected that day, the ride's own track over it, dots where you stood still for 10 s or more.
+  A free ride shows its track.
+- **The ride screen:** see Screens above. The ghost is replayed from the stored track of the chosen
+  ride (`ride/Ghost.kt`); nothing new is stored.
 
 ### Riding and routes
 

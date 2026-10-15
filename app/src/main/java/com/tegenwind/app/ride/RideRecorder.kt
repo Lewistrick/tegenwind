@@ -73,6 +73,11 @@ data class LiveRide(
     val expectedSpeeds: List<List<Sample>> = emptyList(),
     /** The predicted arrival and its band over the ride so far, a point every 5 s, for the ride screen's chart. Never stored. */
     val arrivalTrail: List<ArrivalPoint> = emptyList(),
+    /**
+     * For each segment ridden so far, the share of its expected time gained (positive) or lost: what
+     * the map colours the road behind you by. Never stored as such.
+     */
+    val segmentGains: Map<Int, Double> = emptyMap(),
 )
 
 /**
@@ -119,6 +124,7 @@ class RideRecorder(
     private val traversals = ArrayList<SegmentTraversalEntity>()
     private val expected = ArrayList<ArrayList<Sample>>()
     private val arrivalTrail = ArrivalTrail()
+    private val gains = HashMap<Int, Double>()
     /** Every fix of this ride, for learning the route's speed profile when it ends. */
     private val ridePoints = ArrayList<TrackPointEntity>()
     /** The segment the expected line is on, and the speed it holds there: one level per segment. */
@@ -172,6 +178,7 @@ class RideRecorder(
         riddenWeather.clear()
         weather = null
         traversals.clear()
+        gains.clear()
         expected.clear()
         arrivalTrail.clear()
         ridePoints.clear()
@@ -261,6 +268,7 @@ class RideRecorder(
                 route = liveRoute,
                 arrivedAtMs = arrived,
                 expectedSpeeds = expected.map { it.toList() },
+                segmentGains = gains.toMap(),
             )
             refreshEta(fix.timeMs)
         }
@@ -319,6 +327,7 @@ class RideRecorder(
             segIdx = -1
             stretches.reset()
             traversals.clear()
+            gains.clear()
             riddenWeather.clear()
             return null
         }
@@ -330,6 +339,7 @@ class RideRecorder(
             segIdx = -1
             stretches.reset()
             traversals.clear()
+            gains.clear()
             riddenWeather.clear()
         }
         return leader.progress
@@ -416,6 +426,7 @@ class RideRecorder(
         matcher = null
         model = null
         traversals.clear()
+        gains.clear()
         expected.clear()
         arrivalTrail.clear()
         ridePoints.clear()
@@ -521,6 +532,9 @@ class RideRecorder(
                     headwindMps = wind?.let { Physics.headwindMps(it.speedMps, it.fromDeg, etaSeg.bearingDeg, etaSeg.exposure) },
                     predictedMovingMs = predictedMs,
                 )
+                // Against what was expected of this segment today: its learned time and your form now.
+                val expectedMs = predictedMs * etaSeg.learned.timeFactor / form.estimate().mean
+                if (moved >= MIN_MOVING_MS && expectedMs > 0) gains[segIdx] = (expectedMs - moved) / expectedMs
             }
             // Behind you now, so its colours stop following the forecast.
             segmentWeather(m, segIdx, nowMs)?.let { riddenWeather[segIdx] = it }

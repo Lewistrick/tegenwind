@@ -57,7 +57,9 @@ import com.tegenwind.app.ui.theme.HeartColor
 import com.tegenwind.app.ui.theme.SpeedColor
 import androidx.health.connect.client.PermissionController
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
 import java.time.Instant
 
@@ -90,6 +92,7 @@ fun RideDetailScreen(rideId: Long, onBack: () -> Unit, backLabel: String = "Ride
     var editingRoute by remember { mutableStateOf(false) }
     var confirmReplaceRoute by remember { mutableStateOf(false) }
     var taught by remember { mutableStateOf<Taught?>(null) }
+    var mapData by remember { mutableStateOf<RideMapData?>(null) }
     val hrPermissionLauncher = rememberLauncherForActivityResult(
         PermissionController.createRequestPermissionResultContract()
     ) { hrRefresh++ }
@@ -98,7 +101,8 @@ fun RideDetailScreen(rideId: Long, onBack: () -> Unit, backLabel: String = "Ride
         val loaded = dao.ride(rideId)
         ride = loaded
         rideRouteName = loaded?.routeId?.let { container.db.routes().route(it)?.name }
-        speeds = dao.points(rideId)
+        val points = dao.points(rideId)
+        speeds = points
             .filter { (it.accuracyM ?: 0.0) <= RideTracker.MAX_ACCURACY_M && it.speedMps != null }
             .map { Sample(it.timeMs, it.speedMps!! * 3.6) }
         // The passes belong to the route they were ridden on, which "Edit route" doesn't alter.
@@ -108,6 +112,11 @@ fun RideDetailScreen(rideId: Long, onBack: () -> Unit, backLabel: String = "Ride
                 val learned = container.riderModel.learned.value
                 s.copy(signals = s.signals?.let { n -> learned.lights(routeId, s.idx, n) })
             })
+        }
+        // The map: the route the passes were ridden on, or failing that the one the ride is filed under.
+        val mapRoute = (passes.firstOrNull()?.routeId ?: loaded?.routeId)?.let { container.routes.load(it) }
+        mapData = withContext(Dispatchers.Default) {
+            rideMapData(mapRoute?.line, mapRoute?.segments.orEmpty(), passes.filter { it.routeId == mapRoute?.route?.id }, points)
         }
     }
     val r = ride
@@ -208,6 +217,8 @@ fun RideDetailScreen(rideId: Long, onBack: () -> Unit, backLabel: String = "Ride
                 }
             }
         }
+
+        mapData?.let { RideMapCard(it) }
 
         val rerouted = reroute?.let { rr -> rr.rerouteStartM?.let { from -> rr.rerouteEndM?.let { to -> from to to } } }
         WhatThisRideTaughtCard(taught, rerouted, onRoute = r.routeId != null, simulated = r.simulated)

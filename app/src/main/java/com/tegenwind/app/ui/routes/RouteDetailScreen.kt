@@ -19,6 +19,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -34,6 +35,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.tegenwind.app.appContainer
 import com.tegenwind.app.data.EnrichState
 import com.tegenwind.app.data.RouteSegmentEntity
+import com.tegenwind.app.routes.GeoPoint
+import com.tegenwind.app.routes.Polyline
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
@@ -61,6 +64,10 @@ fun RouteDetailScreen(routeId: Long, onBack: () -> Unit, onOpen: (Long) -> Unit)
     // Lights your rides show you never stop at don't count, and aren't shown.
     val learned by LocalContext.current.appContainer.riderModel.learned.collectAsStateWithLifecycle()
     val segments = stored.map { it.copy(signals = it.signals?.let { n -> learned.lights(routeId, it.idx, n) }) }
+    // The line itself, for the map: read again when the route's length says it changed.
+    val line by produceState<Polyline?>(null, routeId, route?.lengthM) {
+        value = dao.points(routeId).takeIf { it.size >= 2 }?.let { pts -> Polyline(pts.map { GeoPoint(it.lat, it.lon) }) }
+    }
     // The second tap has to follow soon, or Delete goes back to asking.
     var confirmDelete by rememberConfirmTap()
 
@@ -90,6 +97,8 @@ fun RouteDetailScreen(routeId: Long, onBack: () -> Unit, onOpen: (Long) -> Unit)
                 ExposureStrip(segments, r.lengthM, Modifier.fillMaxWidth().height(104.dp))
             }
         }
+
+        line?.let { l -> if (stored.isNotEmpty()) RouteMapCard(l, stored, learned) }
 
         if (segments.isNotEmpty()) {
             // 50-odd rows is a lot to scroll past, so the table waits until asked for.
@@ -189,9 +198,6 @@ internal fun ExposureStrip(segments: List<RouteSegmentEntity>, lengthM: Double, 
 
 /** Column widths of the segments table, dp: six columns that still fit a 360 dp screen. */
 private val SEGMENT_COLUMNS = listOf("km" to 56, "dir" to 40, "slope" to 56, "open" to 48, "lights" to 44, "learned" to 60)
-
-/** From a quarter more or less time than your usual pace, a segment's learned time is fully red or green. */
-private const val FULL_LEARNED = 0.25
 
 @Composable
 private fun SegmentHeader() {
