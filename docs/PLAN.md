@@ -279,6 +279,9 @@ The bottom bar is **Ride · Rides · Routes · Stats**. Rides replaced Map.
     or cross, with the speed at rider height and how sheltered you are), km to go, form and the wind's
     cost. Below that is a route bar coloured per segment by sky and rain on top and by what the wind
     does to you underneath, with a marker at your position. Tapping the card shares the ETA.
+    Since 16 Oct 2026 light rain shows clearly (blue from 0.1 mm/h, full from 2 mm/h; it was a
+    straight line to 4 mm/h, so drizzle hardly tinted the cloud), and Open-Meteo's hourly chance of
+    rain shows as blue stripes where no rain is forecast but the chance is 20% or more.
   - A speed chart headed by speed and distance: GPS dots and a centred 2-minute rolling **average** (a minute either side, so the last minute has no value yet), over
     the last 2 minutes. Tapping it shows the whole ride on a reverse-log time axis. Under them, in
     amber, the speed the ETA expects: one line per segment, shaped within the segment by the

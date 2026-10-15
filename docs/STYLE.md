@@ -70,6 +70,10 @@ Scales, each only where it's listed:
     usual pace a segment takes, fully red or green from a quarter.
 - **Sky,** on the ride screen's route bar: yellow (`#FFD233`) through white to blue (`#2F6FFF`), for
   sun, cloud and rain.
+  - Rain in the forecast is solid blue, and it has to show: none below 0.1 mm/h, then at once 35%
+    blue, fully blue from 2 mm/h.
+  - A chance of rain where none is forecast shows as diagonal blue stripes over the sky colour: none
+    below 20%, then from 25% to 70% opacity. Solid blue says "it will rain", stripes "it could".
 
 ## 3. Type
 

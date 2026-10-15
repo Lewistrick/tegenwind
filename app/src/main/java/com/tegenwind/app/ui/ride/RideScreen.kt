@@ -107,6 +107,9 @@ import com.tegenwind.app.ui.theme.GoodColor
 import com.tegenwind.app.ui.theme.SpeedColor
 import com.tegenwind.app.ui.theme.scaleColor
 import com.tegenwind.app.weather.Sky
+import androidx.compose.ui.graphics.drawscope.clipRect
+import com.tegenwind.app.weather.rainChanceStripes
+import com.tegenwind.app.weather.rainBlueShare
 import com.tegenwind.app.weather.WindSample
 import com.tegenwind.app.weather.beaufort
 import com.tegenwind.app.weather.compassPoint
@@ -800,13 +803,13 @@ fun windEffect(windCostS: Double): String {
 private val SunColor = Color(0xFFFFD233)
 private val RainColor = Color(0xFF2F6FFF)
 
-/** From this much rain a segment is fully blue: by then you're soaked whatever the exact number. */
-private const val FULL_RAIN_MM_H = 4.0
-
-/** Yellow under a clear sky, fading to white as it clouds over, then towards blue as it rains. */
+/**
+ * Yellow under a clear sky, fading to white as it clouds over, then blue where rain is forecast:
+ * clearly blue from drizzle on ([rainBlueShare]).
+ */
 private fun skyColor(s: Sky): Color {
     val clearToCloudy = lerp(SunColor, Color.White, (s.cloudPct / 100).toFloat().coerceIn(0f, 1f))
-    return lerp(clearToCloudy, RainColor, (s.rainMmH / FULL_RAIN_MM_H).toFloat().coerceIn(0f, 1f))
+    return lerp(clearToCloudy, RainColor, rainBlueShare(s.rainMmH).toFloat())
 }
 
 /** From a fifth of the time lost or saved, a segment is fully red or green: a strong wind in the open. */
@@ -833,7 +836,7 @@ private fun ProgressTrack(r: RideRoute, modifier: Modifier) {
         fun x(m: Double) = left + (m.toFloat() / len).coerceIn(0f, 1f) * (size.width - left)
         val barH = 8.dp.toPx()
 
-        fun bar(top: Float, label: Int, colorOf: (SegmentWeather) -> Color) {
+        fun bar(top: Float, label: Int, stripesOf: (SegmentWeather) -> Double = { 0.0 }, colorOf: (SegmentWeather) -> Color) {
             val l = labels[label]
             drawText(l, topLeft = Offset(0f, top + (barH - l.size.height) / 2))
             val shape = Path().apply {
@@ -846,10 +849,25 @@ private fun ProgressTrack(r: RideRoute, modifier: Modifier) {
                     val color = r.weather.getOrNull(i)?.let(colorOf) ?: unknown
                     // A pixel of overlap, so no hairline seam shows between two blocks.
                     drawRect(color, Offset(x0, top), Size(x1 - x0 + 1f, barH))
+                    // Diagonal stripes: it could rain here, though no rain is forecast.
+                    val stripes = r.weather.getOrNull(i)?.let(stripesOf) ?: 0.0
+                    if (stripes > 0) clipRect(x0, top, x1 + 1f, top + barH) {
+                        val gap = 4.dp.toPx()
+                        var sx = x0 - barH
+                        while (sx < x1 + 1f) {
+                            drawLine(
+                                RainColor.copy(alpha = stripes.toFloat()),
+                                Offset(sx, top + barH),
+                                Offset(sx + barH, top),
+                                strokeWidth = 1.5.dp.toPx(),
+                            )
+                            sx += gap
+                        }
+                    }
                 }
             }
         }
-        bar(0f, 0) { w -> w.sky?.let(::skyColor) ?: unknown }
+        bar(0f, 0, stripesOf = { w -> w.sky?.let(::rainChanceStripes) ?: 0.0 }) { w -> w.sky?.let(::skyColor) ?: unknown }
         val windTop = barH + 2.dp.toPx()
         bar(windTop, 1) { w -> windColor(w.windImpact) }
 
