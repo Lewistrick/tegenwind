@@ -39,7 +39,6 @@ import com.tegenwind.app.ride.TWO_MINUTES_MS
 import com.tegenwind.app.ride.rollingMean
 import kotlin.math.ceil
 import kotlin.math.floor
-import kotlin.math.ln
 import kotlin.math.log10
 import kotlin.math.pow
 import kotlin.math.roundToInt
@@ -110,9 +109,9 @@ fun TimeSeriesChart(
                 drawText(layout, topLeft = Offset((size.width - layout.size.width) / 2, (size.height - layout.size.height) / 2))
                 return@Canvas
             }
-            val right = endMs ?: samples.last().timeMs
-            val left = if (windowMs != null) right - windowMs else samples.first().timeMs
-            val span = (right - left).coerceAtLeast(60_000L).toFloat()
+            val axis = TimeAxis(samples.first().timeMs, samples.last().timeMs, windowMs, endMs, logXWhenFull)
+            val left = axis.left
+            val right = axis.right
             val firstVisible = samples.indexOfFirst { it.timeMs >= left }.coerceAtLeast(0)
 
             val (lo, hi, yStep) = yRange?.let {
@@ -137,24 +136,14 @@ fun TimeSeriesChart(
                 }
             }
 
-            val padL = 30.dp.toPx()
+            val padL = CHART_PAD_LEFT.toPx()
             val padR = 6.dp.toPx()
             val padT = 6.dp.toPx()
             val padB = 16.dp.toPx()
             val plotW = size.width - padL - padR
             val plotH = size.height - padT - padB
 
-            val useLogX = logXWhenFull && windowMs == null
-            val logMinMs = 10_000L
-            val logSpanMs = maxOf(right - left, logMinMs * 3)
-            fun logX(t: Long): Float {
-                // ln(1 + ago / 10 s): about linear over the last seconds and logarithmic beyond, so
-                // the latest fixes spread out instead of all landing on "now" as a plain log would put them.
-                val ago = maxOf(right - t, 0L).toDouble()
-                val frac = ln(1 + ago / logMinMs) / ln(1 + logSpanMs.toDouble() / logMinMs)
-                return padL + (1 - frac).toFloat() * plotW
-            }
-            fun x(t: Long) = if (useLogX) logX(t) else padL + (t - left) / span * plotW
+            fun x(t: Long) = padL + axis.fraction(t) * plotW
             fun y(v: Double) = padT + (1 - ((v - lo) / (hi - lo))).toFloat() * plotH
 
             // Horizontal grid with value labels
@@ -168,50 +157,7 @@ fun TimeSeriesChart(
             }
 
             // Time labels
-            if (useLogX) {
-                val niceMinutes = intArrayOf(1, 2, 5, 10, 20, 30, 45, 60, 90, 120, 180, 240, 360, 480, 600)
-                val maxMin = logSpanMs / 60_000.0
-                var candidates = niceMinutes.filter { it <= maxMin + 0.01 }
-                    .sortedDescending()
-                    .map { m -> maxOf(right - m * 60_000L, left) to "−$m min" }
-                if (candidates.isEmpty()) candidates = listOf(left to "−${maxOf(1, maxMin.roundToInt())} min")
-                candidates = candidates + (right to "now")
-
-                val minGapPx = 48f
-                val kept = ArrayList<Pair<Long, String>>()
-                var lastX = Float.POSITIVE_INFINITY
-                for (i in candidates.indices.reversed()) {
-                    val xx = logX(candidates[i].first)
-                    if (lastX - xx >= minGapPx) {
-                        kept.add(0, candidates[i])
-                        lastX = xx
-                    }
-                }
-                kept.forEachIndexed { i, (t, text) ->
-                    val layout = measurer.measure(text, labelStyle)
-                    val cx = x(t)
-                    val lx = when (i) {
-                        0 -> cx
-                        kept.size - 1 -> cx - layout.size.width
-                        else -> cx - layout.size.width / 2
-                    }
-                    drawText(layout, topLeft = Offset(lx, size.height - layout.size.height))
-                }
-            } else {
-                val minutes = ((right - left) / 60_000).toInt()
-                val labels = if (windowMs != null) listOf("−$minutes min", "−${minutes / 2} min", "now")
-                else listOf("0", "${minutes / 2} min", "$minutes min")
-                labels.forEachIndexed { i, text ->
-                    val layout = measurer.measure(text, labelStyle)
-                    val cx = padL + plotW * i / 2f
-                    val lx = when (i) {
-                        0 -> cx
-                        2 -> cx - layout.size.width
-                        else -> cx - layout.size.width / 2
-                    }
-                    drawText(layout, topLeft = Offset(lx, size.height - layout.size.height))
-                }
-            }
+            with(axis) { drawLabels(measurer, labelStyle, padL, plotW) }
 
             clipRect(left = padL, top = 0f, right = size.width, bottom = size.height - padB + 2.dp.toPx()) {
                 // Where one segment gives way to the next, in the grid's colour.

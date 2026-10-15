@@ -26,12 +26,45 @@ data class WindSample(
     val cloudPct: Double? = null,
     /** Rain, mm per hour. */
     val rainMmH: Double? = null,
+    /** Chance of rain in that hour, 0–100 %: the models only give it per hour. */
+    val rainChancePct: Double? = null,
 ) {
-    val sky: Sky? get() = if (cloudPct != null && rainMmH != null) Sky(cloudPct, rainMmH) else null
+    val sky: Sky? get() = if (cloudPct != null && rainMmH != null) Sky(cloudPct, rainMmH, rainChancePct) else null
 }
 
-/** What the sky does over one stretch of the ride. */
-data class Sky(val cloudPct: Double, val rainMmH: Double)
+/** What the sky does over one stretch of the ride. [rainChancePct] is null where it isn't known. */
+data class Sky(val cloudPct: Double, val rainMmH: Double, val rainChancePct: Double? = null)
+
+/** Below this much rain, mm/h, the sky bar shows no rain: a trace the models put almost anywhere. */
+const val MIN_RAIN_MM_H = 0.1
+
+/** From this much rain, mm/h, the sky bar is fully blue: by then you're soaked whatever the exact number. */
+const val FULL_RAIN_MM_H = 2.0
+
+/** Below this chance of rain, %, the sky bar shows none. */
+const val MIN_RAIN_CHANCE_PCT = 20.0
+
+/**
+ * How blue the sky bar is for [rainMmH]: none below [MIN_RAIN_MM_H], then at once a clear 35%, growing
+ * with the square root up to fully blue at [FULL_RAIN_MM_H]. Drizzle has to show on a handlebar;
+ * beyond a couple of mm per hour more blue says nothing new.
+ */
+fun rainBlueShare(rainMmH: Double): Double {
+    if (rainMmH < MIN_RAIN_MM_H) return 0.0
+    val f = ((rainMmH - MIN_RAIN_MM_H) / (FULL_RAIN_MM_H - MIN_RAIN_MM_H)).coerceIn(0.0, 1.0)
+    return 0.35 + 0.65 * kotlin.math.sqrt(f)
+}
+
+/**
+ * How strong the stripes are that say "it could rain" ([Sky.rainChancePct]) where no rain is
+ * forecast: none below [MIN_RAIN_CHANCE_PCT], then from 25% to 70% opacity at a certain chance.
+ * Rain that is forecast shows as solid blue instead, so then there are no stripes.
+ */
+fun rainChanceStripes(sky: Sky): Double {
+    val chance = sky.rainChancePct ?: return 0.0
+    if (sky.rainMmH >= MIN_RAIN_MM_H || chance < MIN_RAIN_CHANCE_PCT) return 0.0
+    return 0.25 + 0.45 * ((chance - MIN_RAIN_CHANCE_PCT) / (100 - MIN_RAIN_CHANCE_PCT)).coerceIn(0.0, 1.0)
+}
 
 /** A time series of wind forecasts; ask it for the wind at any moment in (or near) its range. */
 class WindForecast(val samples: List<WindSample>) {
@@ -53,6 +86,7 @@ class WindForecast(val samples: List<WindSample>) {
             tempC = lerpOrEither(a.tempC, b.tempC, f),
             cloudPct = lerpOrEither(a.cloudPct, b.cloudPct, f),
             rainMmH = lerpOrEither(a.rainMmH, b.rainMmH, f),
+            rainChancePct = lerpOrEither(a.rainChancePct, b.rainChancePct, f),
         )
     }
 
@@ -140,7 +174,7 @@ class WeatherRepository {
         val url = URL(
             "https://api.open-meteo.com/v1/forecast?latitude=$lats&longitude=$lons" +
                 "&minutely_15=$FIELDS&forecast_minutely_15=24&past_minutely_15=2" +
-                "&hourly=$FIELDS&forecast_hours=8&past_hours=1" +
+                "&hourly=$FIELDS,precipitation_probability&forecast_hours=8&past_hours=1" +
                 "&wind_speed_unit=ms&timezone=GMT"
         )
         val conn = (url.openConnection() as HttpURLConnection).apply {
@@ -159,38 +193,8 @@ class WeatherRepository {
             JSONArray(body).let { a -> List(a.length()) { a.getJSONObject(it) } }
         } else listOf(JSONObject(body))
         if (locations.size != points.size) throw java.io.IOException("Open-Meteo returned ${locations.size} of ${points.size} places")
-        locations.map { json ->
-            // 15-minute data where the models provide it (Central Europe), hourly as a fallback.
-            // Precipitation is the total over each step, so a 15-minute step times 4 is mm per hour.
-            val samples = parse(json.optJSONObject("minutely_15"), stepsPerHour = 4.0)
-                .ifEmpty { parse(json.optJSONObject("hourly"), stepsPerHour = 1.0) }
-            if (samples.isEmpty()) throw java.io.IOException("Open-Meteo returned no wind data")
-            WindForecast(samples)
-        }
+        locations.map(::forecastFrom)
     }
-
-    private fun parse(block: JSONObject?, stepsPerHour: Double): List<WindSample> {
-        if (block == null) return emptyList()
-        val time = block.getJSONArray("time")
-        val speed = block.getJSONArray("wind_speed_10m")
-        val dir = block.getJSONArray("wind_direction_10m")
-        val temp = block.optJSONArray("temperature_2m")
-        val cloud = block.optJSONArray("cloud_cover")
-        val rain = block.optJSONArray("precipitation")
-        return (0 until time.length()).mapNotNull { i ->
-            if (speed.isNull(i) || dir.isNull(i)) return@mapNotNull null
-            WindSample(
-                timeMs = LocalDateTime.parse(time.getString(i)).toInstant(ZoneOffset.UTC).toEpochMilli(),
-                speedMps = speed.getDouble(i),
-                fromDeg = dir.getDouble(i),
-                tempC = temp?.optDoubleOrNull(i),
-                cloudPct = cloud?.optDoubleOrNull(i),
-                rainMmH = rain?.optDoubleOrNull(i)?.let { it * stepsPerHour },
-            )
-        }
-    }
-
-    private fun JSONArray.optDoubleOrNull(i: Int): Double? = if (isNull(i)) null else getDouble(i)
 
     private companion object {
         const val FIELDS = "wind_speed_10m,wind_direction_10m,temperature_2m,cloud_cover,precipitation"
@@ -198,3 +202,45 @@ class WeatherRepository {
         const val STALE_MS = 3 * 60 * 60_000L
     }
 }
+
+/**
+ * One place's forecast from Open-Meteo's answer: 15-minute data where the models provide it
+ * (Central Europe), hourly as a fallback. The chance of rain only comes per hour, so each 15-minute
+ * step gets the hour's chance, interpolated between hours like the rest.
+ */
+internal fun forecastFrom(json: JSONObject): WindForecast {
+    val hourly = parseForecastBlock(json.optJSONObject("hourly"), stepsPerHour = 1.0)
+    // Precipitation is the total over each step, so a 15-minute step times 4 is mm per hour.
+    val quarter = parseForecastBlock(json.optJSONObject("minutely_15"), stepsPerHour = 4.0)
+    val samples = if (quarter.isEmpty()) hourly else if (hourly.isEmpty()) quarter else {
+        val hours = WindForecast(hourly)
+        quarter.map { it.copy(rainChancePct = hours.at(it.timeMs).rainChancePct) }
+    }
+    if (samples.isEmpty()) throw java.io.IOException("Open-Meteo returned no wind data")
+    return WindForecast(samples)
+}
+
+private fun parseForecastBlock(block: JSONObject?, stepsPerHour: Double): List<WindSample> {
+    if (block == null) return emptyList()
+    val time = block.getJSONArray("time")
+    val speed = block.getJSONArray("wind_speed_10m")
+    val dir = block.getJSONArray("wind_direction_10m")
+    val temp = block.optJSONArray("temperature_2m")
+    val cloud = block.optJSONArray("cloud_cover")
+    val rain = block.optJSONArray("precipitation")
+    val chance = block.optJSONArray("precipitation_probability")
+    return (0 until time.length()).mapNotNull { i ->
+        if (speed.isNull(i) || dir.isNull(i)) return@mapNotNull null
+        WindSample(
+            timeMs = LocalDateTime.parse(time.getString(i)).toInstant(ZoneOffset.UTC).toEpochMilli(),
+            speedMps = speed.getDouble(i),
+            fromDeg = dir.getDouble(i),
+            tempC = temp?.optDoubleOrNull(i),
+            cloudPct = cloud?.optDoubleOrNull(i),
+            rainMmH = rain?.optDoubleOrNull(i)?.let { it * stepsPerHour },
+            rainChancePct = chance?.optDoubleOrNull(i),
+        )
+    }
+}
+
+private fun JSONArray.optDoubleOrNull(i: Int): Double? = if (isNull(i)) null else getDouble(i)

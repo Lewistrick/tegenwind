@@ -70,6 +70,10 @@ Scales, each only where it's listed:
     usual pace a segment takes, fully red or green from a quarter.
 - **Sky,** on the ride screen's route bar: yellow (`#FFD233`) through white to blue (`#2F6FFF`), for
   sun, cloud and rain.
+  - Rain in the forecast is solid blue, and it has to show: none below 0.1 mm/h, then at once 35%
+    blue, fully blue from 2 mm/h.
+  - A chance of rain where none is forecast shows as diagonal blue stripes over the sky colour: none
+    below 20%, then from 25% to 70% opacity. Solid blue says "it will rain", stripes "it could".
 
 ## 3. Type
 
@@ -170,6 +174,14 @@ One scheme:
   "?" and back. Use it instead of a caption that describes the lines.
 - **Annotations,** like "last 2 min", go on the same kind of chip in the top-right corner.
 - **A card around a chart** is `ChartCard(title, subtitle)`.
+- **Charts stacked on one time** share its axis (`TimeAxis`): on the ride screen the speed chart and
+  the arrival-time chart show the same stretch of the ride, laid out the same way and with the same
+  room for value labels (`CHART_PAD_LEFT`), so a moment sits above the same spot on both. Tapping
+  either switches both, between the last 2 minutes and the whole ride, and each says which with the
+  same chip in its top-right corner.
+- **The arrival chart's clock axis** fits what is shown, in round steps from 5 seconds up to hours.
+  Ticks a minute or more apart are clock times with the hour ("07:45"); under a minute apart they are
+  minutes and seconds without the hour, with a leading colon (":59:30", ":00:00", ":00:15"), and "min:s" in the corner says so.
 - **Bars along a route** (exposure, sky, wind) are drawn left to right from start to finish. When
   there's room, a km axis runs underneath.
 
