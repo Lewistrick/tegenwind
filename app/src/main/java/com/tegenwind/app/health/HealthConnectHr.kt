@@ -6,9 +6,11 @@ import androidx.health.connect.client.permission.HealthPermission
 import androidx.health.connect.client.records.ExerciseSessionRecord
 import androidx.health.connect.client.records.HeartRateRecord
 import androidx.health.connect.client.records.Record
+import androidx.health.connect.client.records.WeightRecord
 import androidx.health.connect.client.request.ReadRecordsRequest
 import androidx.health.connect.client.time.TimeRangeFilter
 import com.tegenwind.app.ride.Sample
+import java.time.Duration
 import java.time.Instant
 import kotlin.reflect.KClass
 
@@ -20,7 +22,20 @@ class HealthConnectHr(private val context: Context) {
         HealthPermission.getReadPermission(ExerciseSessionRecord::class),
     )
 
+    /** Asked for separately, and only when you take your weight from Health Connect. */
+    val weightPermissions: Set<String> = setOf(HealthPermission.getReadPermission(WeightRecord::class))
+
     private val client by lazy { HealthConnectClient.getOrCreate(context) }
+
+    suspend fun hasWeightPermission(): Boolean =
+        client.permissionController.getGrantedPermissions().containsAll(weightPermissions)
+
+    /** Your most recent weight in Health Connect from the last year, kg; null when there is none. */
+    suspend fun latestWeightKg(): Double? {
+        val end = Instant.now()
+        return readAll(WeightRecord::class, end.minus(Duration.ofDays(365)), end)
+            .maxByOrNull { it.time }?.weight?.inKilograms
+    }
 
     fun sdkStatus(): Int = HealthConnectClient.getSdkStatus(context)
 

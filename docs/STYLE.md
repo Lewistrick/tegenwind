@@ -135,6 +135,16 @@ One scheme:
 - **Choosing one of a list** uses `Picker`: a button showing the current choice with a chevron,
   opening a menu as wide as the button, with a tick at the current choice.
 
+- **Settings** ("Rider and bike") are a detail screen like any other: "‹ Ride", the title, a muted
+  line, then a card per thing being set.
+  - Numbers are `OutlinedTextField`s with their unit as a suffix ("84 kg"). What reads as a number
+    is kept at once; there is no Save button.
+  - Choices are `Picker`s under a small label. A muted line under each says what the current
+    choice means ("Forearms or hands forward, back bent.").
+  - Fields that only matter for one choice (a motor's power and cut-off speed) only show with it.
+  - What you can do with the thing (ride this bike, delete it) goes in an `ActionCard` under its
+    card, deleting with two taps as everywhere.
+
 ## 6. Charts
 
 - **Measurements:** raw values as solid dots in the series colour, and a 2-minute centred rolling
@@ -187,8 +197,10 @@ no streets, no labels. For a road you ride every day the shape is enough.
 
 - **Sentence case** everywhere ("Share live", not "Share Live"). No capitals for emphasis. The one
   exception is the YES / NO of the almost-there prompt, which is read while riding.
-- **Units:** km, km/h, min, bpm, %, Bft, load/day (training load per day: an hour of solid riding
-  is about 100). Times are m:ss or h:mm:ss; clock times HH:mm.
+- **Units:** km, km/h, min, bpm, %, Bft, W, load/day (training load per day: an hour of solid
+  riding is about 100). Times are m:ss or h:mm:ss; clock times HH:mm.
+  - Power is an estimate from speed, never a measurement: it always carries "≈" and is rounded to
+    5 W ("≈125 W"). It's how form is shown; the word "form" is not.
   - A unit that is a word, like load/day, follows the value in the label's size, muted and not
     bold, so the value stays on one line: "42 load/day".
 - **Separators:** a middle dot with spaces between items: "13.6 km · 6 rides · usually 37:43".

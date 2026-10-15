@@ -49,6 +49,14 @@ data class RideEntity(
      */
     val rerouteStartM: Double? = null,
     val rerouteEndM: Double? = null,
+    /** The bike the ride was on, as named in the settings then; null for rides from before bikes could be set. */
+    val bikeName: String? = null,
+    /**
+     * Your pedal power behind the ride's form, W, worked out with the rider and bike as set then
+     * ([com.tegenwind.app.eta.RiderParams.powerAtFormW]). Null when the form wasn't measured, on a
+     * bike that rides itself, and for rides from before it was kept.
+     */
+    val pedalPowerW: Double? = null,
 )
 
 /** The stretch a ride rerouted; see [RideEntity.rerouteStartM]. */
@@ -592,13 +600,13 @@ interface RouteDao {
         RideEntity::class, TrackPointEntity::class, RouteEntity::class, RoutePointEntity::class,
         RouteSegmentEntity::class, SegmentTraversalEntity::class, RouteProfileEntity::class, HrSampleEntity::class,
     ],
-    version = 8,
+    version = 9,
     exportSchema = true,
     autoMigrations = [
         AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3),
         AutoMigration(from = 3, to = 4), AutoMigration(from = 4, to = 5),
         AutoMigration(from = 5, to = 6), AutoMigration(from = 6, to = 7),
-        AutoMigration(from = 7, to = 8),
+        AutoMigration(from = 7, to = 8), AutoMigration(from = 8, to = 9),
     ],
 )
 abstract class TegenwindDb : RoomDatabase() {

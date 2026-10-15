@@ -1,7 +1,9 @@
 package com.tegenwind.app.ride
 
+import com.tegenwind.app.data.Bike
 import com.tegenwind.app.data.RideDao
 import com.tegenwind.app.data.RideEntity
+import com.tegenwind.app.data.RiderSetup
 import com.tegenwind.app.data.RouteDao
 import com.tegenwind.app.data.RouteSegmentEntity
 import com.tegenwind.app.data.SegmentTraversalEntity
@@ -12,6 +14,7 @@ import com.tegenwind.app.eta.EtaModel
 import com.tegenwind.app.eta.EtaSegment
 import com.tegenwind.app.eta.FormEstimator
 import com.tegenwind.app.eta.RiderLearned
+import com.tegenwind.app.eta.RiderParams
 import com.tegenwind.app.eta.LiveEta
 import com.tegenwind.app.eta.Physics
 import com.tegenwind.app.eta.SegmentCorrection
@@ -91,6 +94,8 @@ class RideRecorder(
     private val scope: CoroutineScope,
     /** What has been learned about how you ride; read afresh whenever a ride or a route is begun. */
     private val learned: () -> RiderLearned = { RiderLearned() },
+    /** You and the bike you ride on, as set; read when a ride begins and kept for all of it. */
+    private val setup: () -> RiderSetup = { RiderSetup() },
     /** After a real ride on a route has been stored: lets the route's line learn where it went. */
     private val afterRide: suspend (routeId: Long, rideId: Long) -> Unit = { _, _ -> },
 ) {
@@ -115,6 +120,9 @@ class RideRecorder(
     /** Set when the route wasn't chosen up front; null once one was, or for a free ride. */
     private var matcher: RouteMatcher? = null
     private var model: EtaModel? = null
+    /** The bike this ride is on, and its physics: as set when the ride began. */
+    private var bike: Bike = RiderSetup().activeBike
+    private var params = RiderParams()
     private var form = FormEstimator()
     /** Metres of route today's form has been measured on. */
     private var formObservedM = 0.0
@@ -168,7 +176,10 @@ class RideRecorder(
         matcher = if (route == null && candidates.isNotEmpty()) RouteMatcher(candidates, habit) else null
         routeTracker = route?.let { RouteTracker(it.line) }
         val learnedNow = learned()
-        model = route?.etaModel(learnedNow)
+        val setupNow = setup()
+        bike = setupNow.activeBike
+        params = setupNow.params()
+        model = route?.etaModel(learnedNow, params)
         form = FormEstimator(prior = priorForm, priorSd = learnedNow.formSd * priorForm, obsSd = learnedNow.passNoise * priorForm, drift = learnedNow.formDrift)
         formObservedM = 0.0
         stretches.reset()
@@ -334,7 +345,7 @@ class RideRecorder(
         if (leader.route.route.id != route?.route?.id) {
             route = leader.route
             routeTracker = leader.tracker
-            model = leader.route.etaModel(learned())
+            model = leader.route.etaModel(learned(), params)
             // Whatever was half-measured belongs to a route we turn out not to be on.
             segIdx = -1
             stretches.reset()
@@ -404,6 +415,9 @@ class RideRecorder(
                 windSpeedMps = startWind?.speedMps,
                 windFromDeg = startWind?.fromDeg,
                 formFactor = form.estimate().mean.takeIf { formObservedM >= MIN_FORM_M },
+                // Kept with the ride, so changing the settings later doesn't rewrite what it took.
+                bikeName = bike.name,
+                pedalPowerW = form.estimate().mean.takeIf { formObservedM >= MIN_FORM_M }?.let { params.powerAtFormW(it) },
                 loadTss = if (ride.simulated) null else Banister.loadFromRide(snap.movingMs, snap.distanceM),
             )
         )
@@ -449,6 +463,7 @@ class RideRecorder(
             eta = eta,
             form = form.estimate().mean,
             wind = windNow(m, progress.progressM, nowMs, weather),
+            pedalPowerW = params.powerAtFormW(form.estimate().mean),
         )
         if (ride.started) arrivalTrail.record(nowMs, eta.arrivalMs, (eta.bandS * 1000).toLong())
         // Once offered the prompt stays until answered, even if the band widens again (off route).

@@ -5,6 +5,8 @@
     <!-- Health Connect: read heart rate and workouts written by the Withings app -->
     <uses-permission android:name="android.permission.health.READ_HEART_RATE" />
     <uses-permission android:name="android.permission.health.READ_EXERCISE" />
+    <!-- Health Connect: your latest weight, only when you ask for it on the Rider and bike screen -->
+    <uses-permission android:name="android.permission.health.READ_WEIGHT" />
 
     <!-- Elevation (Open-Meteo) and OpenStreetMap data for routes -->
     <uses-permission android:name="android.permission.INTERNET" />

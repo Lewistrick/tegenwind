@@ -3,6 +3,7 @@ package com.tegenwind.app
 import android.app.Application
 import android.content.Context
 import androidx.room.Room
+import com.tegenwind.app.data.RiderSetupStore
 import com.tegenwind.app.data.TegenwindDb
 import com.tegenwind.app.eta.Banister
 import com.tegenwind.app.eta.RiderModel
@@ -34,9 +35,15 @@ class TegenwindApp : Application() {
 class AppContainer(app: Application) {
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     val db: TegenwindDb = Room.databaseBuilder(app, TegenwindDb::class.java, "tegenwind.db").build()
+    /** You and your bikes, as set on the "Rider and bike" screen. */
+    val riderSetup = RiderSetupStore(app)
     /** What has been learned about how you ride: wind, spread of form, time at lights. */
-    val riderModel = RiderModel(db.rides())
-    val recorder: RideRecorder = RideRecorder(db.rides(), db.routes(), appScope, learned = { riderModel.learned.value }) { routeId, rideId ->
+    val riderModel = RiderModel(db.rides()) { riderSetup.setup.value.params() }
+    val recorder: RideRecorder = RideRecorder(
+        db.rides(), db.routes(), appScope,
+        learned = { riderModel.learned.value },
+        setup = { riderSetup.setup.value },
+    ) { routeId, rideId ->
         routes.learnLine(routeId, rideId)
         // After the ride is stored and its segments and form have learned from it.
         riderModel.refresh()

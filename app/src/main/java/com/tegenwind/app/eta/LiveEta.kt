@@ -23,7 +23,13 @@ data class WindNow(
         }
 }
 
-data class LiveEta(val eta: Eta, val form: Double, val wind: WindNow?)
+data class LiveEta(
+    val eta: Eta,
+    val form: Double,
+    val wind: WindNow?,
+    /** Your pedal power behind today's form so far, W ([RiderParams.powerAtFormW]); null on a bike that rides itself. */
+    val pedalPowerW: Double? = null,
+)
 
 fun LoadedRoute.etaModel(learned: RiderLearned = RiderLearned(), params: RiderParams = RiderParams()) = EtaModel(
     segments.map { s ->

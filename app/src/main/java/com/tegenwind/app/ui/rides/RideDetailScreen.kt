@@ -153,7 +153,7 @@ fun RideDetailScreen(rideId: Long, onBack: () -> Unit, backLabel: String = "Ride
         }
         Text(rideRouteName ?: "Free ride", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
         Text(
-            formatRideStart(r.startedAtMs) + if (r.simulated) " · simulated ride" else "",
+            formatRideStart(r.startedAtMs) + (r.bikeName?.let { " · on $it" } ?: "") + if (r.simulated) " · simulated ride" else "",
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
 
@@ -181,7 +181,7 @@ fun RideDetailScreen(rideId: Long, onBack: () -> Unit, backLabel: String = "Ride
         }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             StatTile("Avg speed", avgSpeedText(r), Modifier.weight(1f))
-            StatTile("Form", formPercent(r.formFactor) ?: "–", Modifier.weight(1f))
+            StatTile("Power", powerText(rideWatts(r)) ?: "–", Modifier.weight(1f))
             val hrSamples = (hr as? HrState.Loaded)?.samples
             StatTile("Avg HR", hrSamples?.let { "${it.map { s -> s.value }.average().toInt()} bpm" } ?: "--", Modifier.weight(1f))
         }
@@ -303,7 +303,7 @@ fun RideDetailScreen(rideId: Long, onBack: () -> Unit, backLabel: String = "Ride
                     "The route starts following the track you rode today. It keeps its name and all " +
                         "its rides, and elevation, buildings and traffic lights are looked up again.\n\n" +
                         "The segment times measured on the old line are dropped: they belong to roads " +
-                        "this route no longer follows. Your rides themselves, and your form, stay as they are.",
+                        "this route no longer follows. Your rides themselves, and their power, stay as they are.",
                 )
             },
             confirmButton = {

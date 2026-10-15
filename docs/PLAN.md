@@ -302,7 +302,7 @@ The bottom bar is **Ride · Rides · Routes · Stats**. Rides replaced Map.
   - The large speed number, 2-minute average and live heart rate from the plan are gone: the ETA
     is what you read on the handlebar.
 - **Rides** (not in the plan): the list of finished rides. A ride's page shows distance, moving and
-  total time, average speed, form and average heart rate. Under the total time it says where the
+  total time, average speed, power and average heart rate. Under the total time it says where the
   ride ranks among the rides on its route: top or bottom x%, from five rides on. Then the speed
   chart and the heart-rate chart from Health Connect, and the "What this ride taught" card. It can
   also save the ride as a route, change which route it belongs to, give its route the line you
@@ -380,10 +380,34 @@ can go underneath later.
 
 ### The ETA model
 
-- **Layer 1** as planned. Rider parameters are constants (130 W, CdA 0.45, Crr 0.006, 90 kg); the
-  planned learned `P_rider` isn't there, and the form factor does that job. Air density follows the
-  temperature. Wind at rider height uses a log profile whose surface roughness follows the segment's
-  exposure: about 65% of the 10 m wind in the open, about 30% between buildings.
+- **Layer 1** as planned. Rider parameters are constants; the planned learned `P_rider` isn't
+  there, and the form factor does that job.
+  - Until 15 Oct 2026 they were guesses: 130 W, CdA 0.45, Crr 0.006, 90 kg, chosen so that the model
+    rider holds 25 km/h. That is faster than nearly every Dutch commuter: SWOV measured 17.6 km/h
+    on ordinary bikes. So a good day still read as "form −12%".
+  - Since then they describe the real rider and bike: 84 kg on a Gazelle Orange (city bike, hub
+    gears, hub dynamo, 28" city tyres at about 5 bar) with locks and the backpack in the pannier,
+    110 kg in all, leaning on the handlebars (CdA 0.48), Crr 0.0075, 94% drivetrain efficiency. The
+    model rider still holds 25 km/h, so stored forms keep their meaning; on this bike that takes
+    about 165 W.
+  - Screens show form as **pedal power**: the watts that hold form × the model's speed on that bike
+    on flat ground in still air ("≈125 W" for form 0.88). It's an estimate from speed, rounded to 5 W.
+  - **Rider and bike settings** (15 Oct 2026, `data/RiderSetup.kt`, `ui/settings/RiderBikeScreen.kt`):
+    your weight (or the latest from Health Connect), luggage, and one or more bikes, each with its
+    weight, riding position, tyres, gears and motor. The start screen picks the bike for the ride.
+    - The model rider's legs are a fixed 165 W (what held 25 km/h on the first setup), so a lighter
+      rider or a faster bike makes the model faster on the same legs. Form stays a speed ratio.
+    - An e-bike that helps while you pedal adds its motor power at the wheel up to its cut-off speed,
+      fading out over the last 2 km/h; the watts shown are only yours. A fully motorised bike rides
+      on the motor alone in the model, and shows no watts.
+    - Each ride keeps its bike name and watts (database 9), so changing the settings doesn't rewrite
+      old rides; rides from before were on the first setup, the Gazelle.
+    - Learning isn't kept apart per bike: segment corrections are about the road, and form is your
+      legs against the model with the bike in it. How much wind you feel is fitted with the bike set
+      now. A bike set up wrongly shows as a shift in form while riding it.
+  - Air density follows the temperature. Wind at rider height uses a log profile whose surface
+    roughness follows the segment's exposure: about 65% of the 10 m wind in the open, about 30%
+    between buildings.
 - **Layer 2** is a single learned offset per segment (see Phase 6), learned from moving time with
   the day's form divided out.
   - Form and the offsets multiply, so a slowness all segments share could sit in either one.
