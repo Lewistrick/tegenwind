@@ -18,7 +18,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
+import android.content.Context
+import androidx.compose.runtime.MutableState
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -43,9 +45,13 @@ import kotlin.math.log10
 import kotlin.math.pow
 import kotlin.math.roundToInt
 
-/** The expected line: the app's amber, see-through so the measurements read over it, and wider than the average line. */
-private const val EXPECTED_ALPHA = 0.5f
-private val EXPECTED_WIDTH = 4.dp
+/** The expected line: the app's amber, nearly solid so it reads at a glance, and a little wider than the average line. */
+private const val EXPECTED_ALPHA = 0.9f
+private val EXPECTED_WIDTH = 2.dp
+
+/** The average line: thin and paler than the dots, so the dots read first. */
+private const val AVERAGE_ALPHA = 0.6f
+private val AVERAGE_WIDTH = 1.5.dp
 
 /** A "nice" grid step (1/2/5 × a power of ten, at least 1) so ticks land on round numbers. */
 internal fun niceIntStep(mn: Double, mx: Double): Double {
@@ -62,7 +68,7 @@ internal fun niceIntStep(mn: Double, mx: Double): Double {
 }
 
 /**
- * Raw measurements as dots and a 2-minute centred rolling average (t ± 1 min) as a line.
+ * Raw measurements as dots and a 2-minute rolling average (the last 2 minutes) as a line.
  * The lines break where there is no data for [gapMs], so gaps are never papered over.
  *
  * @param windowMs show only the last [windowMs] before [endMs]; null shows everything.
@@ -75,8 +81,6 @@ internal fun niceIntStep(mn: Double, mx: Double): Double {
  * @param expected a second series drawn *under* the measurements (e.g. the speed the ETA expects), in
  *   runs: each run is a line of its own, nothing joins one run to the next, and the measurements
  *   always stay on top.
- * @param finished false while the series is still growing: the average's last minute stays empty
- *   until the samples it needs have arrived.
  * @param legend show a small legend in the plot's top-left corner; tapping it folds it away to "?".
  */
 @Composable
@@ -94,13 +98,11 @@ fun TimeSeriesChart(
     expected: List<List<Sample>> = emptyList(),
     expectedColor: Color = color,
     legend: Boolean = false,
-    finished: Boolean = true,
 ) {
     val measurer = rememberTextMeasurer()
     val labelStyle = TextStyle(color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
     val gridColor = MaterialTheme.colorScheme.outlineVariant
-    val ringColor = MaterialTheme.colorScheme.surfaceContainer
-    val average = remember(samples, finished) { rollingMean(samples, TWO_MINUTES_MS, finished) }
+    val average = remember(samples) { rollingMean(samples, TWO_MINUTES_MS) }
 
     Box(modifier) {
         Canvas(Modifier.matchParentSize()) {
@@ -214,16 +216,9 @@ fun TimeSeriesChart(
 
                 drawPath(
                     pathOf(average),
-                    color,
-                    style = Stroke(width = 2.5.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round),
+                    color.copy(alpha = AVERAGE_ALPHA),
+                    style = Stroke(width = AVERAGE_WIDTH.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round),
                 )
-
-                val last = average.indexOfLast { !it.isNaN() }
-                if (last >= 0) {
-                    val end = Offset(x(samples[last].timeMs), y(average[last]))
-                    drawCircle(ringColor, 6.dp.toPx(), end)
-                    drawCircle(color, 4.dp.toPx(), end)
-                }
             }
         }
         if (legend && samples.isNotEmpty()) {
@@ -237,14 +232,33 @@ fun TimeSeriesChart(
     }
 }
 
-/** What each line means, in the chart's own styles. Tapping folds it away to a "?" and back. */
+/**
+ * Whether chart legends are open: one choice for every chart in the app, kept between app starts.
+ * Folding one legend folds them all.
+ */
+private object LegendShown {
+    private const val PREF = "chartLegend"
+    private var state: MutableState<Boolean>? = null
+
+    fun state(context: Context): MutableState<Boolean> = state ?: mutableStateOf(prefs(context).getBoolean(PREF, true)).also { state = it }
+
+    fun set(context: Context, open: Boolean) {
+        state(context).value = open
+        prefs(context).edit().putBoolean(PREF, open).apply()
+    }
+
+    private fun prefs(context: Context) = context.applicationContext.getSharedPreferences("tegenwind", Context.MODE_PRIVATE)
+}
+
+/** What each line means, in the chart's own styles. Tapping folds it away to a "?" and back, on every chart. */
 @Composable
 private fun ChartLegend(color: Color, expectedColor: Color?, modifier: Modifier = Modifier) {
-    var open by rememberSaveable { mutableStateOf(true) }
+    val context = LocalContext.current
+    val open by remember { LegendShown.state(context) }
     val ink = MaterialTheme.colorScheme.onSurfaceVariant
     val text = TextStyle(color = ink, fontSize = 10.sp, lineHeight = 12.sp)
     // Its own click, so tapping the legend doesn't also toggle the chart underneath.
-    val toggle = Modifier.clickable { open = !open }
+    val toggle = Modifier.clickable { LegendShown.set(context, !open) }
     if (!open) {
         Box(
             modifier.then(toggle).size(16.dp).border(1.dp, ink, CircleShape),
@@ -264,7 +278,7 @@ private fun ChartLegend(color: Color, expectedColor: Color?, modifier: Modifier 
             for (i in 0..2) drawCircle(color, r, Offset(r + i * (size.width - 2 * r) / 2, size.height / 2))
         }
         LegendRow("average", text) {
-            drawLine(color, Offset(0f, size.height / 2), Offset(size.width, size.height / 2), 2.5.dp.toPx(), StrokeCap.Round)
+            drawLine(color.copy(alpha = AVERAGE_ALPHA), Offset(0f, size.height / 2), Offset(size.width, size.height / 2), AVERAGE_WIDTH.toPx(), StrokeCap.Round)
         }
         if (expectedColor != null) LegendRow("expected", text) {
             drawLine(expectedColor.copy(alpha = EXPECTED_ALPHA), Offset(0f, size.height / 2), Offset(size.width, size.height / 2), EXPECTED_WIDTH.toPx(), StrokeCap.Round)

@@ -449,7 +449,6 @@ private fun LiveView(ride: LiveRide, onStop: () -> Unit) {
                             expected = ride.expectedSpeeds,
                             expectedColor = MaterialTheme.colorScheme.primary,
                             legend = true,
-                            finished = false,
                         )
                         // Across from the legend: what the chart shows. Tapping the chart switches it.
                         ChartChip(
@@ -556,7 +555,7 @@ private fun LeaveNowPreview(routeId: Long) {
             Spacer(Modifier.height(4.dp))
             Text(
                 p.wind?.let { w ->
-                    "Wind %s %d Bft\n%s".format(compassPoint(w.fromDeg), beaufort(w.speedMps), windEffect(p.eta.windCostS))
+                    "Wind %s %d Bft".format(compassPoint(w.fromDeg), beaufort(w.speedMps))
                 } ?: "No wind forecast (offline?)",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -695,7 +694,7 @@ private fun EtaCard(r: RideRoute, live: LiveEta?, lat: Double?, lon: Double?, li
                 live?.let {
                     Text(
                         // Your pedal power behind today's form so far; none on a bike that rides itself.
-                        listOfNotNull(powerText(it.pedalPowerW), windEffect(it.eta.windCostS)).joinToString(" · "),
+                        powerText(it.pedalPowerW).orEmpty(),
                         style = MaterialTheme.typography.bodyMedium.copy(fontFeatureSettings = "tnum"),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -805,17 +804,6 @@ private fun WindBadge(w: WindNow, exposureKnown: Boolean = true) {
 /** 42 s -> "40 s", 95 s -> "2 min" */
 private fun formatMargin(seconds: Double): String =
     if (seconds < Eta.FIRM_BAND_S) "${maxOf(5, (seconds / 5).roundToInt() * 5)} s" else "${(seconds / 60).roundToInt()} min"
-
-/** Positive = wind slows you down: "wind costs 1:40"; negative: "wind gains 0:55". */
-fun windEffect(windCostS: Double): String {
-    val s = kotlin.math.abs(windCostS).roundToInt()
-    val time = "%d:%02d".format(s / 60, s % 60)
-    return when {
-        s < 15 -> "wind barely matters"
-        windCostS > 0 -> "wind costs $time"
-        else -> "wind gains $time"
-    }
-}
 
 private val SunColor = Color(0xFFFFD233)
 private val RainColor = Color(0xFF2F6FFF)

@@ -153,11 +153,11 @@ One scheme:
 
 ## 6. Charts
 
-- **Measurements:** raw values as solid dots in the series colour, and a 2-minute centred rolling
-  average (each point averages the minute either side) as a 2.5 dp line on top. On a ride still
-  going, the last minute has no average yet.
+- **Measurements:** raw values as solid dots in the series colour, and a 2-minute rolling average
+  (each point averages the 2 minutes up to it) as a 1.5 dp line at 60% on top. No dot at the
+  end of the line.
 - **Segment borders** on the live ride are vertical grid lines, in the grid's colour.
-- **What the model expects** is amber, 4 dp, at 50%, drawn **under** the measurements. The
+- **What the model expects** is amber, 2 dp, at 90%, drawn **under** the measurements. The
   measurements always stay on top. Each segment is a line of its own: the speed the ETA uses
   there, shaped within the segment by the route's learned speed profile (slower up a bridge, faster
   down). Nothing joins one segment's line to the next: never draw a slope between two segments.
@@ -172,7 +172,8 @@ One scheme:
 - **Say what the axes are,** in the chart's subtitle when the labels alone don't ("average headwind
   in km/h, − is tailwind · minutes").
 - **Legend:** a small chip in the plot's top-left corner (`legend = true`). Tapping it folds it to a
-  "?" and back. Use it instead of a caption that describes the lines.
+  "?" and back, on every chart at once, and the choice is kept between app starts. Use it instead
+  of a caption that describes the lines.
 - **Annotations,** like "last 2 min", go on the same kind of chip in the top-right corner.
 - **A card around a chart** is `ChartCard(title, subtitle)`.
 - **Charts stacked on one time** share its axis (`TimeAxis`): on the ride screen the speed chart and

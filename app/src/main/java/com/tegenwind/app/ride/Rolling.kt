@@ -24,28 +24,18 @@ fun rollingMedian(samples: List<Sample>, windowMs: Long): DoubleArray {
 }
 
 /**
- * Rolling mean at every sample of a time-sorted series, centred: the average of the samples within
- * half of [windowMs] on either side. With [complete] false (a ride still going) the last half
- * window has no value yet, NaN, because the samples it needs haven't arrived; a finished series
- * averages over what there is.
+ * Rolling mean at every sample of a time-sorted series, over the [windowMs] up to and including it.
+ * Gaps in the data shorten the window instead of stretching it.
  */
-fun rollingMean(samples: List<Sample>, windowMs: Long, complete: Boolean = true): DoubleArray {
+fun rollingMean(samples: List<Sample>, windowMs: Long): DoubleArray {
     val n = samples.size
     val mean = DoubleArray(n)
-    val half = windowMs / 2
-    val prefix = DoubleArray(n + 1)
-    for (i in 0 until n) prefix[i + 1] = prefix[i] + samples[i].value
     var start = 0
-    var end = 0 // exclusive
+    var sum = 0.0
     for (i in 0 until n) {
-        val t = samples[i].timeMs
-        if (!complete && t + half > samples[n - 1].timeMs) {
-            mean[i] = Double.NaN
-            continue
-        }
-        while (samples[start].timeMs < t - half) start++
-        while (end < n && samples[end].timeMs <= t + half) end++
-        mean[i] = (prefix[end] - prefix[start]) / (end - start)
+        sum += samples[i].value
+        while (samples[start].timeMs <= samples[i].timeMs - windowMs) sum -= samples[start++].value
+        mean[i] = sum / (i - start + 1)
     }
     return mean
 }

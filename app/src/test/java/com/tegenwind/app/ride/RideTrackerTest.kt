@@ -116,12 +116,11 @@ class RideTrackerTest {
     }
 
     @Test
-    fun rollingMeanIsCentredAndWaitsForTheLastMinuteWhileRiding() {
+    fun rollingMeanIsOverTheLastTwoMinutes() {
         val samples = (0L..180L).map { Sample(it * 1000, it.toDouble()) }
-        assertEquals(90.0, rollingMean(samples, TWO_MINUTES_MS)[90], 1e-9)
-        assertEquals(30.0, rollingMean(samples, TWO_MINUTES_MS)[0], 1e-9) // 0..60 s
-        val live = rollingMean(samples, TWO_MINUTES_MS, complete = false)
-        assertEquals(120.0, live[120], 1e-9)
-        assertEquals(true, live[121].isNaN())
+        val mean = rollingMean(samples, TWO_MINUTES_MS)
+        assertEquals(0.0, mean[0], 1e-9)
+        assertEquals(30.0, mean[60], 1e-9) // 0..60 s
+        assertEquals(120.5, mean[180], 1e-9) // 61..180 s: what is more than 2 minutes old has dropped out
     }
 }
