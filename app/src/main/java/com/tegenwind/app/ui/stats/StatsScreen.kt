@@ -39,6 +39,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.tegenwind.app.appContainer
 import com.tegenwind.app.data.RideEntity
+import com.tegenwind.app.data.RideTotals
 import com.tegenwind.app.data.RouteSegmentEntity
 import com.tegenwind.app.data.SegmentTraversalEntity
 import com.tegenwind.app.eta.Banister
@@ -83,6 +84,7 @@ fun StatsScreen() {
     }.collectAsStateWithLifecycle(emptyList())
     val headwindPoints = remember(rides, traversals) { headwindDurationPoints(rides, traversals) }
     val slowRows = remember(traversals, segments) { slowestSegments(traversals, segments) }
+    val totals by remember { container.db.rides().totals() }.collectAsStateWithLifecycle(null)
     var riderState by remember { mutableStateOf<RiderState?>(null) }
     LaunchedEffect(rides) {
         val now = System.currentTimeMillis()
@@ -94,6 +96,8 @@ fun StatsScreen() {
 
     LazyColumn(contentPadding = PaddingValues(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item { Text("Stats", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.SemiBold) }
+
+        totals?.takeIf { it.rides > 0 }?.let { item { TotalsCard(it) } }
 
         riderState?.takeIf { it.rideDays > 0 }?.let { item { FitnessCard(it) } }
 
@@ -166,6 +170,22 @@ fun StatsScreen() {
 }
 
 private fun durationMs(ride: RideEntity): Long = (ride.endedAtMs ?: ride.startedAtMs) - ride.startedAtMs
+
+/** How far you've ridden in all, across every route and off them. */
+@Composable
+private fun TotalsCard(totals: RideTotals) {
+    val km = totals.distanceM / 1000
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("All rides", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                // Whole km once it's long enough that a tenth says nothing.
+                FlatStat("Distance", (if (km < 100) "%.1f km" else "%.0f km").format(km), Modifier.weight(1f))
+                FlatStat("Rides", totals.rides.toString(), Modifier.weight(1f))
+            }
+        }
+    }
+}
 
 /** Fitness and fatigue across every route, and what they currently do to the ETA. */
 @Composable

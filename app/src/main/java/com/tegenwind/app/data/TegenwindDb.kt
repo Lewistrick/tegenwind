@@ -62,6 +62,9 @@ data class RideEntity(
 /** The stretch a ride rerouted; see [RideEntity.rerouteStartM]. */
 data class RideReroute(val rerouteStartM: Double?, val rerouteEndM: Double?)
 
+/** Distance and number of every real, finished ride, whatever its route. */
+data class RideTotals(val distanceM: Double, val rides: Int)
+
 /** How long one ride took over one route segment: the raw material for stats and learning. */
 @Entity(
     tableName = "segment_traversals",
@@ -268,6 +271,10 @@ interface RideDao {
     /** Finished, real (non-simulated) rides on one route, oldest first: the raw material for its stats page. */
     @Query("SELECT * FROM rides WHERE routeId = :routeId AND endedAtMs IS NOT NULL AND simulated = 0 ORDER BY startedAtMs")
     fun ridesForRoute(routeId: Long): Flow<List<RideEntity>>
+
+    /** Total distance and count of every real, finished ride, on a route or not: the Stats page's "All rides". */
+    @Query("SELECT COALESCE(SUM(distanceM), 0) AS distanceM, COUNT(*) AS rides FROM rides WHERE endedAtMs IS NOT NULL AND simulated = 0")
+    fun totals(): Flow<RideTotals>
 
     /** Training load per ride since [sinceMs], oldest first: what the fitness and fatigue model runs on. */
     @Query(
