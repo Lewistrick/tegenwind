@@ -55,4 +55,17 @@ class HeadingMapTest {
         val line = Polyline(listOf(p(0.0, 0.0), p(100.0, 0.0), p(101.0, 3.0), p(102.0, 0.0), p(300.0, 0.0)))
         assertEquals(90.0, routeBearingAt(line, 100.0), 3.0)
     }
+
+    @Test
+    fun aZigzagOfAFewMetresBarelyTurnsTheMap() {
+        // A straight east road with a 15 m long, 3 m sideways jog in it: the map hardly turns.
+        val line = Polyline(listOf(p(0.0, 0.0), p(200.0, 0.0), p(205.0, 3.0), p(215.0, 3.0), p(220.0, 0.0), p(500.0, 0.0)))
+        var worst = 0.0
+        var at = 150.0
+        while (at <= 280.0) {
+            worst = maxOf(worst, kotlin.math.abs(shortestTurn(90.0, routeBearingAt(line, at))))
+            at += 2.5
+        }
+        assertTrue("turned $worst°", worst < 6.0)
+    }
 }

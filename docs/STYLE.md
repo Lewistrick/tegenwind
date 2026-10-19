@@ -51,10 +51,10 @@ there. Don't use a hex value in a screen.
 - **Blue** is speed, and nothing else, except the arrival-time chart, and your arrow and the
   checkpoint flags on the ride screen's map.
 - **Scales on maps** are listed in section 7.
-- **Green** is good: faster than expected, a tailwind, the fastest ride, a ride in the top x% of its
-  route, "Recording".
+- **Green** is good: faster than expected, ahead of the ghost, a tailwind, the fastest ride, a ride in
+  the top x% of its route, "Recording".
 - **Red** is bad or dangerous:
-  - slower than expected, a headwind
+  - slower than expected, behind the ghost, a headwind
   - off route, the slowest ride, a ride in the bottom x% of its route
   - delete, and Stop once armed
 
@@ -204,12 +204,23 @@ no streets, no labels. For a road you ride every day the shape is enough.
   one that doesn't (a light that never stops you). The ends of the route are small grey dots.
 - **You** are a solid light dot on a route's or ride's map. **On the ride screen** the map turns so
   the way you're going points up and zooms to about the next 45 s at your speed (150–700 m ahead,
-  wider to keep a nearby ghost in view); turning and zooming glide. You are a blue arrow at 92%
-  with a dark rim, two-thirds of the way down; the ghost (an earlier ride, where it was this long
-  after setting off) is a grey arrow at 35%. An arrow is a triangle with a notch cut out of its
-  back, pointing the way of travel. Segment borders are small blue checkpoint flags (a pole with a
-  pennant, upright on screen): bright ahead, at 35% once passed, since a stretch only takes its
-  colour when you reach its end.
+  wider to keep a nearby ghost in view); turning and zooming glide.
+  - The map follows the road over 40 m either side of you, and takes 2.5 s to turn, so a zigzag of
+    10–20 m across the road is barely noticeable.
+  - The road is plain: a slightly brighter grey than on other maps, with no colours on its stretches.
+  - You are a blue arrow at 92% with a dark rim, two-thirds of the way down. The ghost is a white arrow:
+    a see-through fill (25%) with a clear white edge (70%, 1.5 dp). An arrow is a triangle with a notch
+    cut out of its back, pointing the way of travel.
+  - Segment borders are small blue checkpoint flags (a pole with a pennant, upright on screen):
+    bright ahead, at 35% once passed.
+  - **The ghost** is picked under the map: the expected ride (the default), or your median, best or
+    last ride, where it was this long after setting off. The expected ride is what the ETA model
+    gives today (the forecast wind for when you get there, your usual effort: the median pedal power
+    of the last 10 rides). It never waits at a light, so a red light costs you time against it.
+  - **The gap to the ghost** is in the map's top-right corner, on a card-coloured chip at 75%:
+    the distance over the time, `headlineSmall` semibold, as "+40 m" over "+0:08". Green when ahead,
+    red when behind, white (`Ink`) within 25 m or 5 s. The map's subtitle only speaks when there
+    are no numbers to show.
 - **Tapping a stretch** gives it a light edge and says what is known about it in one muted line
   under the map. That line keeps two lines of room, so the page doesn't jump.
 - The ride screen's map is 1.25 times as wide as high. Other maps are as wide as the card and as tall as the route needs (between 1.3 and 2.8 times as wide as high).
