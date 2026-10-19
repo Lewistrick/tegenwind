@@ -7,9 +7,17 @@ import org.junit.Test
 
 class PowerTextTest {
     @Test
-    fun showsPedalPowerRoundedToFiveWatts() {
-        assertEquals("≈125 W", powerText(124.4))
+    fun showsPedalPowerToTheWholeWatt() {
+        assertEquals("≈124 W", powerText(124.4))
+        assertEquals("≈127 W", powerText(126.5))
         assertNull(powerText(null)) // ride too short to judge, or a bike that rides itself
+    }
+
+    @Test
+    fun formIsSaidAsAPercentageOfTheModelRider() {
+        assertEquals("form +3%", formText(1.03))
+        assertEquals("form −8%", formText(0.92))
+        assertEquals("form 0%", formText(1.001))
     }
 
     @Test

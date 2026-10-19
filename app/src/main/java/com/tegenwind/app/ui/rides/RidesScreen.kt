@@ -101,10 +101,20 @@ private fun RideRow(ride: RideEntity, routeName: String?, onClick: () -> Unit) {
 }
 
 /**
- * Pedal power as shown, "≈125 W": an estimate from speed, not a measurement, so rounded to 5 W.
- * Null when there is none to show.
+ * Pedal power as shown, "≈125 W": an estimate from speed, not a measurement, but to the whole watt so
+ * that rides can be compared. Null when there is none to show.
  */
-fun powerText(watts: Double?): String? = watts?.let { "≈%d W".format((Math.round(it / 5) * 5).toInt()) }
+fun powerText(watts: Double?): String? = watts?.let { "≈%d W".format(Math.round(it).toInt()) }
+
+/** Form as shown, "form +3%" or "form −8%": how much faster or slower than the model rider you ride. */
+fun formText(form: Double): String {
+    val pct = Math.round((form - 1) * 100).toInt()
+    return "form " + when {
+        pct > 0 -> "+$pct%"
+        pct < 0 -> "−${-pct}%"
+        else -> "0%"
+    }
+}
 
 /**
  * Your pedal power behind a ride's form: as worked out with the rider and bike set when it was

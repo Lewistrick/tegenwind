@@ -231,8 +231,10 @@ no streets, no labels. For a road you ride every day the shape is enough.
   exception is the YES / NO of the almost-there prompt, which is read while riding.
 - **Units:** km, km/h, min, bpm, %, Bft, W, load/day (training load per day: an hour of solid
   riding is about 100). Times are m:ss or h:mm:ss; clock times HH:mm.
-  - Power is an estimate from speed, never a measurement: it always carries "≈" and is rounded to
-    5 W ("≈125 W"). It's how form is shown; the word "form" is not.
+  - Power is an estimate from speed, never a measurement: it always carries "≈". It is shown to the
+    whole watt ("≈125 W"), not rounded further, so rides can be compared.
+  - Form is how much faster or slower than the model rider you ride, as a signed percentage with a
+    real minus: "form +3%", "form −8%". On the ride screen it follows the power: "≈125 W · form −8%".
   - A unit that is a word, like load/day, follows the value in the label's size, muted and not
     bold, so the value stays on one line: "42 load/day".
 - **Separators:** a middle dot with spaces between items: "13.6 km · 6 rides · usually 37:43".
