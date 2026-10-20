@@ -15,7 +15,7 @@ wording on screen), read `docs/STYLE.md` and follow it:
 ## Comparisons
 
 Compare the rider only with their own real (not simulated) rides: their usual, their median, best
-or last ride, an earlier ride. The ETA's expectation is allowed because it is learned from those
+or last ride, an earlier ride. What the arrival time is based on is allowed because it is learned from those
 rides and corrected for the weather. Never show a comparison with a model rider, a reference value
 or bare physics (no form percentage, no "vs physics"). The full rule is "Compare only with your own
 rides" in `docs/STYLE.md`.

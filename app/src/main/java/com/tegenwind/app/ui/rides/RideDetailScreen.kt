@@ -444,13 +444,13 @@ private fun WhatThisRideTaughtCard(taught: Taught?, rerouted: Pair<Double, Doubl
             Text("What this ride taught", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             Text(
                 when {
-                    simulated -> "Simulated rides don't teach the ETA."
+                    simulated -> "Tegenwind doesn't learn from simulated rides."
                     taught == null && !onRoute -> "Not on a saved route, so nothing was learned."
                     taught == null -> "No segment of the route was timed cleanly on this ride, so nothing was learned."
-                    taught == Taught.Simulated -> "Simulated rides don't teach the ETA."
-                    taught == Taught.BeforeLearning -> "This ride is from before the ETA learned from rides."
-                    lessons.isEmpty() -> "Nothing new: every segment took close to what the ETA assumed."
-                    else -> "Where the ETA changed its mind. These nudges go into your next arrival time."
+                    taught == Taught.Simulated -> "Tegenwind doesn't learn from simulated rides."
+                    taught == Taught.BeforeLearning -> "This ride is from before Tegenwind learned from rides."
+                    lessons.isEmpty() -> "Nothing new: every segment took close to what was predicted."
+                    else -> "Where Tegenwind changed its mind. These nudges go into your next arrival time."
                 },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -475,7 +475,7 @@ private fun WhatThisRideTaughtCard(taught: Taught?, rerouted: Pair<Double, Doubl
                     Column(Modifier.weight(1f)) {
                         Text("%.1f–%.1f km".format(l.startM / 1000, l.endM / 1000), fontWeight = FontWeight.SemiBold)
                         Text(
-                            "ETA assumed ${formatElapsed(l.expectedMs)} · took ${formatElapsed(l.tookMs)} · " +
+                            "predicted ${formatElapsed(l.expectedMs)} · took ${formatElapsed(l.tookMs)} · " +
                                 (if (l.signals > 0) "${l.signals} light${if (l.signals == 1) "" else "s"} · " else "") +
                                 "${l.passes} pass${if (l.passes == 1) "" else "es"}",
                             style = MaterialTheme.typography.bodySmall,

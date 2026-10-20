@@ -20,8 +20,8 @@ Use them; don't write a local copy.
 - **Dark only.** High contrast on the handlebar and easy on the battery. There is no light theme yet.
 - **Compare only with your own rides.** Every comparison on screen is against your own real (not
   simulated) rides: your usual (the median of the last 10), your median, best or last ride on a
-  route, an earlier ride. What the ETA expects counts too, because it is learned from those rides
-  and corrected for the weather; say it as what the ETA assumed or expects, never as a judgement of
+  route, an earlier ride. What the arrival time is based on counts too, because it is learned from
+  those rides and corrected for the weather; say it as what was predicted, never as a judgement of
   you. Never compare with a model rider, a reference value or bare physics, and never show a number
   whose zero or 100% is one (like a form percentage). Before your first real ride there is
   nothing to compare with, so show nothing rather than fall back to a model.
@@ -53,7 +53,7 @@ there. Don't use a hex value in a screen.
   - the main action and button text
   - the selected tab
   - the wind arrow
-  - what the ETA expects (the expected-speed line)
+  - what is expected (the expected-speed line)
   - traffic lights
 - **Blue** is speed, and nothing else, except the arrival-time chart, and your arrow and the
   checkpoint flags on the ride screen's map.
@@ -74,7 +74,7 @@ Scales, each only where it's listed:
   - Wind, on the ride screen's route bar: how much the wind costs or gains, fully red or green
     from a fifth of the time.
   - Learned time, in the segments table on a route's page: what your rides taught the ETA about a
-    segment, red where it allows more time, green less, fully red or green from a quarter.
+    segment, red where it now allows more time, green less, fully red or green from a quarter.
 - **Sky,** on the ride screen's route bar: yellow (`#FFD233`) through white to blue (`#2F6FFF`), for
   sun, cloud and rain.
   - Rain in the forecast is solid blue, and it has to show: none below 0.1 mm/h, then at once 35%
@@ -164,7 +164,7 @@ One scheme:
   (each point averages the 2 minutes up to it) as a 1.5 dp line at 60% on top. No dot at the
   end of the line.
 - **Segment borders** on the live ride are vertical grid lines, in the grid's colour.
-- **What the ETA expects** is amber, 2 dp, at 90%, drawn **under** the measurements. The
+- **What is expected** is amber, 2 dp, at 90%, drawn **under** the measurements. The
   measurements always stay on top. Each segment is a line of its own: the speed the ETA uses
   there, shaped within the segment by the route's learned speed profile (slower up a bridge, faster
   down). Nothing joins one segment's line to the next: never draw a slope between two segments.
@@ -244,6 +244,9 @@ no streets, no labels. For a road you ride every day the shape is enough.
   - Form (a speed ratio to the model rider) is never shown. On the ride screen your watts so far
     are followed by your usual, the median of your last 10 real rides: "≈125 W · usually ≈118 W".
     It's the same effort the expected ride rides at, so ahead of it and above your usual agree.
+  - ETA is a time, never the subject of a sentence: numbers are "predicted" ("predicted 1:20 · took
+    1:35"), and what learns or expects is Tegenwind ("Tegenwind changed its mind"). "ETA" stays where it
+    means the time itself ("Share ETA").
   - A unit that is a word, like load/day, follows the value in the label's size, muted and not
     bold, so the value stays on one line: "42 load/day".
 - **Separators:** a middle dot with spaces between items: "13.6 km · 6 rides · usually 37:43".

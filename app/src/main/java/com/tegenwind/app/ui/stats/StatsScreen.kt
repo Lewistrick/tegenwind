@@ -209,10 +209,10 @@ private fun FitnessCard(state: RiderState) {
             }
             Text(
                 when {
-                    state.rideDays < Banister.MIN_RIDE_DAYS -> "Ride on ${Banister.MIN_RIDE_DAYS - state.rideDays} more days before this starts nudging the ETA."
-                    effectPct > 0.3 -> "Fresher than your recent average, so the ETA expects a little more of you."
-                    effectPct < -0.3 -> "Still carrying the last few rides, so the ETA gives you a little more time."
-                    else -> "Training and recovery are in balance; the ETA takes you at your usual pace."
+                    state.rideDays < Banister.MIN_RIDE_DAYS -> "Ride on ${Banister.MIN_RIDE_DAYS - state.rideDays} more days before this starts nudging your arrival time."
+                    effectPct > 0.3 -> "Fresher than your recent average, so Tegenwind expects a little more of you."
+                    effectPct < -0.3 -> "Still carrying the last few rides, so Tegenwind gives you a little more time."
+                    else -> "Training and recovery are in balance; Tegenwind takes you at your usual pace."
                 },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,

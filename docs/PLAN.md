@@ -318,8 +318,8 @@ The bottom bar is **Ride · Rides · Routes · Stats**. Rides replaced Map.
   A ride opens here by itself when it finishes.
 - **Routes:** the list shows name, length and the state of the map lookup. Rename and GPX import
   are there. A route's page shows its traffic lights, km open to the wind and steepest slope, a
-  wind-exposure strip, and a table per segment. The table includes what each segment taught the
-  ETA: red where it allows more time, through yellow, to green where it allows less. It can add the
+  wind-exposure strip, and a table per segment. The table includes what each segment taught
+  Tegenwind: red where it allows more time, through yellow, to green where it allows less. It can add the
   reverse route, redo the lookup, or delete the route. Ride count, typical time and "Reset
   learning" were not built.
 - **Stats:** as planned (route picker; fastest, slowest, average and median ride; trend;
@@ -339,8 +339,8 @@ can go underneath later.
 - **A route's page:** the route coloured by learned pace, wind exposure, slope or standing still;
   tapping a stretch says what is known about it. Under "Standing still" the mapped lights show as
   dots, grey when they never stop you.
-- **A finished ride's page:** each stretch coloured by the time gained or lost against what the
-  ETA assumed that day, the ride's own track over it, dots where you stood still for 10 s or more.
+- **A finished ride's page:** each stretch coloured by the time gained or lost against what was
+  predicted that day, the ride's own track over it, dots where you stood still for 10 s or more.
   A free ride shows its track.
 - **The ride screen:** see Screens above. The ghost is replayed from the stored track of the chosen
   ride (`ride/Ghost.kt`); nothing new is stored.
