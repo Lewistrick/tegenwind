@@ -327,8 +327,24 @@ The bottom bar is **Ride · Rides · Routes · Stats**. Rides replaced Map.
   Its fitness and fatigue are in load/day: an hour of solid riding is about 100.
   Durations are start to finish, standing still included. "Slowest segments" ranks segments by
   your usual speed there (median time over your real rides), with no physics in it (20 Oct 2026;
-  it used to compare with bare physics). An "All rides" card at the top totals distance and rides
-  across every route.
+  it used to compare with bare physics).
+  - **More stats (20 Oct 2026, database 10):** above the route picker, across every route: an "All
+    rides" card (distance, rides, riding time), "Burned and saved" (≈kcal from effort × time ÷ 24%
+    muscle efficiency; petrol and CO₂ against a 6.5 L/100 km car), "Wind" (time the wind cost and
+    gave back, worked out per segment from the ride's own effort with and without its headwind, and
+    the share of rides with a headwind), the fitness card, and heart rate against effort.
+    Per route, after the duration charts: strongest and weakest ride with a power trend, moving
+    speed with its trend, the gap between predicted and actual arrival, time of day and weekday
+    against duration, temperature and rain against duration. Code: `ui/stats/StatsMath.kt`
+    (tested), `ui/stats/StatsCharts.kt`.
+  - **Kept with each ride from now on (`RideEntity`):** the arrival predicted at the start and
+    halfway (`etaStartArrivalMs`, `etaHalfArrivalMs`; the gap is measured against the moment the
+    last segment was left, so rides before this have none), average heart rate (`avgHrBpm`; the
+    readings themselves are deleted after two weeks), and the average temperature and rain on the
+    ride (`avgTempC`, `rainMm`, from the forecast along the route). Rides from before get their
+    weather once from Open-Meteo's record, at the place they began (`ride/WeatherBackfill.kt`,
+    `weather/WeatherHistory.kt`); heart rate averages are only known for rides still within the
+    two weeks of readings, or opened later on the ride page.
 
 ### Maps (13 Oct 2026)
 

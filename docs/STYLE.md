@@ -57,6 +57,7 @@ there. Don't use a hex value in a screen.
   - traffic lights
 - **Blue** is speed, and nothing else, except the arrival-time chart, and your arrow and the
   checkpoint flags on the ride screen's map.
+- **White (`Ink`)** is power: the dots and line of the power chart.
 - **Scales on maps** are listed in section 7.
 - **Green** is good: faster than expected, ahead of the ghost, a tailwind, the fastest ride, a ride in
   the top x% of its route, "Recording".
@@ -193,6 +194,21 @@ One scheme:
   minutes and seconds without the hour, with a leading colon (":59:30", ":00:00", ":00:15"), and "min:s" in the corner says so.
 - **Bars along a route** (exposure, sky, wind) are drawn left to right from start to finish. When
   there's room, a km axis runs underneath.
+- **The Stats page** (`ui/stats/StatsCharts.kt`) has three charts, each in a `ChartCard` that says
+  what is up and what is across:
+  - **Trend:** one value per ride over time, a 2 dp line at 55% under 3 dp dots, the date at each
+    end. The best ride is a green dot and the worst a red one when that means something (fastest and
+    slowest, strongest and weakest); a trend of gaps, speed or the like has none. The series colour
+    follows section 2: blue for durations and speed, white for power.
+  - **Scatter:** one 4 dp dot per ride at 75%, two numbers. Used for everything "against" something
+    (duration against headwind, time of day, temperature, rain; heart rate in red against power).
+  - **Weekday bars:** the average duration for each weekday, Monday first, bars in blue; a weekday
+    without rides has no bar.
+- **The Stats page's order:** what goes across all routes comes first, above the route picker, and
+  numbers come before charts: the "All rides" card (distance, rides, riding time), "Burned and
+  saved", "Wind", "Fitness", then the heart rate chart. Under the picker, one route: tiles, the
+  duration charts, power, speed, arrival time gap, when you ride, weather, headwind, then the
+  slowest segments.
 
 ## 7. Maps
 
@@ -248,6 +264,10 @@ no streets, no labels. For a road you ride every day the shape is enough.
   - Form (a speed ratio to the model rider) is never shown. On the ride screen your watts so far
     are followed by your usual, the median of your last 10 real rides: "≈125 W · usually ≈118 W".
     It's the same effort the expected ride rides at, so ahead of it and above your usual agree.
+  - Estimates on the Stats page carry "≈" like power does: kcal burned (effort × time moving ÷ 24%
+    muscle efficiency), petrol and CO₂ saved (against a petrol car at 6.5 L/100 km, 2.31 kg CO₂
+    per litre) and the time the wind cost or gave back. The card says what they are worked out from.
+    The strongest and weakest ride are told by their watts ("Strongest ride", never "best form").
   - ETA is a time, never the subject of a sentence: numbers are "predicted" ("predicted 1:20 · took
     1:35"), and what learns or expects is Tegenwind ("Tegenwind changed its mind"). "ETA" stays where it
     means the time itself ("Share ETA").
