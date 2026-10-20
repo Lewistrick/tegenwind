@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Card
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -39,6 +40,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.tegenwind.app.appContainer
 import com.tegenwind.app.data.RideEntity
+import com.tegenwind.app.data.RideTotals
 import com.tegenwind.app.data.RouteSegmentEntity
 import com.tegenwind.app.data.SegmentTraversalEntity
 import com.tegenwind.app.eta.Banister
@@ -83,6 +85,7 @@ fun StatsScreen() {
     }.collectAsStateWithLifecycle(emptyList())
     val headwindPoints = remember(rides, traversals) { headwindDurationPoints(rides, traversals) }
     val slowRows = remember(traversals, segments) { slowestSegments(traversals, segments) }
+    val totals by remember { container.db.rides().totals() }.collectAsStateWithLifecycle(null)
     var riderState by remember { mutableStateOf<RiderState?>(null) }
     LaunchedEffect(rides) {
         val now = System.currentTimeMillis()
@@ -94,6 +97,8 @@ fun StatsScreen() {
 
     LazyColumn(contentPadding = PaddingValues(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item { Text("Stats", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.SemiBold) }
+
+        totals?.takeIf { it.rides > 0 }?.let { item { TotalsCard(it) } }
 
         riderState?.takeIf { it.rideDays > 0 }?.let { item { FitnessCard(it) } }
 
@@ -154,18 +159,34 @@ fun StatsScreen() {
                 Column {
                     Text("Slowest segments", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     Text(
-                        "moving time compared with bare physics: where the road itself costs time",
+                        "your usual speed on each segment, standing still included: where the road itself costs time",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
-            items(slowRows) { SegmentOverrunRow(it) }
+            items(slowRows) { SlowSegmentRow(it) }
         }
     }
 }
 
 private fun durationMs(ride: RideEntity): Long = (ride.endedAtMs ?: ride.startedAtMs) - ride.startedAtMs
+
+/** How far you've ridden in all, across every route and off them. */
+@Composable
+private fun TotalsCard(totals: RideTotals) {
+    val km = totals.distanceM / 1000
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("All rides", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                // Whole km once it's long enough that a tenth says nothing.
+                FlatStat("Distance", (if (km < 100) "%.1f km" else "%.0f km").format(km), Modifier.weight(1f))
+                FlatStat("Rides", totals.rides.toString(), Modifier.weight(1f))
+            }
+        }
+    }
+}
 
 /** Fitness and fatigue across every route, and what they currently do to the ETA. */
 @Composable
@@ -188,10 +209,10 @@ private fun FitnessCard(state: RiderState) {
             }
             Text(
                 when {
-                    state.rideDays < Banister.MIN_RIDE_DAYS -> "Ride on ${Banister.MIN_RIDE_DAYS - state.rideDays} more days before this starts nudging the ETA."
-                    effectPct > 0.3 -> "Fresher than your recent average, so the ETA expects a little more of you."
-                    effectPct < -0.3 -> "Still carrying the last few rides, so the ETA gives you a little more time."
-                    else -> "Training and recovery are in balance; the ETA takes you at your usual pace."
+                    state.rideDays < Banister.MIN_RIDE_DAYS -> "Ride on ${Banister.MIN_RIDE_DAYS - state.rideDays} more days before this starts nudging your arrival time."
+                    effectPct > 0.3 -> "Fresher than your recent average, so Tegenwind expects a little more of you."
+                    effectPct < -0.3 -> "Still carrying the last few rides, so Tegenwind gives you a little more time."
+                    else -> "Training and recovery are in balance; Tegenwind takes you at your usual pace."
                 },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -427,38 +448,43 @@ private fun HeadwindScatter(points: List<Pair<Double, Double>>) {
     }
 }
 
-private data class SegOverrun(val idx: Int, val startM: Double, val endM: Double, val actualMs: Double, val predictedMs: Double, val rides: Int) {
-    val overrun: Double get() = actualMs / predictedMs
+/** A segment as you usually ride it: the median time over it, start to finish, across your real rides. */
+private data class SlowSegment(val startM: Double, val endM: Double, val usualMs: Long, val rides: Int) {
+    val kmh: Double get() = (endM - startM) / (usualMs / 1000.0) * 3.6
 }
 
-private fun slowestSegments(traversals: List<SegmentTraversalEntity>, segments: List<RouteSegmentEntity>): List<SegOverrun> {
+/**
+ * The segments you usually ride slowest, from your own real rides only (no physics, no model):
+ * median time over each, standing still included, as the rest of Stats counts time.
+ */
+private fun slowestSegments(traversals: List<SegmentTraversalEntity>, segments: List<RouteSegmentEntity>): List<SlowSegment> {
     val byIdx = segments.associateBy { it.idx }
     return traversals.groupBy { it.segIdx }
         .mapNotNull { (idx, ts) ->
             val seg = byIdx[idx] ?: return@mapNotNull null
-            val predicted = ts.map { it.predictedMovingMs }.average()
-            if (predicted <= 0.0) return@mapNotNull null
-            SegOverrun(idx, seg.startM, seg.endM, ts.map { it.movingMs }.average(), predicted, ts.size)
+            val times = ts.map { it.exitMs - it.enterMs }.sorted()
+            val usual = times[times.size / 2]
+            if (usual <= 0 || seg.endM <= seg.startM) return@mapNotNull null
+            SlowSegment(seg.startM, seg.endM, usual, ts.map { it.rideId }.distinct().size)
         }
-        .sortedByDescending { it.overrun }
+        .sortedBy { it.kmh }
         .take(6)
 }
 
 @Composable
-private fun SegmentOverrunRow(s: SegOverrun) {
+private fun SlowSegmentRow(s: SlowSegment) {
     Card(Modifier.fillMaxWidth()) {
         Row(Modifier.padding(12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Column(Modifier.weight(1f)) {
                 Text("%.1f–%.1f km".format(s.startM / 1000, s.endM / 1000), fontWeight = FontWeight.SemiBold)
                 Text(
-                    "usual ${formatElapsed(s.actualMs.toLong())} · physics ${formatElapsed(s.predictedMs.toLong())} · ${s.rides} ride${if (s.rides == 1) "" else "s"}",
+                    "usually ${formatElapsed(s.usualMs)} · ${s.rides} ride${if (s.rides == 1) "" else "s"}",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            val pct = ((s.overrun - 1) * 100).toInt()
-            // Neutral: against bare physics nearly every segment is slower, so red would say nothing.
-            Text("%+d%%".format(pct), fontWeight = FontWeight.SemiBold)
+            // Neutral: a slow segment is the road, not a bad ride.
+            Text("%.0f km/h".format(s.kmh), style = LocalTextStyle.current.copy(fontFeatureSettings = "tnum"), fontWeight = FontWeight.SemiBold)
         }
     }
 }

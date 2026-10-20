@@ -11,3 +11,11 @@ wording on screen), read `docs/STYLE.md` and follow it:
 - If the change needs a rule the guide doesn't have (a new colour, component, chart element or
   text pattern), add the rule to `docs/STYLE.md` in the same change.
 - Check the result on the phone as described in the guide's last section.
+
+## Comparisons
+
+Compare the rider only with their own real (not simulated) rides: their usual, their median, best
+or last ride, an earlier ride. What the arrival time is based on is allowed because it is learned from those
+rides and corrected for the weather. Never show a comparison with a model rider, a reference value
+or bare physics (no form percentage, no "vs physics"). The full rule is "Compare only with your own
+rides" in `docs/STYLE.md`.

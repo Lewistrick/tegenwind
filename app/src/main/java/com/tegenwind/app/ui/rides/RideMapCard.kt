@@ -87,7 +87,7 @@ fun rideMapData(
 
 /**
  * Where the ride went. On a route, each stretch is coloured by the time gained or lost against what
- * was expected of it that day, and tapping one says by how much.
+ * was predicted for it that day, and tapping one says by how much.
  */
 @Composable
 fun RideMapCard(data: RideMapData) {
@@ -97,7 +97,7 @@ fun RideMapCard(data: RideMapData) {
     ChartCard(
         "Map",
         when {
-            onRoute -> "Green: faster than expected there, red: slower. Dots: where you stood still."
+            onRoute -> "Green: quicker than predicted there, red: slower. Dots: where you stood still."
             else -> "Where you rode. Dots: where you stood still."
         },
     ) {
@@ -125,13 +125,13 @@ fun RideMapCard(data: RideMapData) {
     }
 }
 
-/** One stretch of a ride in words: what was expected, what it took, and the difference. */
+/** One stretch of a ride in words: what was predicted, what it took, and the difference. */
 fun passSummary(s: RouteSegmentEntity, pass: SegmentTraversalEntity?): String {
     val where = "%.2f–%.2f km".format(s.startM / 1000, s.endM / 1000)
     val expected = pass?.expectedMovingMs ?: return "$where · not timed on this ride"
     val parts = arrayListOf(
         where,
-        "expected ${formatElapsed(expected)}",
+        "predicted ${formatElapsed(expected)}",
         "took ${formatElapsed(pass.movingMs)}",
         "%s%d s".format(if (pass.movingMs > expected) "+" else "−", (kotlin.math.abs(pass.movingMs - expected) / 1000.0).roundToInt()),
     )

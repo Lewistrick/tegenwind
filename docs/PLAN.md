@@ -318,15 +318,17 @@ The bottom bar is **Ride · Rides · Routes · Stats**. Rides replaced Map.
   A ride opens here by itself when it finishes.
 - **Routes:** the list shows name, length and the state of the map lookup. Rename and GPX import
   are there. A route's page shows its traffic lights, km open to the wind and steepest slope, a
-  wind-exposure strip, and a table per segment. The table includes what each segment learned: its
-  time against your usual pace, from red (slower) through yellow to green (faster). It can add the
+  wind-exposure strip, and a table per segment. The table includes what each segment taught
+  Tegenwind: red where it allows more time, through yellow, to green where it allows less. It can add the
   reverse route, redo the lookup, or delete the route. Ride count, typical time and "Reset
   learning" were not built.
 - **Stats:** as planned (route picker; fastest, slowest, average and median ride; trend;
   histogram; headwind vs duration; slowest segments), plus a fitness card that runs across routes.
   Its fitness and fatigue are in load/day: an hour of solid riding is about 100.
-  Durations are start to finish, standing still included. "Slowest segments" compares against
-  physics alone, not the learned expectation.
+  Durations are start to finish, standing still included. "Slowest segments" ranks segments by
+  your usual speed there (median time over your real rides), with no physics in it (20 Oct 2026;
+  it used to compare with bare physics). An "All rides" card at the top totals distance and rides
+  across every route.
 
 ### Maps (13 Oct 2026)
 
@@ -338,7 +340,7 @@ can go underneath later.
   tapping a stretch says what is known about it. Under "Standing still" the mapped lights show as
   dots, grey when they never stop you.
 - **A finished ride's page:** each stretch coloured by the time gained or lost against what was
-  expected that day, the ride's own track over it, dots where you stood still for 10 s or more.
+  predicted that day, the ride's own track over it, dots where you stood still for 10 s or more.
   A free ride shows its track.
 - **The ride screen:** see Screens above. The ghost is replayed from the stored track of the chosen
   ride (`ride/Ghost.kt`); nothing new is stored.
@@ -399,7 +401,10 @@ can go underneath later.
     model rider still holds 25 km/h, so stored forms keep their meaning; on this bike that takes
     about 165 W.
   - Screens show form as **pedal power**: the watts that hold form × the model's speed on that bike
-    on flat ground in still air ("≈125 W" for form 0.88). It's an estimate from speed, rounded to 5 W.
+    on flat ground in still air ("≈125 W" for form 0.88). It's an estimate from speed, to the whole
+    watt. Form itself, a ratio to the model rider, is never shown: the ride screen compares your
+    watts with your usual, the median of your last 10 real rides ("≈125 W · usually ≈118 W"). See
+    "Compare only with your own rides" in `STYLE.md`.
   - **Rider and bike settings** (15 Oct 2026, `data/RiderSetup.kt`, `ui/settings/RiderBikeScreen.kt`):
     your weight (or the latest from Health Connect), luggage, and one or more bikes, each with its
     weight, riding position, tyres, gears and motor. The start screen picks the bike for the ride.

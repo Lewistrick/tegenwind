@@ -81,8 +81,9 @@ import com.tegenwind.app.eta.WindNow
 import com.tegenwind.app.eta.etaModel
 import com.tegenwind.app.eta.Banister
 import com.tegenwind.app.eta.startingForm
-import com.tegenwind.app.ui.rides.formText
 import com.tegenwind.app.ui.rides.powerText
+import com.tegenwind.app.ui.rides.usualPowerText
+import com.tegenwind.app.ui.rides.usualWatts
 import com.tegenwind.app.ui.settings.RiderBikeScreen
 import com.tegenwind.app.data.RiderSetup
 import com.tegenwind.app.ride.AutoFinish
@@ -651,6 +652,8 @@ private fun PausedBar(stoppedMs: Long) {
 private fun EtaCard(r: RideRoute, live: LiveEta?, lat: Double?, lon: Double?, liveLink: String?) {
     val context = LocalContext.current
     val p = r.progress
+    // The ride being recorded isn't among them yet: it only gets its form when it ends.
+    val usualW by produceState<Double?>(null) { value = usualWatts(context.appContainer.db.rides().recentRidesWithForm()) }
     val share = Modifier.clickable(enabled = live != null) {
         live?.let {
             context.startActivity(
@@ -694,8 +697,10 @@ private fun EtaCard(r: RideRoute, live: LiveEta?, lat: Double?, lon: Double?, li
                 Spacer(Modifier.weight(1f))
                 live?.let {
                     Text(
-                        // Your pedal power behind today's form so far (none on a bike that rides itself), and the form.
-                        listOfNotNull(powerText(it.pedalPowerW), formText(it.form)).joinToString(" · ") { s -> s.replace(' ', ' ') },
+                        // Your pedal power so far (none on a bike that rides itself), beside your usual from
+                        // your own last real rides: never against a model rider.
+                        listOfNotNull(powerText(it.pedalPowerW), it.pedalPowerW?.let { usualPowerText(usualW) })
+                            .joinToString(" · ") { s -> s.replace(' ', ' ') },
                         style = MaterialTheme.typography.bodyMedium.copy(fontFeatureSettings = "tnum"),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )

@@ -32,7 +32,7 @@ import kotlin.math.roundToInt
 
 /** What a route's map is coloured by. */
 enum class RouteOverlay(val label: String, val explains: String) {
-    PACE("Learned pace", "Green rides faster than your usual pace, red slower. Grey: not ridden yet."),
+    PACE("Learned pace", "What your rides taught Tegenwind: red where it allows more time, green less. Grey: not ridden yet."),
     EXPOSURE("Wind exposure", "Bright is open to the wind, dim is sheltered."),
     GRADE("Slope", "Red climbs, green descends."),
     STOPS("Standing still", "Red where you wait, by how long on average. Amber dots: traffic lights; grey ones never stop you."),

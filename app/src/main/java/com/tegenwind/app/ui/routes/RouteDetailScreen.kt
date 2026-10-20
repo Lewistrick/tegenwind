@@ -203,7 +203,7 @@ private val SEGMENT_COLUMNS = listOf("km" to 56, "dir" to 40, "slope" to 56, "op
 private fun SegmentHeader() {
     Column(Modifier.padding(vertical = 6.dp)) {
         Text(
-            "learned: how each segment rides compared with your usual pace. Green is faster, red slower.",
+            "learned: what your rides taught Tegenwind about each segment: red where it now allows more time, green less.",
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

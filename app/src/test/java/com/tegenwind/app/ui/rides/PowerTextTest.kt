@@ -14,10 +14,13 @@ class PowerTextTest {
     }
 
     @Test
-    fun formIsSaidAsAPercentageOfTheModelRider() {
-        assertEquals("form +3%", formText(1.03))
-        assertEquals("form −8%", formText(0.92))
-        assertEquals("form 0%", formText(1.001))
+    fun usualIsTheMedianOfYourOwnRides() {
+        val rides = listOf(110.0, 130.0, 118.0).map { RideEntity(startedAtMs = 0, formFactor = 0.9, bikeName = "Gazelle", pedalPowerW = it) }
+        assertEquals(118.0, usualWatts(rides)!!, 0.0)
+        assertEquals("usually ≈118 W", usualPowerText(usualWatts(rides)))
+        // Before the first real ride there is nothing to compare with, and no model rider stands in.
+        assertNull(usualWatts(emptyList()))
+        assertNull(usualPowerText(null))
     }
 
     @Test
