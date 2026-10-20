@@ -48,7 +48,7 @@ import com.tegenwind.app.ui.theme.GoodColor
 import com.tegenwind.app.ui.theme.Ink
 import com.tegenwind.app.ui.theme.SpeedColor
 import com.tegenwind.app.ui.mapAspect
-import com.tegenwind.app.ui.rides.rideWatts
+import com.tegenwind.app.ui.rides.usualWatts
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
@@ -88,13 +88,13 @@ fun gapSign(gap: Double, levelWithin: Double): Int = when {
 }
 
 /**
- * The effort of the expected ride, as a form: the median pedal power of [rides] (the last real
- * ones), on the bike being ridden now. Null without any power to go by, or on a bike that rides itself.
+ * The effort of the expected ride, as a form: your usual pedal power ([usualWatts] of [rides], the last
+ * real ones) on the bike being ridden now; on a bike that rides itself, the median of their forms.
+ * Null before any real ride: the expected ride is always your own effort, never a model rider's.
  */
 fun expectedForm(rides: List<RideEntity>, params: RiderParams): Double? {
-    val watts = rides.mapNotNull(::rideWatts).sorted()
-    if (watts.isEmpty()) return null
-    return params.formAtPowerW(watts[watts.size / 2])
+    if (rides.isEmpty()) return null
+    return usualWatts(rides)?.let(params::formAtPowerW) ?: priorForm(rides.mapNotNull { it.formFactor })
 }
 
 /**
@@ -145,7 +145,7 @@ fun LiveMapCard(ride: LiveRide, nowMs: Long) {
         if (choice == GhostChoice.EXPECTED) {
             val params = setup.params()
             val model = loaded.etaModel(learned, params)
-            val form = expectedForm(rides.recentRidesWithForm(), params) ?: priorForm(rides.recentForms())
+            val form = expectedForm(rides.recentRidesWithForm(), params) ?: return@produceState
             var weather = container.weather.alongRoute(loaded.line)
             value = withContext(Dispatchers.Default) { expectedGhost(model, loaded.profile, weather, form, startedAtMs) }
             // Without a forecast it is still air, until one arrives.

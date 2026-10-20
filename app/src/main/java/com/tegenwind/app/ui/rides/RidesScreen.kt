@@ -106,15 +106,17 @@ private fun RideRow(ride: RideEntity, routeName: String?, onClick: () -> Unit) {
  */
 fun powerText(watts: Double?): String? = watts?.let { "≈%d W".format(Math.round(it).toInt()) }
 
-/** Form as shown, "form +3%" or "form −8%": how much faster or slower than the model rider you ride. */
-fun formText(form: Double): String {
-    val pct = Math.round((form - 1) * 100).toInt()
-    return "form " + when {
-        pct > 0 -> "+$pct%"
-        pct < 0 -> "−${-pct}%"
-        else -> "0%"
-    }
+/**
+ * Your usual pedal power: the median watts of [rides] (your last real rides), whatever bike each was
+ * ridden on. Null without any to go by. What the live watts and the expected ride are measured against.
+ */
+fun usualWatts(rides: List<RideEntity>): Double? {
+    val watts = rides.mapNotNull(::rideWatts).sorted()
+    return watts.getOrNull(watts.size / 2)
 }
+
+/** "usually ≈118 W", from your own last real rides. Null without any. */
+fun usualPowerText(watts: Double?): String? = powerText(watts)?.let { "usually $it" }
 
 /**
  * Your pedal power behind a ride's form: as worked out with the rider and bike set when it was

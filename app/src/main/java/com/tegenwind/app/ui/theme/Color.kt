@@ -33,7 +33,7 @@ val GoodColor = Color(0xFF48D695)
 
 /*
  * The red–yellow–green scale, for how much something costs or gains along a route: the wind on the
- * ride screen's route bar, and a segment's learned time against physics on a route's page.
+ * ride screen's route bar, and what a segment taught the ETA on a route's page.
  */
 val ScaleWorse = Color(0xFFFF3B30)
 val ScaleEven = Color(0xFFFFD60A)
