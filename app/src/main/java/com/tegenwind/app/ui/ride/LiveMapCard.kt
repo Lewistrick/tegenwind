@@ -25,10 +25,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.tegenwind.app.appContainer
-import com.tegenwind.app.data.RideEntity
-import com.tegenwind.app.eta.RiderParams
 import com.tegenwind.app.eta.etaModel
-import com.tegenwind.app.eta.priorForm
 import com.tegenwind.app.ride.Ghost
 import com.tegenwind.app.ride.GhostChoice
 import com.tegenwind.app.ride.LiveRide
@@ -88,16 +85,6 @@ fun gapSign(gap: Double, levelWithin: Double): Int = when {
 }
 
 /**
- * The effort of the expected ride, as a form: your usual pedal power ([usualWatts] of [rides], the last
- * real ones) on the bike being ridden now; on a bike that rides itself, the median of their forms.
- * Null before any real ride: the expected ride is always your own effort, never a model rider's.
- */
-fun expectedForm(rides: List<RideEntity>, params: RiderParams): Double? {
-    if (rides.isEmpty()) return null
-    return usualWatts(rides)?.let(params::formAtPowerW) ?: priorForm(rides.mapNotNull { it.formFactor })
-}
-
-/**
  * What the subtitle says when there are no gap numbers to show; null when there are, since the
  * numbers say it.
  */
@@ -144,15 +131,16 @@ fun LiveMapCard(ride: LiveRide, nowMs: Long) {
         val rides = container.db.rides()
         if (choice == GhostChoice.EXPECTED) {
             val params = setup.params()
-            val model = loaded.etaModel(learned, params)
-            val form = expectedForm(rides.recentRidesWithForm(), params) ?: return@produceState
+            val segments = loaded.etaModel(learned, params).segments
+            // Your usual effort: none before a real ride on record, and none on a bike that rides itself.
+            val powerW = usualWatts(rides.recentRidesWithPower()) ?: return@produceState
             var weather = container.weather.alongRoute(loaded.line)
-            value = withContext(Dispatchers.Default) { expectedGhost(model, loaded.profile, weather, form, startedAtMs) }
+            value = withContext(Dispatchers.Default) { expectedGhost(segments, params, loaded.profile, weather, powerW, startedAtMs) }
             // Without a forecast it is still air, until one arrives.
             while (weather == null) {
                 delay(60_000)
                 weather = container.weather.alongRoute(loaded.line)
-                if (weather != null) value = withContext(Dispatchers.Default) { expectedGhost(model, loaded.profile, weather, form, startedAtMs) }
+                if (weather != null) value = withContext(Dispatchers.Default) { expectedGhost(segments, params, loaded.profile, weather, powerW, startedAtMs) }
             }
         } else {
             val pick = pickGhostRide(rides.ridesForRoute(loaded.route.id).first(), choice, loaded.line.lengthM)

@@ -653,7 +653,7 @@ private fun EtaCard(r: RideRoute, live: LiveEta?, lat: Double?, lon: Double?, li
     val context = LocalContext.current
     val p = r.progress
     // The ride being recorded isn't among them yet: it only gets its form when it ends.
-    val usualW by produceState<Double?>(null) { value = usualWatts(context.appContainer.db.rides().recentRidesWithForm()) }
+    val usualW by produceState<Double?>(null) { value = usualWatts(context.appContainer.db.rides().recentRidesWithPower()) }
     val share = Modifier.clickable(enabled = live != null) {
         live?.let {
             context.startActivity(

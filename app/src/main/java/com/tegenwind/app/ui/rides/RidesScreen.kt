@@ -107,7 +107,7 @@ private fun RideRow(ride: RideEntity, routeName: String?, onClick: () -> Unit) {
 fun powerText(watts: Double?): String? = watts?.let { "≈%d W".format(Math.round(it).toInt()) }
 
 /**
- * Your usual pedal power: the median watts of [rides] (your last real rides), whatever bike each was
+ * Your usual effort: the median watts of [rides] (your last real rides), whatever bike each was
  * ridden on. Null without any to go by. What the live watts and the expected ride are measured against.
  */
 fun usualWatts(rides: List<RideEntity>): Double? {
@@ -119,12 +119,11 @@ fun usualWatts(rides: List<RideEntity>): Double? {
 fun usualPowerText(watts: Double?): String? = powerText(watts)?.let { "usually $it" }
 
 /**
- * Your pedal power behind a ride's form: as worked out with the rider and bike set when it was
- * ridden. A ride from before bikes could be set was ridden on the first setup, the Gazelle. Null for
- * rides too short to judge (fewer than three segments' worth measured) and on a bike that rides itself.
+ * Your effort on a ride, wind and slope taken out ([com.tegenwind.app.eta.SteadyPower]), as worked
+ * out with the rider and bike it was ridden on. Null for rides without segment passes, too short to
+ * judge, and on a bike that rides itself.
  */
-fun rideWatts(ride: RideEntity): Double? =
-    ride.pedalPowerW ?: ride.formFactor?.takeIf { ride.bikeName == null }?.let { RiderSetup().params().powerAtFormW(it) }
+fun rideWatts(ride: RideEntity): Double? = ride.pedalPowerW
 
 fun avgSpeedText(ride: RideEntity): String =
     if (ride.movingMs > 0) "%.1f km/h".format(ride.distanceM / (ride.movingMs / 1000.0) * 3.6) else "--"

@@ -27,7 +27,7 @@ data class LiveEta(
     val eta: Eta,
     val form: Double,
     val wind: WindNow?,
-    /** Your pedal power behind today's form so far, W ([RiderParams.powerAtFormW]); null on a bike that rides itself. */
+    /** Your effort over the segments passed so far, W ([SteadyPower]); null before a stretch's worth, and on a bike that rides itself. */
     val pedalPowerW: Double? = null,
 )
 

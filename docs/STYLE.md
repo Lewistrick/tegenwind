@@ -221,10 +221,11 @@ no streets, no labels. For a road you ride every day the shape is enough.
   - Segment borders are small blue checkpoint flags (a pole with a pennant, upright on screen):
     bright ahead, at 35% once passed.
   - **The ghost** is picked under the map: the expected ride (the default), or your median, best or
-    last ride, where it was this long after setting off. The expected ride is what the ETA
-    gives today (the forecast wind for when you get there, your usual effort: the median pedal power
-    of your last 10 real rides). It never waits at a light, so a red light costs you time against it.
-    Before your first real ride there is no expected ride.
+    last ride, where it was this long after setting off. The expected ride holds your
+    usual effort (the median watts of your last 10 real rides) against today's wind, slope and open
+    road: into a headwind it is slower than on a calm day, with a tailwind faster. It never waits at
+    a light, so a red light costs you time against it. Before your first real ride there is no
+    expected ride.
   - **The gap to the ghost** is in the map's top-right corner, on a card-coloured chip at 75%:
     the distance over the time, `headlineSmall` semibold, as "+40 m" over "+0:08". Green when ahead,
     red when behind, white (`Ink`) within 25 m or 5 s. The map's subtitle only speaks when there
@@ -240,7 +241,10 @@ no streets, no labels. For a road you ride every day the shape is enough.
 - **Units:** km, km/h, min, bpm, %, Bft, W, load/day (training load per day: an hour of solid
   riding is about 100). Times are m:ss or h:mm:ss; clock times HH:mm.
   - Power is an estimate from speed, never a measurement: it always carries "≈". It is shown to the
-    whole watt ("≈125 W"), not rounded further, so rides can be compared.
+    whole watt ("≈125 W"), not rounded further, so rides can be compared. It is your effort with
+    the wind and the slope taken out: the steady pedal power that would carry you over what you rode
+    in the time you took, with the forecast wind there. A ride into a headwind shows more watts than
+    the same pace on a calm day.
   - Form (a speed ratio to the model rider) is never shown. On the ride screen your watts so far
     are followed by your usual, the median of your last 10 real rides: "≈125 W · usually ≈118 W".
     It's the same effort the expected ride rides at, so ahead of it and above your usual agree.

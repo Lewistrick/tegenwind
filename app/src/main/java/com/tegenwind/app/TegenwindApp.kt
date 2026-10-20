@@ -15,6 +15,7 @@ import com.tegenwind.app.media.MediaControls
 import com.tegenwind.app.ride.RideRecorder
 import com.tegenwind.app.ride.backfillLessons
 import com.tegenwind.app.ride.backfillProfiles
+import com.tegenwind.app.ride.backfillSteadyPower
 import com.tegenwind.app.routes.RouteEnricher
 import com.tegenwind.app.routes.RouteRepository
 import com.tegenwind.app.weather.WeatherRepository
@@ -72,6 +73,15 @@ class AppContainer(app: Application) {
             }
         }
         appScope.launch {
+            // Rides keep their effort as steady power now (wind and slope taken out): the ones from
+            // before are worked out again from their passes, once.
+            val prefs = app.getSharedPreferences("tegenwind", Context.MODE_PRIVATE)
+            if (!prefs.getBoolean(STEADY_POWER_DONE, false)) {
+                backfillSteadyPower(db.rides(), riderSetup.setup.value)
+                prefs.edit().putBoolean(STEADY_POWER_DONE, true).apply()
+            }
+        }
+        appScope.launch {
             // Rides from before each pass recorded what it taught get that filled in once.
             backfillLessons(db.rides(), db.routes())
             // Whatever all segments learned in common goes into form. The first time, that's the
@@ -90,6 +100,8 @@ class AppContainer(app: Application) {
         }
     }
 }
+
+private const val STEADY_POWER_DONE = "steady_power_v1"
 
 val Context.appContainer: AppContainer
     get() = (applicationContext as TegenwindApp).container

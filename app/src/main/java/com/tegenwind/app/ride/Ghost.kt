@@ -3,6 +3,10 @@ package com.tegenwind.app.ride
 import com.tegenwind.app.data.RideEntity
 import com.tegenwind.app.data.TrackPointEntity
 import com.tegenwind.app.eta.EtaModel
+import com.tegenwind.app.eta.EtaSegment
+import com.tegenwind.app.eta.Physics
+import com.tegenwind.app.eta.RiderParams
+import com.tegenwind.app.eta.SteadyPower
 import com.tegenwind.app.eta.SpeedProfile
 import com.tegenwind.app.routes.GeoPoint
 import com.tegenwind.app.routes.Polyline
@@ -12,7 +16,7 @@ import kotlin.math.ceil
 
 /** Which earlier ride to ride against. */
 enum class GhostChoice(val label: String, val words: String) {
-    /** Not a ride at all: what the model expects of you today, see [expectedGhost]. */
+    /** Not a ride at all: what your usual effort gives today, see [expectedGhost]. */
     EXPECTED("Expected ride", "the expected ride"),
     MEDIAN("Your median ride", "your median ride"),
     BEST("Your best ride", "your best ride"),
@@ -63,18 +67,29 @@ class Ghost(private val elapsedS: DoubleArray, private val alongM: DoubleArray) 
 }
 
 /**
- * The ride the model expects of you today: each segment at the speed the ETA gives it with the
- * wind forecast for when you get there, at [form], shaped within the segment by [profile]. Unlike
- * the ETA it never waits at a light: you race it, and a red light costs you time against it as it
- * would against a rider who got green. [startedAtMs] is when you set off.
+ * The ride your usual effort gives today: [powerW] of pedal power on each segment, against the
+ * forecast wind for when you get there (all of it, as in [SteadyPower]), its slope and its
+ * openness, shaped within the segment by [profile]. Wind costs or gains time, so into a headwind
+ * it is slower than on a calm day. It never waits at a light: you race it, and a red light costs
+ * you time against it. [startedAtMs] is when you set off.
  */
-fun expectedGhost(model: EtaModel, profile: SpeedProfile?, weather: RouteWeather?, form: Double, startedAtMs: Long): Ghost {
+fun expectedGhost(
+    segments: List<EtaSegment>,
+    params: RiderParams,
+    profile: SpeedProfile?,
+    weather: RouteWeather?,
+    powerW: Double,
+    startedAtMs: Long,
+): Ghost {
     val elapsed = arrayListOf(0.0)
-    val along = arrayListOf(model.segments.firstOrNull()?.startM ?: 0.0)
+    val along = arrayListOf(segments.firstOrNull()?.startM ?: 0.0)
+    val rho = Physics.airDensity(null)
     var t = 0.0
-    for (s in model.segments) {
+    for (s in segments) {
         if (s.lengthM <= 0) continue
-        val speed = model.correctedSpeedMps(s, weather?.at(s.midM, startedAtMs + (t * 1000).toLong())) * form
+        val wind = weather?.at(s.midM, startedAtMs + (t * 1000).toLong())
+        val head = wind?.let { Physics.headwindMps(it.speedMps, it.fromDeg, s.bearingDeg, s.exposure) } ?: 0.0
+        val speed = Physics.speedMps(powerW, s.gradePct, head, rho, params).coerceAtLeast(EtaModel.MIN_SPEED_MPS)
         val steps = ceil(s.lengthM / EXPECTED_STEP_M).toInt().coerceAtLeast(1)
         val step = s.lengthM / steps
         for (i in 0 until steps) {

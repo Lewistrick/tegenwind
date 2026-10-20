@@ -52,9 +52,10 @@ data class RideEntity(
     /** The bike the ride was on, as named in the settings then; null for rides from before bikes could be set. */
     val bikeName: String? = null,
     /**
-     * Your pedal power behind the ride's form, W, worked out with the rider and bike as set then
-     * ([com.tegenwind.app.eta.RiderParams.powerAtFormW]). Null when the form wasn't measured, on a
-     * bike that rides itself, and for rides from before it was kept.
+     * Your effort on the ride, W: the steady pedal power that carries you over what you rode in the
+     * time you took, wind and slope taken out ([com.tegenwind.app.eta.SteadyPower]), with the rider
+     * and bike as set then. Null when too little was ridden on a route to say, on a bike that rides
+     * itself, and for rides without segment passes.
      */
     val pedalPowerW: Double? = null,
 )
@@ -268,9 +269,9 @@ interface RideDao {
     @Query("SELECT formFactor FROM rides WHERE formFactor IS NOT NULL AND simulated = 0 ORDER BY startedAtMs DESC LIMIT 10")
     suspend fun recentForms(): List<Double>
 
-    /** The last 10 real rides whose form was measured, newest first: what the expected ride's effort is the median of. */
-    @Query("SELECT * FROM rides WHERE formFactor IS NOT NULL AND simulated = 0 ORDER BY startedAtMs DESC LIMIT 10")
-    suspend fun recentRidesWithForm(): List<RideEntity>
+    /** The last 10 real rides whose effort is known, newest first: what your usual effort is the median of. */
+    @Query("SELECT * FROM rides WHERE pedalPowerW IS NOT NULL AND simulated = 0 ORDER BY startedAtMs DESC LIMIT 10")
+    suspend fun recentRidesWithPower(): List<RideEntity>
 
     /** Finished, real (non-simulated) rides on one route, oldest first: the raw material for its stats page. */
     @Query("SELECT * FROM rides WHERE routeId = :routeId AND endedAtMs IS NOT NULL AND simulated = 0 ORDER BY startedAtMs")

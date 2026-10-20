@@ -19,6 +19,7 @@ import com.tegenwind.app.eta.LiveEta
 import com.tegenwind.app.eta.Physics
 import com.tegenwind.app.eta.SegmentCorrection
 import com.tegenwind.app.eta.SegmentLearner
+import com.tegenwind.app.eta.SteadyPower
 import com.tegenwind.app.eta.WindNow
 import com.tegenwind.app.eta.etaModel
 import com.tegenwind.app.eta.windAlong
@@ -125,6 +126,8 @@ class RideRecorder(
     private var weather: RouteWeather? = null
     private val pending = ArrayList<TrackPointEntity>()
     private val traversals = ArrayList<SegmentTraversalEntity>()
+    private var livePowerPasses = 0
+    private var livePowerW: Double? = null
     private val expected = ArrayList<ArrayList<Sample>>()
     private val arrivalTrail = ArrivalTrail()
     /** Every fix of this ride, for learning the route's speed profile when it ends. */
@@ -183,6 +186,8 @@ class RideRecorder(
         riddenWeather.clear()
         weather = null
         traversals.clear()
+        livePowerPasses = 0
+        livePowerW = null
         expected.clear()
         arrivalTrail.clear()
         ridePoints.clear()
@@ -330,6 +335,8 @@ class RideRecorder(
             segIdx = -1
             stretches.reset()
             traversals.clear()
+            livePowerPasses = 0
+            livePowerW = null
             riddenWeather.clear()
             return null
         }
@@ -341,6 +348,8 @@ class RideRecorder(
             segIdx = -1
             stretches.reset()
             traversals.clear()
+            livePowerPasses = 0
+            livePowerW = null
             riddenWeather.clear()
         }
         return leader.progress
@@ -407,7 +416,7 @@ class RideRecorder(
                 formFactor = form.estimate().mean.takeIf { formObservedM >= MIN_FORM_M },
                 // Kept with the ride, so changing the settings later doesn't rewrite what it took.
                 bikeName = bike.name,
-                pedalPowerW = form.estimate().mean.takeIf { formObservedM >= MIN_FORM_M }?.let { params.powerAtFormW(it) },
+                pedalPowerW = model?.let { SteadyPower.fromTraversals(traversals.toList(), it.segments, params) },
                 loadTss = if (ride.simulated) null else Banister.loadFromRide(snap.movingMs, snap.distanceM),
             )
         )
@@ -430,11 +439,22 @@ class RideRecorder(
         matcher = null
         model = null
         traversals.clear()
+        livePowerPasses = 0
+        livePowerW = null
         expected.clear()
         arrivalTrail.clear()
         ridePoints.clear()
         pending.clear()
         _live.value = null
+    }
+
+    /** Your effort over the segments passed so far; worked out again only when another has been passed. */
+    private fun livePower(m: EtaModel): Double? {
+        if (traversals.size != livePowerPasses) {
+            livePowerPasses = traversals.size
+            livePowerW = SteadyPower.fromTraversals(traversals.toList(), m.segments, params)
+        }
+        return livePowerW
     }
 
     private fun refreshEta(nowMs: Long) {
@@ -452,7 +472,7 @@ class RideRecorder(
             eta = eta,
             form = form.estimate().mean,
             wind = windNow(m, progress.progressM, nowMs, weather),
-            pedalPowerW = params.powerAtFormW(form.estimate().mean),
+            pedalPowerW = livePower(m),
         )
         if (ride.started) arrivalTrail.record(nowMs, eta.arrivalMs, (eta.bandS * 1000).toLong())
         // Once offered the prompt stays until answered, even if the band widens again (off route).
