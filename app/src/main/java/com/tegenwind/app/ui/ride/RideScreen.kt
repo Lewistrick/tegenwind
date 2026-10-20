@@ -81,6 +81,7 @@ import com.tegenwind.app.eta.WindNow
 import com.tegenwind.app.eta.etaModel
 import com.tegenwind.app.eta.Banister
 import com.tegenwind.app.eta.startingForm
+import com.tegenwind.app.ui.rides.formText
 import com.tegenwind.app.ui.rides.powerText
 import com.tegenwind.app.ui.settings.RiderBikeScreen
 import com.tegenwind.app.data.RiderSetup
@@ -693,8 +694,8 @@ private fun EtaCard(r: RideRoute, live: LiveEta?, lat: Double?, lon: Double?, li
                 Spacer(Modifier.weight(1f))
                 live?.let {
                     Text(
-                        // Your pedal power behind today's form so far; none on a bike that rides itself.
-                        powerText(it.pedalPowerW).orEmpty(),
+                        // Your pedal power behind today's form so far (none on a bike that rides itself), and the form.
+                        listOfNotNull(powerText(it.pedalPowerW), formText(it.form)).joinToString(" · ") { s -> s.replace(' ', ' ') },
                         style = MaterialTheme.typography.bodyMedium.copy(fontFeatureSettings = "tnum"),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )

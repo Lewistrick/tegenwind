@@ -268,6 +268,10 @@ interface RideDao {
     @Query("SELECT formFactor FROM rides WHERE formFactor IS NOT NULL AND simulated = 0 ORDER BY startedAtMs DESC LIMIT 10")
     suspend fun recentForms(): List<Double>
 
+    /** The last 10 real rides whose form was measured, newest first: what the expected ride's effort is the median of. */
+    @Query("SELECT * FROM rides WHERE formFactor IS NOT NULL AND simulated = 0 ORDER BY startedAtMs DESC LIMIT 10")
+    suspend fun recentRidesWithForm(): List<RideEntity>
+
     /** Finished, real (non-simulated) rides on one route, oldest first: the raw material for its stats page. */
     @Query("SELECT * FROM rides WHERE routeId = :routeId AND endedAtMs IS NOT NULL AND simulated = 0 ORDER BY startedAtMs")
     fun ridesForRoute(routeId: Long): Flow<List<RideEntity>>

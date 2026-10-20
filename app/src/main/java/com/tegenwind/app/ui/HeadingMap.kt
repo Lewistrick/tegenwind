@@ -1,6 +1,7 @@
 package com.tegenwind.app.ui
 
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
@@ -16,6 +17,8 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.DrawStyle
+import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.unit.dp
@@ -63,7 +66,7 @@ class HeadingView(
 }
 
 /** The way a route runs at [alongM], over a stretch either side so a kink in the line doesn't swing it. */
-fun routeBearingAt(line: Polyline, alongM: Double, overM: Double = 25.0): Double =
+fun routeBearingAt(line: Polyline, alongM: Double, overM: Double = 40.0): Double =
     bearingDeg(line.pointAt(alongM - overM), line.pointAt(alongM + overM))
 
 /** The smallest turn from [fromDeg] to [toDeg], in −180..180. */
@@ -86,9 +89,9 @@ const val MAX_AHEAD_M = 700.0
 
 /**
  * An arrow: a triangle with a notch cut out of its back, pointing up, its middle at [at], turned by
- * [turnDeg] clockwise.
+ * [turnDeg] clockwise. Filled, or only its edge with a [style] of [Stroke].
  */
-fun DrawScope.arrow(at: Offset, turnDeg: Float, lengthPx: Float, color: Color) {
+fun DrawScope.arrow(at: Offset, turnDeg: Float, lengthPx: Float, color: Color, style: DrawStyle = Fill) {
     val half = lengthPx / 2
     val path = Path().apply {
         moveTo(at.x, at.y - half)
@@ -97,7 +100,7 @@ fun DrawScope.arrow(at: Offset, turnDeg: Float, lengthPx: Float, color: Color) {
         lineTo(at.x - lengthPx * 0.38f, at.y + half)
         close()
     }
-    rotate(turnDeg, pivot = at) { drawPath(path, color) }
+    rotate(turnDeg, pivot = at) { drawPath(path, color, style = style) }
 }
 
 /** A segment border on the live map; [passed] once you've ridden past it. */
@@ -124,9 +127,9 @@ fun DrawScope.flag(at: Offset, heightPx: Float, color: Color, rim: Color) {
 }
 
 /**
- * The route around you, turned to your direction of travel and zoomed to your speed: the road
- * behind you coloured by [colors] (one per span, null for plain), you as a blue arrow, and the
- * ghost of an earlier ride as a faint grey one. Turning and zooming glide rather than jump.
+ * The route around you, turned to your direction of travel and zoomed to your speed: the plain
+ * road, you as a blue arrow, and the ghost as a see-through white one. Turning and zooming glide
+ * rather than jump.
  */
 @Composable
 fun HeadingMap(
@@ -135,23 +138,21 @@ fun HeadingMap(
     headingDeg: Double,
     aheadM: Double,
     modifier: Modifier = Modifier,
-    spans: List<Pair<Double, Double>> = emptyList(),
-    colors: List<Color?> = emptyList(),
     ghost: GeoPoint? = null,
     ghostHeadingDeg: Double? = null,
     flags: List<MapFlag> = emptyList(),
     youColor: Color,
 ) {
-    val plain = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f)
+    val plain = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = ROAD_ALPHA)
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
+    val ink = MaterialTheme.colorScheme.onSurface
     val card = MaterialTheme.colorScheme.surfaceContainer
-    val stretches = remember(line, spans) { spans.map { (s, e) -> stretchOf(line, s, e) } }
 
     // The heading turns the short way round, smoothly; the zoom eases between speeds.
     val turn = remember { Animatable(headingDeg.toFloat()) }
     LaunchedEffect(headingDeg) {
         val target = turn.value + shortestTurn(turn.value.toDouble(), headingDeg).toFloat()
-        turn.animateTo(target, tween(TURN_MS))
+        turn.animateTo(target, tween(TURN_MS, easing = LinearOutSlowInEasing))
     }
     val zoom by animateFloatAsState(aheadM.toFloat(), tween(ZOOM_MS), label = "zoom")
 
@@ -162,10 +163,6 @@ fun HeadingMap(
         }
         val road = Stroke(ROAD.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
         drawPath(pathOf(line.points), plain, style = road)
-        stretches.forEachIndexed { i, pts ->
-            val color = colors.getOrNull(i) ?: return@forEachIndexed
-            drawPath(pathOf(pts), color, style = road)
-        }
         drawCircle(muted, END.toPx(), view.at(line.points.last()))
         // Where one segment ends and the next begins: the ones ahead bright, the ones behind faint.
         for (f in flags) {
@@ -176,10 +173,12 @@ fun HeadingMap(
         val length = ARROW.toPx()
         if (ghost != null) {
             val turnDeg = ghostHeadingDeg?.let { shortestTurn(turn.value.toDouble(), it) } ?: 0.0
-            arrow(view.at(ghost), turnDeg.toFloat(), length, muted.copy(alpha = GHOST_ALPHA))
+            val at = view.at(ghost)
+            arrow(at, turnDeg.toFloat(), length, ink.copy(alpha = GHOST_FILL_ALPHA))
+            arrow(at, turnDeg.toFloat(), length, ink.copy(alpha = GHOST_EDGE_ALPHA), Stroke(GHOST_EDGE.toPx(), join = StrokeJoin.Round))
         }
         val here = view.at(you)
-        // A dark rim, so the arrow stands out on a coloured road.
+        // A dark rim, so the arrow stands out on the road.
         arrow(here, 0f, length + 4.dp.toPx(), card)
         arrow(here, 0f, length, youColor.copy(alpha = YOU_ALPHA))
     }
@@ -191,6 +190,9 @@ private val ARROW = 26.dp
 private val FLAG = 16.dp
 private const val FLAG_PASSED_ALPHA = 0.35f
 private const val YOU_ALPHA = 0.92f
-private const val GHOST_ALPHA = 0.35f
-private const val TURN_MS = 900
+private const val GHOST_FILL_ALPHA = 0.25f
+private const val GHOST_EDGE_ALPHA = 0.7f
+private val GHOST_EDGE = 1.5.dp
+private const val ROAD_ALPHA = 0.65f
+private const val TURN_MS = 2500
 private const val ZOOM_MS = 1500

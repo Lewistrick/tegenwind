@@ -1,23 +1,38 @@
 package com.tegenwind.app.ui.ride
 
 import android.content.Context
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.tegenwind.app.appContainer
+import com.tegenwind.app.data.RideEntity
+import com.tegenwind.app.eta.RiderParams
+import com.tegenwind.app.eta.etaModel
+import com.tegenwind.app.eta.priorForm
 import com.tegenwind.app.ride.Ghost
 import com.tegenwind.app.ride.GhostChoice
 import com.tegenwind.app.ride.LiveRide
+import com.tegenwind.app.ride.expectedGhost
 import com.tegenwind.app.ride.ghostOf
 import com.tegenwind.app.ride.pickGhostRide
 import com.tegenwind.app.routes.GeoPoint
@@ -28,38 +43,89 @@ import com.tegenwind.app.ui.MapFlag
 import com.tegenwind.app.ui.RouteMap
 import com.tegenwind.app.ui.aheadM
 import com.tegenwind.app.ui.routeBearingAt
+import com.tegenwind.app.ui.theme.Danger
+import com.tegenwind.app.ui.theme.GoodColor
+import com.tegenwind.app.ui.theme.Ink
 import com.tegenwind.app.ui.theme.SpeedColor
 import com.tegenwind.app.ui.mapAspect
-import com.tegenwind.app.ui.routes.FULL_LEARNED
-import com.tegenwind.app.ui.theme.scaleColor
+import com.tegenwind.app.ui.rides.rideWatts
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
-private const val PREF_GHOST = "ghost"
+private const val PREF_GHOST = "ghost_choice"
 
 /** Width over height of the live map: a little taller than wide would be too much on the ride screen. */
 private const val LIVE_MAP_ASPECT = 1.25f
+
+/** Within this many metres of the ghost counts as level. */
+const val LEVEL_M = 25.0
+
+/** Within this many seconds of the ghost counts as level. */
+const val LEVEL_S = 5.0
 
 /** "40 m" up to a kilometre, "1.2 km" beyond. */
 fun gapText(metres: Double): String =
     if (abs(metres) < 995) "${(abs(metres) / 10).roundToInt() * 10} m" else "%.1f km".format(abs(metres) / 1000)
 
-/** How you stand against the ghost, in words; [gapM] is positive when you are ahead of it. */
-fun ghostLine(gapM: Double?, choice: GhostChoice): String = when {
-    gapM == null -> "No earlier ride on this route to ride against yet."
-    abs(gapM) < 10 -> "Level with ${choice.words}."
-    gapM > 0 -> "${gapText(gapM)} ahead of ${choice.words}."
-    else -> "${gapText(gapM)} behind ${choice.words}."
+/** [gapText] with its sign: "+40 m" ahead of the ghost, "−1.2 km" behind it. */
+fun signedGapText(metres: Double): String = (if (metres >= 0) "+" else "−") + gapText(metres)
+
+/** The time gap as "+0:08" (ahead) or "−1:12" (behind), minutes and seconds. */
+fun timeGapText(seconds: Double): String {
+    val s = abs(seconds).roundToInt()
+    return (if (seconds >= 0) "+" else "−") + "%d:%02d".format(s / 60, s % 60)
+}
+
+/** 1 ahead of the ghost, −1 behind it, 0 when within [levelWithin] of it: what colours a gap. */
+fun gapSign(gap: Double, levelWithin: Double): Int = when {
+    abs(gap) <= levelWithin -> 0
+    gap > 0 -> 1
+    else -> -1
 }
 
 /**
- * The route around you, turned to the way you're going and zoomed to your speed: the road behind
- * you coloured by the time gained or lost on each stretch, the road ahead plain, you as a blue
- * arrow, and as a faint grey arrow the ghost of an earlier ride, where it was this long after
- * setting off.
+ * The effort of the expected ride, as a form: the median pedal power of [rides] (the last real
+ * ones), on the bike being ridden now. Null without any power to go by, or on a bike that rides itself.
+ */
+fun expectedForm(rides: List<RideEntity>, params: RiderParams): Double? {
+    val watts = rides.mapNotNull(::rideWatts).sorted()
+    if (watts.isEmpty()) return null
+    return params.formAtPowerW(watts[watts.size / 2])
+}
+
+/**
+ * What the subtitle says when there are no gap numbers to show; null when there are, since the
+ * numbers say it.
+ */
+fun ghostNote(hasGhost: Boolean, hasGap: Boolean, choice: GhostChoice): String? = when {
+    hasGap -> null
+    !hasGhost -> if (choice == GhostChoice.EXPECTED) null else "No earlier ride on this route to ride against yet."
+    else -> "The light arrow is ${choice.words}."
+}
+
+@Composable
+private fun GapText(text: String, sign: Int) {
+    Text(
+        text,
+        style = MaterialTheme.typography.headlineSmall.copy(fontFeatureSettings = "tnum"),
+        fontWeight = FontWeight.SemiBold,
+        color = when (sign) {
+            1 -> GoodColor
+            -1 -> Danger
+            else -> Ink
+        },
+        textAlign = TextAlign.End,
+    )
+}
+
+/**
+ * The route around you, turned to the way you're going and zoomed to your speed: the plain road,
+ * you as a blue arrow, and as a see-through white arrow the ghost, where it was this long after
+ * setting off. In the top right, how far and how long you are ahead of or behind it.
  */
 @Composable
 fun LiveMapCard(ride: LiveRide, nowMs: Long) {
@@ -68,57 +134,86 @@ fun LiveMapCard(ride: LiveRide, nowMs: Long) {
     val loaded = container.recorder.ridingRoute ?: return
     val prefs = remember { context.getSharedPreferences("tegenwind", Context.MODE_PRIVATE) }
     var choice by remember {
-        mutableStateOf(GhostChoice.entries.firstOrNull { it.name == prefs.getString(PREF_GHOST, null) } ?: GhostChoice.MEDIAN)
+        mutableStateOf(GhostChoice.entries.firstOrNull { it.name == prefs.getString(PREF_GHOST, null) } ?: GhostChoice.EXPECTED)
     }
+    val learned by container.riderModel.learned.collectAsStateWithLifecycle()
+    val setup by container.riderSetup.setup.collectAsStateWithLifecycle()
+    val startedAtMs = ride.snapshot.startedAtMs
     // Replayed once per route and choice; the ride being recorded is not among the finished ones.
-    val ghost by produceState<Ghost?>(null, loaded.route.id, loaded.line, choice) {
-        val rides = container.db.rides().ridesForRoute(loaded.route.id).first()
-        val pick = pickGhostRide(rides, choice, loaded.line.lengthM)
-        value = pick?.let {
-            val points = container.db.rides().points(it.id)
-            withContext(Dispatchers.Default) { ghostOf(loaded.line, it.startedAtMs, points) }
+    val ghost by produceState<Ghost?>(null, loaded.route.id, loaded.line, choice, startedAtMs, learned, setup) {
+        val rides = container.db.rides()
+        if (choice == GhostChoice.EXPECTED) {
+            val params = setup.params()
+            val model = loaded.etaModel(learned, params)
+            val form = expectedForm(rides.recentRidesWithForm(), params) ?: priorForm(rides.recentForms())
+            var weather = container.weather.alongRoute(loaded.line)
+            value = withContext(Dispatchers.Default) { expectedGhost(model, loaded.profile, weather, form, startedAtMs) }
+            // Without a forecast it is still air, until one arrives.
+            while (weather == null) {
+                delay(60_000)
+                weather = container.weather.alongRoute(loaded.line)
+                if (weather != null) value = withContext(Dispatchers.Default) { expectedGhost(model, loaded.profile, weather, form, startedAtMs) }
+            }
+        } else {
+            val pick = pickGhostRide(rides.ridesForRoute(loaded.route.id).first(), choice, loaded.line.lengthM)
+            value = pick?.let {
+                val points = rides.points(it.id)
+                withContext(Dispatchers.Default) { ghostOf(loaded.line, it.startedAtMs, points) }
+            }
         }
     }
     val progress = ride.route?.progress
-    val elapsedS = if (ride.started) (nowMs - ride.snapshot.startedAtMs) / 1000.0 else 0.0
+    val onRoute = progress?.onRouteYet == true
+    val elapsedS = if (ride.started) (nowMs - startedAtMs) / 1000.0 else 0.0
     val ghostAlongM = ghost?.alongAt(elapsedS)
-    val gapM = if (ghostAlongM != null && progress?.onRouteYet == true) progress.progressM - ghostAlongM else null
+    val gapM = if (ghostAlongM != null && onRoute) progress!!.progressM - ghostAlongM else null
+    // Positive when you got to where you are sooner than the ghost did.
+    val gapS = if (gapM != null) ghost?.elapsedAt(progress!!.progressM)?.let { it - elapsedS } else null
     val s = ride.snapshot
-    ChartCard("Map", if (ghost == null || gapM != null) ghostLine(gapM, choice) else "The grey arrow is ${choice.words}.") {
+    ChartCard("Map", ghostNote(ghost != null, gapM != null, choice)) {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            val spans = loaded.segments.map { it.startM to it.endM }
-            val colors = loaded.segments.map { seg -> ride.segmentGains[seg.idx]?.let { scaleColor(it / FULL_LEARNED) } }
             val you = if (s.lastLat != null && s.lastLon != null) GeoPoint(s.lastLat, s.lastLon) else null
             if (you == null) {
                 // No position yet: the whole route, north up, until there is one.
                 RouteMap(
                     line = loaded.line,
                     modifier = Modifier.fillMaxWidth().aspectRatio(mapAspect(loaded.line.points)),
-                    spans = spans,
-                    colors = colors,
                 )
             } else {
                 // On the route it turns with the road, which is steadier than the GPS's own heading.
                 val heading = when {
-                    progress?.onRouteYet == true && !progress.offRoute -> routeBearingAt(loaded.line, progress.progressM)
+                    onRoute && !progress!!.offRoute -> routeBearingAt(loaded.line, progress.progressM)
                     else -> s.headingDeg ?: 0.0
                 }
-                HeadingMap(
-                    line = loaded.line,
-                    you = you,
-                    headingDeg = heading,
-                    aheadM = aheadM(s.speedKmh?.let { it / 3.6 }, gapM),
-                    modifier = Modifier.fillMaxWidth().aspectRatio(LIVE_MAP_ASPECT),
-                    spans = spans,
-                    colors = colors,
-                    ghost = ghostAlongM?.let(loaded.line::pointAt),
-                    ghostHeadingDeg = ghostAlongM?.let { routeBearingAt(loaded.line, it) },
-                    // Each border is a checkpoint: a stretch takes its colour once you pass its end.
-                    flags = loaded.segments.drop(1).map { seg ->
-                        MapFlag(loaded.line.pointAt(seg.startM), passed = progress?.onRouteYet == true && progress.progressM >= seg.startM)
-                    },
-                    youColor = SpeedColor,
-                )
+                Box(Modifier.fillMaxWidth()) {
+                    HeadingMap(
+                        line = loaded.line,
+                        you = you,
+                        headingDeg = heading,
+                        aheadM = aheadM(s.speedKmh?.let { it / 3.6 }, gapM),
+                        modifier = Modifier.fillMaxWidth().aspectRatio(LIVE_MAP_ASPECT),
+                        ghost = ghostAlongM?.let(loaded.line::pointAt),
+                        ghostHeadingDeg = ghostAlongM?.let { routeBearingAt(loaded.line, it) },
+                        // Each border is a checkpoint, bright until you pass it.
+                        flags = loaded.segments.drop(1).map { seg ->
+                            MapFlag(loaded.line.pointAt(seg.startM), passed = onRoute && progress!!.progressM >= seg.startM)
+                        },
+                        youColor = SpeedColor,
+                    )
+                    if (gapM != null) {
+                        Column(
+                            Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(8.dp)
+                                .background(MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.75f), RoundedCornerShape(8.dp))
+                                .padding(horizontal = 10.dp, vertical = 4.dp),
+                            horizontalAlignment = Alignment.End,
+                        ) {
+                            GapText(signedGapText(gapM), gapSign(gapM, LEVEL_M))
+                            if (gapS != null) GapText(timeGapText(gapS), gapSign(gapS, LEVEL_S))
+                        }
+                    }
+                }
             }
             Picker(
                 choice,

@@ -41,6 +41,14 @@ data class RiderParams(
         if (motorFull) null
         else Physics.pedalPowerW(form * modelSpeedMps(), 0.0, 0.0, Physics.airDensity(null), this)
 
+    /**
+     * The form that [powerW] of pedal power amounts to on this bike: [powerAtFormW] the other way
+     * round, so effort carries from one bike to another. Null on a bike that rides itself.
+     */
+    fun formAtPowerW(powerW: Double): Double? =
+        if (motorFull) null
+        else Physics.speedMps(powerW, 0.0, 0.0, Physics.airDensity(null), this) / modelSpeedMps()
+
     companion object {
         /**
          * The model rider's legs, W: what form measures you against. 165 W is what held 25 km/h on the

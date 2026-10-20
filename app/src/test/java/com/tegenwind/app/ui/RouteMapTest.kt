@@ -3,13 +3,17 @@ package com.tegenwind.app.ui
 import com.tegenwind.app.data.RideEntity
 import com.tegenwind.app.data.SegmentTraversalEntity
 import com.tegenwind.app.data.TrackPointEntity
+import com.tegenwind.app.ride.Ghost
 import com.tegenwind.app.ride.GhostChoice
 import com.tegenwind.app.ride.ghostOf
 import com.tegenwind.app.ride.pickGhostRide
 import com.tegenwind.app.routes.GeoPoint
 import com.tegenwind.app.routes.Polyline
 import com.tegenwind.app.routes.distanceM
-import com.tegenwind.app.ui.ride.ghostLine
+import com.tegenwind.app.ui.ride.ghostNote
+import com.tegenwind.app.ui.ride.gapSign
+import com.tegenwind.app.ui.ride.signedGapText
+import com.tegenwind.app.ui.ride.timeGapText
 import com.tegenwind.app.ui.rides.gained
 import com.tegenwind.app.ui.rides.standingSpots
 import org.junit.Assert.assertEquals
@@ -115,11 +119,41 @@ class RouteMapTest {
     }
 
     @Test
-    fun theGapIsSaidInPlainWords() {
-        assertEquals("40 m ahead of your median ride.", ghostLine(42.0, GhostChoice.MEDIAN))
-        assertEquals("1.2 km behind your best ride.", ghostLine(-1234.0, GhostChoice.BEST))
-        assertEquals("Level with your last ride.", ghostLine(-4.0, GhostChoice.LAST))
-        assertTrue(ghostLine(null, GhostChoice.MEDIAN).startsWith("No earlier ride"))
+    fun theExpectedRideIsNoStoredRide() {
+        assertNull(pickGhostRide(listOf(ride(1, 0, 40)), GhostChoice.EXPECTED, 2500.0))
+    }
+
+    @Test
+    fun theGapIsShownAsSignedNumbers() {
+        assertEquals("+40 m", signedGapText(42.0))
+        assertEquals("−1.2 km", signedGapText(-1234.0))
+        assertEquals("+0:08", timeGapText(8.4))
+        assertEquals("−1:12", timeGapText(-72.0))
+        assertEquals(1, gapSign(30.0, 25.0))
+        assertEquals(-1, gapSign(-30.0, 25.0))
+        assertEquals(0, gapSign(-25.0, 25.0))
+        assertEquals(0, gapSign(5.0, 5.0))
+        assertEquals(1, gapSign(5.1, 5.0))
+    }
+
+    @Test
+    fun theSubtitleOnlySpeaksWhenThereAreNoNumbers() {
+        assertNull(ghostNote(hasGhost = true, hasGap = true, choice = GhostChoice.MEDIAN))
+        assertEquals("The light arrow is your best ride.", ghostNote(true, false, GhostChoice.BEST))
+        assertTrue(ghostNote(false, false, GhostChoice.MEDIAN)!!.startsWith("No earlier ride"))
+        assertNull(ghostNote(false, false, GhostChoice.EXPECTED))
+    }
+
+    @Test
+    fun aGhostSaysWhenItFirstReachedASpot() {
+        // 10 m/s to 100 m, standing for 10 s, then 10 m/s on to 200 m.
+        val ghost = Ghost(doubleArrayOf(0.0, 10.0, 20.0, 30.0), doubleArrayOf(0.0, 100.0, 100.0, 200.0))
+        assertEquals(5.0, ghost.elapsedAt(50.0)!!, 1e-9)
+        // It stood at 100 m from 10 s to 20 s: the first moment is the one that counts.
+        assertEquals(10.0, ghost.elapsedAt(100.0)!!, 1e-9)
+        assertEquals(25.0, ghost.elapsedAt(150.0)!!, 1e-9)
+        assertEquals(0.0, ghost.elapsedAt(-5.0)!!, 1e-9)
+        assertNull(ghost.elapsedAt(200.5))
     }
 
     @Test
