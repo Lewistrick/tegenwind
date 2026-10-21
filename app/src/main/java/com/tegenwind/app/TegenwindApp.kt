@@ -88,6 +88,7 @@ class AppContainer(app: Application) {
         }
         appScope.launch {
             // Rides from before their weather was kept get it from the weather record.
+            // TODO(remove after backfill): see the note in weather/WeatherHistory.kt.
             backfillWeather(db.rides(), WeatherHistory())
         }
         appScope.launch {

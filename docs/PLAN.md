@@ -345,6 +345,11 @@ The bottom bar is **Ride · Rides · Routes · Stats**. Rides replaced Map.
     weather once from Open-Meteo's record, at the place they began (`ride/WeatherBackfill.kt`,
     `weather/WeatherHistory.kt`); heart rate averages are only known for rides still within the
     two weeks of readings, or opened later on the ride page.
+  - **To remove once old rides have their weather:** the one-off lookup in Open-Meteo's weather
+    record (`weather/WeatherHistory.kt`, `ride/WeatherBackfill.kt`, `weatherOverRide` and
+    `HourlyWeather` in `weather/RideWeather.kt` with their test, the `backfillWeather` launch in
+    `TegenwindApp.kt`, `RideDao.firstPoint` and `ridesWithoutWeather`). Open-Meteo itself stays for
+    the wind forecast and elevation; new rides record their weather from the live forecast.
 
 ### Maps (13 Oct 2026)
 

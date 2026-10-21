@@ -1,5 +1,12 @@
 package com.tegenwind.app.ride
 
+// TODO(remove after backfill): the one-off weather lookup for rides recorded before their weather was
+// kept. Once the old rides have their weather (or you accept leaving the rest empty), delete:
+//   weather/WeatherHistory.kt, ride/WeatherBackfill.kt, weatherOverRide + HourlyWeather in
+//   weather/RideWeather.kt (and their test in StatsMathTest.kt), the backfillWeather launch in
+//   TegenwindApp.kt, and RideDao.firstPoint / ridesWithoutWeather.
+// Keep summarizeWeather, avgTempC and rainMm: new rides record their own weather.
+
 import com.tegenwind.app.data.RideDao
 import com.tegenwind.app.routes.GeoPoint
 import com.tegenwind.app.weather.WeatherHistory
