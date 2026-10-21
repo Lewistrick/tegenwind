@@ -132,20 +132,28 @@ class RouteDriftTest {
     }
 
     @Test
-    fun oneRideAroundTheBlockReroutesNothingButTwoDo() {
+    fun oneRideAroundTheBlockMovesTheLineAQuarterOfTheWayAndTwoReroute() {
         val folder = LineFolder(straight, quarters)
         folder.fold(around(100.0), earlier = listOf(beside(0.0), beside(0.0)))
-        assertFalse(folder.changed)
-        assertNull(folder.rerouted)
+        // A quarter of the way toward the street 100 m away: the stretch now runs 25 m north.
+        assertTrue(folder.changed)
+        assertNotNull(folder.rerouted)
+        assertFalse(folder.reroutedFully)
+        assertEquals(0.0, folder.line.project(p(500.0, 25.0)).offsetM, 2.0)
+        // Each point moves a quarter of the way to the matching point of the ride, so the corners
+        // become diagonals: (300, 0) to (350, 25), 300 m along, and back down at 700 m.
+        assertEquals(600.0 + 2 * hypot(50.0, 25.0) + 300.0, folder.line.lengthM, 2.0)
 
         folder.fold(around(100.0), earlier = listOf(around(100.0), beside(0.0)))
-        assertTrue(folder.changed)
+        assertTrue(folder.reroutedFully)
         // The line now takes the other street: 300 m, then 100 + 400 + 100 m, then 300 m.
         assertEquals(0.0, folder.line.project(p(500.0, 100.0)).offsetM, 2.0)
-        assertEquals(1200.0, folder.line.lengthM, 5.0)
+        // About 1200 m: where the ride leaves the moved stretch at right angles to its diagonal
+        // corner, a few metres of that diagonal stay at each end, for the next rides to straighten.
+        assertEquals(1200.0, folder.line.lengthM, 25.0)
         val (from, to) = folder.rerouted!!
         assertEquals(300.0, from, 10.0)
-        assertEquals(900.0, to, 10.0)
+        assertEquals(900.0, to, 25.0)
 
         // The first and last segments carry on; the two over the old stretch make way for new ones.
         val spans = folder.spans
@@ -153,20 +161,40 @@ class RouteDriftTest {
         assertEquals(3, spans.last().origIdx)
         assertTrue(spans.drop(1).dropLast(1).all { it.origIdx == null })
         assertEquals(3, spans.size - 2) // 700 m between 250 m and the old 750 m, now at 950 m
-        assertEquals(950.0, spans.last().startM, 10.0)
+        assertEquals(950.0, spans.last().startM, 25.0)
         assertEquals(folder.line.lengthM, spans.last().endM, 1e-9)
         // Where distances went: the same before, gone on the old stretch, 200 m further after it.
         assertEquals(100.0, folder.map(100.0)!!, 1.0)
         assertNull(folder.map(500.0))
-        assertEquals(1000.0, folder.map(800.0)!!, 10.0)
+        assertEquals(1000.0, folder.map(800.0)!!, 25.0)
     }
 
     @Test
-    fun twoDifferentDetoursDontReroute() {
+    fun twoDifferentDetoursOnlyMoveTheLineAQuarterOfTheWay() {
         val folder = LineFolder(straight, quarters)
         folder.fold(around(100.0), earlier = listOf(around(-100.0), beside(0.0)))
-        assertNull(folder.rerouted)
-        assertFalse(folder.changed)
+        assertFalse(folder.reroutedFully)
+        assertEquals(0.0, folder.line.project(p(500.0, 25.0)).offsetM, 2.0)
+        assertTrue(folder.line.project(p(500.0, 100.0)).offsetM > 50.0)
+    }
+
+    @Test
+    fun aStreetFarAwayPullsItsStretchAQuarterOfTheWayAndNoMore() {
+        val detour = detours(place(straight, around(150.0))).single()
+        val r = blend(straight, detour)
+        assertFalse(r.full)
+        // 150 m away: the stretch moves 37.5 m toward it, between where the ride left and rejoined.
+        assertEquals(0.0, r.line.project(p(500.0, 37.5)).offsetM, 2.0)
+        assertEquals(0.0, r.line.project(p(100.0, 0.0)).offsetM, 0.5)
+        assertEquals(0.0, r.line.project(p(900.0, 0.0)).offsetM, 0.5)
+        // The ride's corners (150 m in on a 700 m way) land 3/14 of the way along: diagonals to (364, 37.5).
+        val corner = 0.75 * 400.0 * 3 / 14
+        val stretch = 2 * hypot(corner, 37.5) + (400.0 - 2 * corner)
+        assertEquals(600.0 + stretch, r.line.lengthM, 2.0)
+        // Distances before the stretch stay; after it they move on by what the stretch grew.
+        assertEquals(100.0, r.map.map(100.0)!!, 1.0)
+        assertNull(r.map.map(500.0))
+        assertEquals(900.0 + stretch - 400.0, r.map.map(900.0)!!, 2.0)
     }
 
     @Test

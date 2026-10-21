@@ -221,7 +221,7 @@ fun RideDetailScreen(rideId: Long, onBack: () -> Unit, backLabel: String = "Ride
         mapData?.let { RideMapCard(it) }
 
         val rerouted = reroute?.let { rr -> rr.rerouteStartM?.let { from -> rr.rerouteEndM?.let { to -> from to to } } }
-        WhatThisRideTaughtCard(taught, rerouted, onRoute = r.routeId != null, simulated = r.simulated)
+        WhatThisRideTaughtCard(taught, rerouted, reroute?.rerouteFull != false, onRoute = r.routeId != null, simulated = r.simulated)
 
         // What you can do with the ride, each with what it does.
         ActionCard(
@@ -433,11 +433,18 @@ private fun taughtBy(
 
 /**
  * What the ride taught about its segments ([taught], null when there are no passes to judge by) and,
- * when it rerouted a stretch of its route's line, which one ([rerouted], metres along the new line).
+ * when it rerouted a stretch of its route's line, which one ([rerouted], metres along the new line) and
+ * whether the line now follows that street ([reroutedFully]) or only moved part of the way toward it.
  * Always shown, so a ride that taught nothing says so and why.
  */
 @Composable
-private fun WhatThisRideTaughtCard(taught: Taught?, rerouted: Pair<Double, Double>?, onRoute: Boolean, simulated: Boolean) {
+private fun WhatThisRideTaughtCard(
+    taught: Taught?,
+    rerouted: Pair<Double, Double>?,
+    reroutedFully: Boolean,
+    onRoute: Boolean,
+    simulated: Boolean,
+) {
     val lessons = (taught as? Taught.Lessons)?.lessons.orEmpty()
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -464,7 +471,8 @@ private fun WhatThisRideTaughtCard(taught: Taught?, rerouted: Pair<Double, Doubl
                 Column {
                     Text("%.1f–%.1f km".format(from / 1000, to / 1000), fontWeight = FontWeight.SemiBold)
                     Text(
-                        "The route now follows the way you rode here, as on another recent ride.",
+                        if (reroutedFully) "The route now follows the way you rode here, as on another recent ride."
+                        else "The route moved a quarter of the way toward the way you rode here.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )

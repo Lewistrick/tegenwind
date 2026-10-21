@@ -187,6 +187,10 @@ fun LiveMapCard(ride: LiveRide, nowMs: Long) {
                             MapFlag(loaded.line.pointAt(seg.startM), passed = onRoute && progress!!.progressM >= seg.startM)
                         },
                         youColor = SpeedColor,
+                        // Off the route, or not on it yet: a red line back to its nearest point, anywhere along it.
+                        offRouteTo = if (!onRoute || progress!!.offRoute) {
+                            loaded.line.pointAt(loaded.line.project(you).alongM)
+                        } else null,
                     )
                     if (gapM != null) {
                         Column(

@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.dp
 import com.tegenwind.app.routes.GeoPoint
 import com.tegenwind.app.routes.Polyline
 import com.tegenwind.app.routes.bearingDeg
+import com.tegenwind.app.ui.theme.Danger
 import kotlin.math.cos
 import kotlin.math.sin
 
@@ -142,6 +143,8 @@ fun HeadingMap(
     ghostHeadingDeg: Double? = null,
     flags: List<MapFlag> = emptyList(),
     youColor: Color,
+    /** Off the route: the nearest point of it, which a thin red line points you back to, however far. */
+    offRouteTo: GeoPoint? = null,
 ) {
     val plain = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = ROAD_ALPHA)
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
@@ -170,6 +173,9 @@ fun HeadingMap(
             if (o.x < -FLAG.toPx() || o.x > size.width + FLAG.toPx() || o.y < 0 || o.y > size.height + FLAG.toPx()) continue
             flag(o, FLAG.toPx(), youColor.copy(alpha = if (f.passed) FLAG_PASSED_ALPHA else 1f), card)
         }
+        if (offRouteTo != null) {
+            drawLine(Danger, view.at(you), view.at(offRouteTo), strokeWidth = OFF_ROUTE.toPx(), cap = StrokeCap.Round)
+        }
         val length = ARROW.toPx()
         if (ghost != null) {
             val turnDeg = ghostHeadingDeg?.let { shortestTurn(turn.value.toDouble(), it) } ?: 0.0
@@ -185,6 +191,7 @@ fun HeadingMap(
 }
 
 private val ROAD = 8.dp
+private val OFF_ROUTE = 2.dp
 private val END = 5.dp
 private val ARROW = 26.dp
 private val FLAG = 16.dp

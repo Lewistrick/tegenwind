@@ -49,6 +49,8 @@ data class RideEntity(
      */
     val rerouteStartM: Double? = null,
     val rerouteEndM: Double? = null,
+    /** True when the line now follows the street this ride took there; false when it only moved part of the way toward it. */
+    val rerouteFull: Boolean? = null,
     /** The bike the ride was on, as named in the settings then; null for rides from before bikes could be set. */
     val bikeName: String? = null,
     /**
@@ -70,7 +72,7 @@ data class RideEntity(
 )
 
 /** The stretch a ride rerouted; see [RideEntity.rerouteStartM]. */
-data class RideReroute(val rerouteStartM: Double?, val rerouteEndM: Double?)
+data class RideReroute(val rerouteStartM: Double?, val rerouteEndM: Double?, val rerouteFull: Boolean?)
 
 /** Distance and number of every real, finished ride, whatever its route. */
 data class RideTotals(val distanceM: Double, val movingMs: Long, val rides: Int)
@@ -412,11 +414,11 @@ interface RideDao {
     )
     suspend fun twoRidesOnRouteBefore(routeId: Long, beforeMs: Long): List<RideEntity>
 
-    @Query("UPDATE rides SET rerouteStartM = :startM, rerouteEndM = :endM WHERE id = :rideId")
-    suspend fun setReroute(rideId: Long, startM: Double, endM: Double)
+    @Query("UPDATE rides SET rerouteStartM = :startM, rerouteEndM = :endM, rerouteFull = :full WHERE id = :rideId")
+    suspend fun setReroute(rideId: Long, startM: Double, endM: Double, full: Boolean)
 
     /** Written a moment after the ride finishes, while its page may already be open. */
-    @Query("SELECT rerouteStartM, rerouteEndM FROM rides WHERE id = :rideId")
+    @Query("SELECT rerouteStartM, rerouteEndM, rerouteFull FROM rides WHERE id = :rideId")
     fun rerouteFlow(rideId: Long): Flow<RideReroute?>
 }
 
@@ -643,13 +645,13 @@ interface RouteDao {
         RideEntity::class, TrackPointEntity::class, RouteEntity::class, RoutePointEntity::class,
         RouteSegmentEntity::class, SegmentTraversalEntity::class, RouteProfileEntity::class, HrSampleEntity::class,
     ],
-    version = 10,
+    version = 11,
     exportSchema = true,
     autoMigrations = [
         AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3),
         AutoMigration(from = 3, to = 4), AutoMigration(from = 4, to = 5),
         AutoMigration(from = 5, to = 6), AutoMigration(from = 6, to = 7),
-        AutoMigration(from = 7, to = 8), AutoMigration(from = 8, to = 9), AutoMigration(from = 9, to = 10),
+        AutoMigration(from = 7, to = 8), AutoMigration(from = 8, to = 9), AutoMigration(from = 9, to = 10), AutoMigration(from = 10, to = 11),
     ],
 )
 abstract class TegenwindDb : RoomDatabase() {

@@ -400,8 +400,14 @@ can go underneath later.
   GPX file or one ride, and then ridden a little differently.
   - Every real ride moves the line a quarter of the way toward where it went, where it went within
     40 m. That is a fading average over about the last seven rides, and it settles within a metre.
-  - A stretch ridden on another street (more than 40 m away, leaving and rejoining the line) on two
-    of the last three rides is rerouted: the line takes that street, and the ride's page says so.
+  - A stretch ridden on another street (more than 40 m away, leaving and rejoining the line) moves
+    that stretch of the line a quarter of the way toward it, however far it was (21 Oct 2026; before,
+    one ride changed nothing there). Each point of the stretch moves toward the matching point of
+    the ride, matched by share of their lengths, so the ends stay where the ride left and rejoined.
+    On two of the last three rides the stretch is rerouted: the line takes that street fully.
+    Either way the ride's page says so, and the stretch's segments start learning again.
+    Errands (winding back to about where they left), GPS spikes and rides that never come back
+    change nothing.
   - What the route learned stays with the road it was learned on. Segments move with the line and
     keep their corrections, adjusted so their expected time doesn't change with their new length.
     The speed profile moves along too. Only the segments over a rerouted stretch start again, and
