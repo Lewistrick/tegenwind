@@ -46,6 +46,7 @@ there. Don't use a hex value in a screen.
 | `HeartColor` | `#FF5B4F` | Heart rate |
 | `GoodColor` | `#48D695` | Good |
 | `Danger` | `#FF6A5C` | Bad or dangerous (`error`) |
+| `Water` | `#1F4E6B` | Water under a bridge on the live map, and nothing else |
 | `ScaleWorse`, `ScaleEven`, `ScaleBetter` | `#FF3B30`, `#FFD60A`, `#30D158` | The red–yellow–green scale (`scaleColor`), see below |
 
 **What each colour means, everywhere:**
@@ -112,6 +113,11 @@ Material 3's default scale, used like this:
   a card are a plain label over a value.
 - **Detail screens** start with a text link back ("‹ Rides"), then the title, then a muted line
   under it (date, length).
+- **"How it went"** is the first card on a ride's page, before the tiles: the time in
+  `headlineSmall`, its place among the route's rides ("3rd fastest of 42"; "fastest yet" in green,
+  "slowest yet" in red), how it went against the ghost chosen on the live map ("0:35 ahead of your
+  median ride", "Arrived 0:35 before the predicted time"; green ahead, red behind), and the
+  segments where this was the quickest pass yet. A segment needs three earlier passes to count.
 - **The order on a detail screen:** numbers (stat tiles), then charts, then explanations (like
   "What this ride taught"), then the action table, then any small print.
 - **Tiles:** `StatTile` in rows of two or three, equal widths (`Modifier.weight(1f)`). Keep labels
@@ -252,6 +258,12 @@ no streets, no labels. For a road you ride every day the shape is enough.
     road: into a headwind it is slower than on a calm day, with a tailwind faster. It never waits at
     a light, so a red light costs you time against it. Before your first real ride there is no
     expected ride.
+  - **Around the route,** from the route's map lookup (OpenStreetMap), under everything else:
+    - side roads as short stubs (40 m from where they meet the route), in the road's grey but
+      fainter (40%) and thinner (5 dp), so they read as streets that join, not as the way to go;
+    - a bridge as a band of `Water` across the road under it, and a light railing (1.5 dp at 60%)
+      on each side of the road over the bridge's length;
+    - traffic lights as small amber dots (4 dp, dark rim) where they really are, one per junction.
   - **Off the route** (or not on it yet), a thin red line (2 dp, `Danger`) runs from you to the
     nearest point of the route, anywhere along it and however far away. When that point is out of
     view the line runs off the edge, pointing the way back. It is drawn under your arrow.

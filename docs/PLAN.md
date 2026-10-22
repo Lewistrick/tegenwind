@@ -365,6 +365,16 @@ can go underneath later.
   A free ride shows its track.
 - **The ride screen:** see Screens above. The ghost is replayed from the stored track of the chosen
   ride (`ride/Ghost.kt`); nothing new is stored.
+- **More of the street on the live map** (22 Oct 2026, database 12): the route's map lookup now also
+  fetches the roads within 20 m of the line and keeps, in `route_map_features`, side roads as 40 m
+  stubs, the stretches the route runs over a bridge, and each traffic light where it really is (one
+  per junction). Drawn on the live map only (`ui/HeadingMap.kt`): faint side roads, water under
+  bridges, amber light dots. Rules in `routes/MapFeatures.kt` (tested). Routes looked up before
+  this get the lookup once more at startup (`routes.mapFeaturesLooked`).
+- **End-of-ride card** ("How it went", top of a ride's page): place among the route's rides, the
+  result against the ghost chosen on the live map (for the expected ride: the arrival predicted at
+  the start), and the segments where this was the quickest pass yet (`ui/rides/RideSummary.kt`,
+  tested).
 
 ### Riding and routes
 

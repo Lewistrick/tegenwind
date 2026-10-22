@@ -26,6 +26,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -46,6 +47,10 @@ import com.tegenwind.app.ride.RideRank
 import com.tegenwind.app.ride.RideTracker
 import com.tegenwind.app.ride.Sample
 import com.tegenwind.app.ride.formatElapsed
+import com.tegenwind.app.ride.GhostChoice
+import com.tegenwind.app.ride.pickGhostRide
+import com.tegenwind.app.routes.LoadedRoute
+import com.tegenwind.app.ui.ride.savedGhostChoice
 import com.tegenwind.app.ui.TimeSeriesChart
 import com.tegenwind.app.ui.Picker
 import com.tegenwind.app.ui.rememberConfirmTap
@@ -73,7 +78,8 @@ private sealed interface HrState {
 
 @Composable
 fun RideDetailScreen(rideId: Long, onBack: () -> Unit, backLabel: String = "Rides") {
-    val container = LocalContext.current.appContainer
+    val context = LocalContext.current
+    val container = context.appContainer
     val dao = container.db.rides()
     val scope = rememberCoroutineScope()
     val routes by remember { container.db.routes().routes() }.collectAsStateWithLifecycle(emptyList())
@@ -124,6 +130,12 @@ fun RideDetailScreen(rideId: Long, onBack: () -> Unit, backLabel: String = "Ride
     val routeRides by remember(r?.routeId) {
         r?.routeId?.let { dao.ridesForRoute(it) } ?: flowOf(emptyList())
     }.collectAsStateWithLifecycle(emptyList())
+    // For the end-of-ride card: every real pass over the route, and the route's own line and segments.
+    val routePasses by remember(r?.routeId) {
+        r?.routeId?.let { container.db.routes().traversalsFlow(it) } ?: flowOf(emptyList())
+    }.collectAsStateWithLifecycle(emptyList())
+    val summaryRoute by produceState<LoadedRoute?>(null, r?.routeId) { value = r?.routeId?.let { container.routes.load(it) } }
+    val ghostChoice = remember { savedGhostChoice(context) }
     LaunchedEffect(r, hrRefresh) {
         // A simulated ride has no watch behind it, so there is nothing to look for.
         if (r != null && !r.simulated) {
@@ -156,6 +168,8 @@ fun RideDetailScreen(rideId: Long, onBack: () -> Unit, backLabel: String = "Ride
             formatRideStart(r.startedAtMs) + (r.bikeName?.let { " · on $it" } ?: "") + if (r.simulated) " · simulated ride" else "",
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+
+        if (!r.simulated) HowItWentCard(r, routeRides, routePasses, summaryRoute, ghostChoice)
 
         // Among the rides on its route, by the same start-to-finish time as "Total".
         val rank = routeRides.takeIf { rides -> rides.any { it.id == r.id } }
@@ -400,6 +414,77 @@ private sealed interface Taught {
  * stops showing up once it has learned that.
  */
 /** From start to finish, standing still included: the "Total" tile, and what rides are ranked by. */
+/**
+ * The end-of-ride card: the time and where it falls among the route's rides, how it went against
+ * the ghost chosen on the live map, and the segments where this was the quickest pass yet. A ride
+ * on no route shows its time only.
+ */
+@Composable
+private fun HowItWentCard(
+    ride: RideEntity,
+    routeRides: List<RideEntity>,
+    routePasses: List<SegmentTraversalEntity>,
+    route: LoadedRoute?,
+    choice: GhostChoice,
+) {
+    val mine = totalMs(ride)
+    val place = placeAmong(mine, routeRides.map(::totalMs)).takeIf { routeRides.any { it.id == ride.id } }
+    val earlierRides = routeRides.filter { it.startedAtMs < ride.startedAtMs }
+    // Against the ghost: an earlier ride's time, or for the expected ride the arrival predicted at the start.
+    val ghost: Pair<Double, String>? = if (route == null) null else when (choice) {
+        GhostChoice.EXPECTED -> {
+            val last = route.segments.maxOfOrNull { it.idx }
+            val arrived = last?.let { idx -> routePasses.firstOrNull { it.rideId == ride.id && it.segIdx == idx }?.exitMs }
+            val predicted = ride.etaStartArrivalMs
+            if (arrived == null || predicted == null) null else aheadS(arrived, predicted) to "the predicted arrival"
+        }
+        else -> pickGhostRide(earlierRides, choice, route.line.lengthM)?.let { aheadS(mine, totalMs(it)) to choice.words }
+    }
+    val records = route?.let { rt ->
+        val earlierIds = earlierRides.map { it.id }.toSet()
+        recordSegments(routePasses.filter { it.rideId == ride.id }, routePasses.filter { it.rideId in earlierIds })
+            .mapNotNull { idx -> rt.segments.firstOrNull { it.idx == idx } }
+            .joinToString(", ") { "%.1f–%.1f km".format(it.startM / 1000, it.endM / 1000) }
+            .takeIf { it.isNotEmpty() }
+    }
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text("How it went", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Row(verticalAlignment = Alignment.Bottom) {
+                Text(formatElapsed(mine), style = MaterialTheme.typography.headlineSmall.copy(fontFeatureSettings = "tnum"), fontWeight = FontWeight.SemiBold)
+                place?.let { p ->
+                    Text(
+                        " · " + placeText(p),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = when {
+                            p.fastest -> GoodColor
+                            p.slowest -> MaterialTheme.colorScheme.error
+                            else -> MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                        modifier = Modifier.padding(bottom = 3.dp),
+                    )
+                }
+            }
+            ghost?.let { (s, what) ->
+                val gap = formatElapsed((kotlin.math.abs(s) * 1000).toLong())
+                Text(
+                    when {
+                        s >= 0 && choice == GhostChoice.EXPECTED -> "Arrived $gap before the predicted time"
+                        choice == GhostChoice.EXPECTED -> "Arrived $gap after the predicted time"
+                        s >= 0 -> "$gap ahead of $what"
+                        else -> "$gap behind $what"
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (s >= 0) GoodColor else MaterialTheme.colorScheme.error,
+                )
+            }
+            records?.let {
+                Text("Quickest yet over $it", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+}
+
 private fun totalMs(ride: RideEntity): Long = (ride.endedAtMs ?: ride.startedAtMs) - ride.startedAtMs
 
 private fun taughtBy(
