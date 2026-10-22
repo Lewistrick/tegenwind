@@ -4,7 +4,9 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -18,15 +20,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.StrokeJoin
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
@@ -39,18 +38,24 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.tegenwind.app.appContainer
+import com.tegenwind.app.data.LearningPass
 import com.tegenwind.app.data.RideEntity
 import com.tegenwind.app.data.RideTotals
+import com.tegenwind.app.data.RiderSetup
 import com.tegenwind.app.data.RouteSegmentEntity
 import com.tegenwind.app.data.SegmentTraversalEntity
 import com.tegenwind.app.eta.Banister
 import com.tegenwind.app.eta.RiderState
 import com.tegenwind.app.ride.formatElapsed
 import com.tegenwind.app.ui.StatTile
+import com.tegenwind.app.ui.rides.powerText
+import com.tegenwind.app.ui.rides.rideWatts
 import com.tegenwind.app.ui.Picker
 import com.tegenwind.app.ui.ChartCard
 import com.tegenwind.app.ui.theme.Danger
 import com.tegenwind.app.ui.theme.GoodColor
+import com.tegenwind.app.ui.theme.HeartColor
+import com.tegenwind.app.ui.theme.Ink
 import com.tegenwind.app.ui.theme.SpeedColor
 import kotlinx.coroutines.flow.flowOf
 import java.time.Instant
@@ -60,6 +65,7 @@ import kotlin.math.ceil
 import kotlin.math.floor
 import kotlin.math.log10
 import kotlin.math.pow
+import kotlin.math.roundToInt
 
 @Composable
 fun StatsScreen() {
@@ -86,6 +92,12 @@ fun StatsScreen() {
     val headwindPoints = remember(rides, traversals) { headwindDurationPoints(rides, traversals) }
     val slowRows = remember(traversals, segments) { slowestSegments(traversals, segments) }
     val totals by remember { container.db.rides().totals() }.collectAsStateWithLifecycle(null)
+    // Across every route: the all-rides numbers above the route picker.
+    val allRides by remember { container.db.rides().realRides() }.collectAsStateWithLifecycle(emptyList())
+    val allPasses by produceState(emptyList<LearningPass>(), allRides) { value = container.db.rides().learningPasses() }
+    val setup by container.riderSetup.setup.collectAsStateWithLifecycle()
+    val overall = remember(allRides, allPasses, setup) { overallStats(allRides, allPasses, setup) }
+    val gaps = remember(rides, traversals, segments) { arrivalGaps(rides, traversals, segments) }
     var riderState by remember { mutableStateOf<RiderState?>(null) }
     LaunchedEffect(rides) {
         val now = System.currentTimeMillis()
@@ -98,9 +110,21 @@ fun StatsScreen() {
     LazyColumn(contentPadding = PaddingValues(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item { Text("Stats", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.SemiBold) }
 
-        totals?.takeIf { it.rides > 0 }?.let { item { TotalsCard(it) } }
+        totals?.takeIf { it.rides > 0 }?.let { t ->
+            item { TotalsCard(t) }
+            item { BurnedSavedCard(t, overall.kcal) }
+            if (overall.headwind.total > 0) item { WindCard(overall.wind, overall.headwind) }
+        }
 
         riderState?.takeIf { it.rideDays > 0 }?.let { item { FitnessCard(it) } }
+
+        if (overall.hr.size >= 2) {
+            item {
+                ChartCard("Heart rate vs power", "each dot is one ride · up: average bpm\nacross: effort in ≈ W, wind and slope taken out") {
+                    ScatterChart(overall.hr, xTick = { it.toInt().toString() }, color = HeartColor)
+                }
+            }
+        }
 
         if (routes.isEmpty()) {
             item {
@@ -135,7 +159,7 @@ fun StatsScreen() {
 
         item {
             ChartCard("Duration", "minutes, start to finish, over time · fastest & slowest") {
-                TrendChart(rides)
+                DurationTrend(rides)
             }
         }
 
@@ -145,11 +169,49 @@ fun StatsScreen() {
             }
         }
 
+        val powered = rides.filter { rideWatts(it) != null }
+        if (powered.size >= 2) item { PowerSection(powered) }
+
+        item { SpeedSection(rides) }
+
+        item { ArrivalSection(gaps) }
+
+        item {
+            ChartCard("Time of day vs duration", "each dot is one ride · up: minutes\nacross: the hour you set off") {
+                ScatterChart(rides.map { startHour(it) to rideDurationMin(it) }, xTick = { "%02d:00".format(it.toInt()) })
+            }
+        }
+        item {
+            ChartCard("Weekday vs duration", "average minutes, by the day you set off") {
+                WeekdayBars(weekdayAverages(rides))
+            }
+        }
+
+        val temps = rides.mapNotNull { r -> r.avgTempC?.let { it to rideDurationMin(r) } }
+        if (temps.size >= 2) {
+            item {
+                ChartCard("Temperature vs duration", "each dot is one ride · up: minutes\nacross: average temperature in °C") {
+                    ScatterChart(temps, xTick = { signed(it) })
+                }
+            }
+        }
+        val rains = rides.mapNotNull { r -> r.rainMm?.let { it to rideDurationMin(r) } }
+        if (rains.size >= 2) {
+            item {
+                ChartCard("Rain vs duration", "each dot is one ride · up: minutes\nacross: rain that fell during the ride, in mm") {
+                    ScatterChart(rains, xTick = { "%.1f".format(it) }, minXStep = 0.5)
+                }
+            }
+        }
+
         if (headwindPoints.size >= 2) {
             item {
                 // Two deliberate lines: as one, it broke inside "km/h".
                 ChartCard("Headwind vs duration", "each dot is one ride · up: minutes\nacross: headwind in km/h, below 0 is tailwind") {
-                    HeadwindScatter(headwindPoints)
+                    ScatterChart(
+                        headwindPoints,
+                        xTick = { v -> "%+.0f".format(v).replace('-', '−').let { if (it == "+0" || it == "−0") "0" else it } },
+                    )
                 }
             }
         }
@@ -172,7 +234,7 @@ fun StatsScreen() {
 
 private fun durationMs(ride: RideEntity): Long = (ride.endedAtMs ?: ride.startedAtMs) - ride.startedAtMs
 
-/** How far you've ridden in all, across every route and off them. */
+/** How far and how long you've ridden in all, across every route and off them. */
 @Composable
 private fun TotalsCard(totals: RideTotals) {
     val km = totals.distanceM / 1000
@@ -183,9 +245,80 @@ private fun TotalsCard(totals: RideTotals) {
                 // Whole km once it's long enough that a tenth says nothing.
                 FlatStat("Distance", (if (km < 100) "%.1f km" else "%.0f km").format(km), Modifier.weight(1f))
                 FlatStat("Rides", totals.rides.toString(), Modifier.weight(1f))
+                FlatStat("Riding time", hoursMinutes(totals.movingMs), Modifier.weight(1f))
             }
         }
     }
+}
+
+/** What the riding burned, and what driving the same distance would have burned instead. */
+@Composable
+private fun BurnedSavedCard(totals: RideTotals, kcal: Double) {
+    val saved = savedVersusCar(totals.distanceM)
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column {
+                Text("Burned and saved", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Text(
+                    "estimates: your effort over the time you moved, at 24% muscle efficiency · against a petrol car at 6.5 L/100 km",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                FlatStat("Burned", "≈${kcal.roundToInt()}", Modifier.weight(1f), unit = "kcal")
+                FlatStat("Petrol saved", "≈${saved.petrolL.roundToInt()}", Modifier.weight(1f), unit = "L")
+                FlatStat("CO₂ saved", "≈${saved.co2Kg.roundToInt()}", Modifier.weight(1f), unit = "kg")
+            }
+        }
+    }
+}
+
+/** What the wind did to your time over all rides, and how often it was against you. */
+@Composable
+private fun WindCard(wind: WindEffect, share: HeadwindShare) {
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column {
+                Text("Wind", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Text(
+                    "time the wind cost and gave back, worked out from your rides and the forecast",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                FlatStat("Headwind cost", "≈" + hoursMinutes((wind.lostS * 1000).toLong()), Modifier.weight(1f))
+                FlatStat("Tailwind gain", "≈" + hoursMinutes((wind.gainedS * 1000).toLong()), Modifier.weight(1f))
+                FlatStat("Headwind rides", "%d%%".format(share.pct.roundToInt()), Modifier.weight(1f))
+            }
+        }
+    }
+}
+
+/** Numbers across all routes that need more than one ride list to work out. */
+private data class Overall(
+    val kcal: Double,
+    val wind: WindEffect,
+    val headwind: HeadwindShare,
+    /** (effort in W, average heart rate in bpm) for each ride that has both. */
+    val hr: List<Pair<Double, Double>>,
+)
+
+private fun overallStats(rides: List<RideEntity>, passes: List<LearningPass>, setup: RiderSetup): Overall {
+    val byId = rides.associateBy { it.id }
+    // Each ride on the bike it was ridden on, as when its effort was worked out.
+    fun paramsOf(id: Long) = setup.params(setup.bikes.firstOrNull { it.name == byId[id]?.bikeName } ?: setup.bikes.first())
+    return Overall(
+        kcal = kcalBurned(rides),
+        wind = windEffect(passes, { byId[it]?.pedalPowerW }, ::paramsOf),
+        headwind = headwindShare(passes),
+        hr = rides.mapNotNull { r ->
+            val watts = r.pedalPowerW
+            val bpm = r.avgHrBpm
+            if (watts != null && bpm != null) watts to bpm else null
+        },
+    )
 }
 
 /** Fitness and fatigue across every route, and what they currently do to the ETA. */
@@ -239,8 +372,110 @@ private fun KpiRow(rides: List<RideEntity>) {
     }
 }
 
+/** The duration of each ride over time, the fastest in green and the slowest in red. */
+@Composable
+private fun DurationTrend(rides: List<RideEntity>) {
+    val points = remember(rides) { rides.map { it.startedAtMs to durationMs(it) / 60_000.0 } }
+    TrendChart(
+        points,
+        goodIdx = points.indices.minByOrNull { points[it].second },
+        badIdx = points.indices.maxByOrNull { points[it].second },
+    )
+}
+
+/** The strongest and weakest ride of a route, and the effort of each ride over time. Rides are [powered]. */
+@Composable
+private fun PowerSection(powered: List<RideEntity>) {
+    val watts = powered.map { rideWatts(it)!! }
+    val best = watts.indices.maxByOrNull { watts[it] } ?: 0
+    val worst = watts.indices.minByOrNull { watts[it] } ?: 0
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            StatTile(
+                "Strongest ride", powerText(watts[best]) ?: "–", Modifier.weight(1f).fillMaxHeight(),
+                note = shortDate(powered[best].startedAtMs), noteColor = GoodColor,
+            )
+            StatTile(
+                "Weakest ride", powerText(watts[worst]) ?: "–", Modifier.weight(1f).fillMaxHeight(),
+                note = shortDate(powered[worst].startedAtMs), noteColor = Danger,
+            )
+        }
+        ChartCard("Power", "≈ W of effort, wind and slope taken out, over time · strongest & weakest") {
+            TrendChart(powered.mapIndexed { i, r -> r.startedAtMs to watts[i] }, goodIdx = best, badIdx = worst, color = Ink)
+        }
+    }
+}
+
+/** Average moving speed of a route's rides, and how it moves over time. */
+@Composable
+private fun SpeedSection(rides: List<RideEntity>) {
+    val speeds = rides.mapNotNull { r -> movingSpeedKmh(r)?.let { r.startedAtMs to it } }
+    if (speeds.size < 2) return
+    val trend = trendPerMonth(speeds)?.let { "%+.1f km/h per month".format(it).replace('-', '−') }
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        StatTile("Average moving speed", "%.1f km/h".format(speeds.map { it.second }.average()), Modifier.fillMaxWidth(), note = trend)
+        ChartCard("Moving speed", "km/h, standing still not counted, over time") { TrendChart(speeds) }
+    }
+}
+
+/** How a ride's arrival compared with the arrival predicted at its start and halfway ([startS], [halfS]: + is later). */
+private data class RideGap(val timeMs: Long, val startS: Double?, val halfS: Double?)
+
+private fun arrivalGaps(rides: List<RideEntity>, traversals: List<SegmentTraversalEntity>, segments: List<RouteSegmentEntity>): List<RideGap> {
+    val last = segments.maxOfOrNull { it.idx } ?: return emptyList()
+    val byRide = traversals.groupBy { it.rideId }
+    return rides.mapNotNull { r ->
+        val actual = byRide[r.id]?.let { actualArrivalMs(it, last) }
+        val start = arrivalGapS(r.etaStartArrivalMs, actual)
+        val half = arrivalGapS(r.etaHalfArrivalMs, actual)
+        if (start == null && half == null) null else RideGap(r.startedAtMs, start, half)
+    }
+}
+
+/** How close the predicted arrival came: the average gap at the start and halfway, and whether it shrinks. */
+@Composable
+private fun ArrivalSection(gaps: List<RideGap>) {
+    val starts = gaps.mapNotNull { g -> g.startS?.let { g.timeMs to it } }
+    val halves = gaps.mapNotNull { it.halfS }
+    if (starts.size < 3) {
+        Column {
+            Text("Arrival time gap", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Text(
+                "Ride this route a few more times to see how close the predicted arrival gets.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        return
+    }
+    fun mean(values: List<Double>) = formatElapsed((values.map { kotlin.math.abs(it) }.average() * 1000).toLong())
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            StatTile("Gap at start", mean(starts.map { it.second }), Modifier.weight(1f).fillMaxHeight(), note = "average of ${starts.size} rides")
+            StatTile(
+                "Gap halfway", if (halves.isEmpty()) "–" else mean(halves), Modifier.weight(1f).fillMaxHeight(),
+                note = if (halves.isEmpty()) null else "average of ${halves.size} rides",
+            )
+        }
+        ChartCard("Arrival time gap", "seconds later (+) or earlier (−) than the arrival predicted at the start") {
+            TrendChart(starts, yLabel = { signed(it) })
+        }
+        gapTrend(starts.map { it.second })?.let { trend ->
+            Text(
+                when (trend) {
+                    Trend.Better -> "Closer lately: the newer half of these rides arrived nearer the prediction."
+                    Trend.Worse -> "Further off lately: the newer half of these rides arrived further from the prediction."
+                    Trend.Steady -> "About as close as before."
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
 /** A "nice" grid step (1/2/5 × a power of ten) so axis ticks land on round numbers. */
-private fun niceStep(range: Double, targetTicks: Double = 5.0): Double {
+internal fun niceStep(range: Double, targetTicks: Double = 5.0): Double {
     val raw = range.coerceAtLeast(0.001) / targetTicks
     val mag = 10.0.pow(floor(log10(raw)))
     for (m in intArrayOf(1, 2, 5, 10)) {
@@ -251,77 +486,8 @@ private fun niceStep(range: Double, targetTicks: Double = 5.0): Double {
 }
 
 private val dateLabelFormat: DateTimeFormatter = DateTimeFormatter.ofPattern("d MMM")
-private fun shortDate(epochMs: Long): String =
+internal fun shortDate(epochMs: Long): String =
     Instant.ofEpochMilli(epochMs).atZone(ZoneId.systemDefault()).format(dateLabelFormat)
-
-@Composable
-private fun TrendChart(rides: List<RideEntity>) {
-    val measurer = rememberTextMeasurer()
-    val labelStyle = TextStyle(color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
-    val gridColor = MaterialTheme.colorScheme.outlineVariant
-    val ringColor = MaterialTheme.colorScheme.surfaceContainer
-
-    val points = remember(rides) { rides.map { it.startedAtMs to durationMs(it) / 60_000.0 } }
-    val fastestIdx = remember(points) { points.indices.minByOrNull { points[it].second } ?: 0 }
-    val slowestIdx = remember(points) { points.indices.maxByOrNull { points[it].second } ?: 0 }
-
-    Canvas(Modifier.fillMaxWidth().height(150.dp)) {
-        val left = points.first().first
-        val right = points.last().first
-        val span = (right - left).coerceAtLeast(1L).toFloat()
-        val mn = points.minOf { it.second }
-        val mx = points.maxOf { it.second }
-        val step = niceStep((mx - mn).coerceAtLeast(2.0)).coerceAtLeast(1.0)
-        val lo = floor(mn / step) * step
-        val hi = (ceil(mx / step) * step).coerceAtLeast(lo + step)
-
-        val padL = 30.dp.toPx()
-        val padR = 6.dp.toPx()
-        val padT = 6.dp.toPx()
-        val padB = 16.dp.toPx()
-        val plotW = size.width - padL - padR
-        val plotH = size.height - padT - padB
-        fun x(t: Long) = padL + (t - left) / span * plotW
-        fun y(v: Double) = padT + (1 - (v - lo) / (hi - lo)).toFloat() * plotH
-
-        var v = lo
-        while (v <= hi + 0.001) {
-            val yy = y(v)
-            drawLine(gridColor, Offset(padL, yy), Offset(size.width - padR, yy), strokeWidth = 1f)
-            val layout = measurer.measure(v.toInt().toString(), labelStyle)
-            drawText(layout, topLeft = Offset(padL - 5.dp.toPx() - layout.size.width, yy - layout.size.height / 2))
-            v += step
-        }
-
-        val dateLabels = listOf(shortDate(left) to 0f, shortDate(right) to 1f)
-        dateLabels.forEach { (text, frac) ->
-            val layout = measurer.measure(text, labelStyle)
-            val cx = padL + plotW * frac
-            val lx = if (frac == 0f) cx else cx - layout.size.width
-            drawText(layout, topLeft = Offset(lx, size.height - layout.size.height))
-        }
-
-        val path = Path()
-        points.forEachIndexed { i, (t, dur) ->
-            val px = x(t)
-            val py = y(dur)
-            if (i == 0) path.moveTo(px, py) else path.lineTo(px, py)
-        }
-        drawPath(path, SpeedColor.copy(alpha = 0.55f), style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
-
-        points.forEachIndexed { i, (t, dur) ->
-            val center = Offset(x(t), y(dur))
-            val color = when (i) {
-                fastestIdx -> GoodColor
-                slowestIdx -> Danger
-                else -> SpeedColor
-            }
-            val r = if (i == fastestIdx || i == slowestIdx) 5.dp.toPx() else 3.dp.toPx()
-            drawCircle(ringColor, r + 1.5.dp.toPx(), center)
-            drawCircle(color, r, center)
-        }
-    }
-}
 
 @Composable
 private fun DurationHistogram(rides: List<RideEntity>) {
@@ -396,58 +562,6 @@ private fun headwindDurationPoints(rides: List<RideEntity>, traversals: List<Seg
     }
 }
 
-@Composable
-private fun HeadwindScatter(points: List<Pair<Double, Double>>) {
-    val measurer = rememberTextMeasurer()
-    val labelStyle = TextStyle(color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
-    val gridColor = MaterialTheme.colorScheme.outlineVariant
-
-    Canvas(Modifier.fillMaxWidth().height(150.dp)) {
-        val xMn = points.minOf { it.first }
-        val xMx = points.maxOf { it.first }
-        val yMn = points.minOf { it.second }
-        val yMx = points.maxOf { it.second }
-        // At least 1 km/h, so no two ticks can round to the same label.
-        val xStep = niceStep((xMx - xMn).coerceAtLeast(1.0)).coerceAtLeast(1.0)
-        val yStep = niceStep((yMx - yMn).coerceAtLeast(2.0)).coerceAtLeast(1.0)
-        val xLo = floor(xMn / xStep) * xStep
-        val xHi = (ceil(xMx / xStep) * xStep).coerceAtLeast(xLo + xStep)
-        val yLo = floor(yMn / yStep) * yStep
-        val yHi = (ceil(yMx / yStep) * yStep).coerceAtLeast(yLo + yStep)
-
-        val padL = 30.dp.toPx()
-        val padR = 10.dp.toPx()
-        val padT = 6.dp.toPx()
-        val padB = 16.dp.toPx()
-        val plotW = size.width - padL - padR
-        val plotH = size.height - padT - padB
-        fun x(v: Double) = padL + ((v - xLo) / (xHi - xLo)).toFloat() * plotW
-        fun y(v: Double) = padT + (1 - (v - yLo) / (yHi - yLo)).toFloat() * plotH
-
-        var yv = yLo
-        while (yv <= yHi + 0.001) {
-            val yy = y(yv)
-            drawLine(gridColor, Offset(padL, yy), Offset(size.width - padR, yy), strokeWidth = 1f)
-            val layout = measurer.measure(yv.toInt().toString(), labelStyle)
-            drawText(layout, topLeft = Offset(padL - 5.dp.toPx() - layout.size.width, yy - layout.size.height / 2))
-            yv += yStep
-        }
-        var xv = xLo
-        while (xv <= xHi + 0.001) {
-            val xx = x(xv)
-            drawLine(gridColor, Offset(xx, padT), Offset(xx, padT + plotH), strokeWidth = 1f)
-            val tick = "%+.0f".format(xv).replace('-', '−').let { if (it == "+0" || it == "−0") "0" else it }
-            val layout = measurer.measure(tick, labelStyle)
-            drawText(layout, topLeft = Offset(xx - layout.size.width / 2, size.height - layout.size.height))
-            xv += xStep
-        }
-
-        points.forEach { (hw, dur) ->
-            drawCircle(SpeedColor.copy(alpha = 0.75f), 4.dp.toPx(), Offset(x(hw), y(dur)))
-        }
-    }
-}
-
 /** A segment as you usually ride it: the median time over it, start to finish, across your real rides. */
 private data class SlowSegment(val startM: Double, val endM: Double, val usualMs: Long, val rides: Int) {
     val kmh: Double get() = (endM - startM) / (usualMs / 1000.0) * 3.6
@@ -491,7 +605,7 @@ private fun SlowSegmentRow(s: SlowSegment) {
 
 /** A label over a value, straight on the card: for numbers grouped inside a card of their own. */
 @Composable
-private fun FlatStat(label: String, value: String, modifier: Modifier = Modifier, unit: String? = null) {
+internal fun FlatStat(label: String, value: String, modifier: Modifier = Modifier, unit: String? = null) {
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
     val unitStyle = MaterialTheme.typography.labelMedium
     Column(modifier) {

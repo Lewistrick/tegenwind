@@ -16,6 +16,8 @@ import com.tegenwind.app.ride.RideRecorder
 import com.tegenwind.app.ride.backfillLessons
 import com.tegenwind.app.ride.backfillProfiles
 import com.tegenwind.app.ride.backfillSteadyPower
+import com.tegenwind.app.ride.backfillWeather
+import com.tegenwind.app.weather.WeatherHistory
 import com.tegenwind.app.routes.RouteEnricher
 import com.tegenwind.app.routes.RouteRepository
 import com.tegenwind.app.weather.WeatherRepository
@@ -62,7 +64,10 @@ class AppContainer(app: Application) {
     init {
         routes.resumeStalledEnrichment()
         // Heart-rate readings are only kept for two weeks.
-        appScope.launch { heartRate.forgetOld() }
+        appScope.launch {
+            heartRate.forgetOld()
+            heartRate.fillAverages()
+        }
         // Rides recorded before the fitness model existed still count towards it.
         appScope.launch {
             val missing = db.rides().ridesWithoutLoad()
@@ -80,6 +85,11 @@ class AppContainer(app: Application) {
                 backfillSteadyPower(db.rides(), riderSetup.setup.value)
                 prefs.edit().putBoolean(STEADY_POWER_DONE, true).apply()
             }
+        }
+        appScope.launch {
+            // Rides from before their weather was kept get it from the weather record.
+            // TODO(remove after backfill): see the note in weather/WeatherHistory.kt.
+            backfillWeather(db.rides(), WeatherHistory())
         }
         appScope.launch {
             // Rides from before each pass recorded what it taught get that filled in once.

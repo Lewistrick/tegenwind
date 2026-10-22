@@ -30,6 +30,8 @@ import com.tegenwind.app.routes.RouteMatcher
 import com.tegenwind.app.routes.RouteProgress
 import com.tegenwind.app.routes.RouteTracker
 import com.tegenwind.app.weather.RouteWeather
+import com.tegenwind.app.weather.WeatherPart
+import com.tegenwind.app.weather.summarizeWeather
 import com.tegenwind.app.weather.Sky
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -128,6 +130,9 @@ class RideRecorder(
     private val traversals = ArrayList<SegmentTraversalEntity>()
     private var livePowerPasses = 0
     private var livePowerW: Double? = null
+    /** The arrival predicted when the ride first got going on its route, and when half of it was ridden: kept with the ride. */
+    private var etaStartMs: Long? = null
+    private var etaHalfMs: Long? = null
     private val expected = ArrayList<ArrayList<Sample>>()
     private val arrivalTrail = ArrivalTrail()
     /** Every fix of this ride, for learning the route's speed profile when it ends. */
@@ -188,6 +193,8 @@ class RideRecorder(
         traversals.clear()
         livePowerPasses = 0
         livePowerW = null
+        etaStartMs = null
+        etaHalfMs = null
         expected.clear()
         arrivalTrail.clear()
         ridePoints.clear()
@@ -337,6 +344,8 @@ class RideRecorder(
             traversals.clear()
             livePowerPasses = 0
             livePowerW = null
+            etaStartMs = null
+            etaHalfMs = null
             riddenWeather.clear()
             return null
         }
@@ -350,6 +359,8 @@ class RideRecorder(
             traversals.clear()
             livePowerPasses = 0
             livePowerW = null
+            etaStartMs = null
+            etaHalfMs = null
             riddenWeather.clear()
         }
         return leader.progress
@@ -402,6 +413,16 @@ class RideRecorder(
         // How speed varies within each segment: learned from real rides only, like the segments.
         route?.let { if (!ride.simulated) learnProfile(routeDao, it, ridePoints.toList()) }
         val startWind = weather?.at(0.0, snap.startedAtMs)
+        // The forecast along the way, for the stretches that were timed.
+        val rideWeather = model?.let { m ->
+            summarizeWeather(
+                traversals.mapNotNull { t ->
+                    val seg = m.segments.getOrNull(t.segIdx) ?: return@mapNotNull null
+                    val w = weather?.at(seg.midM, t.enterMs) ?: return@mapNotNull null
+                    WeatherPart((t.exitMs - t.enterMs) / 3_600_000.0, w.tempC, w.rainMmH)
+                }
+            )
+        }
         dao.updateRide(
             RideEntity(
                 id = ride.rideId,
@@ -417,6 +438,10 @@ class RideRecorder(
                 // Kept with the ride, so changing the settings later doesn't rewrite what it took.
                 bikeName = bike.name,
                 pedalPowerW = model?.let { SteadyPower.fromTraversals(traversals.toList(), it.segments, params) },
+                etaStartArrivalMs = etaStartMs,
+                etaHalfArrivalMs = etaHalfMs,
+                avgTempC = rideWeather?.avgTempC,
+                rainMm = rideWeather?.rainMm,
                 loadTss = if (ride.simulated) null else Banister.loadFromRide(snap.movingMs, snap.distanceM),
             )
         )
@@ -441,6 +466,8 @@ class RideRecorder(
         traversals.clear()
         livePowerPasses = 0
         livePowerW = null
+        etaStartMs = null
+        etaHalfMs = null
         expected.clear()
         arrivalTrail.clear()
         ridePoints.clear()
@@ -475,6 +502,11 @@ class RideRecorder(
             pedalPowerW = livePower(m),
         )
         if (ride.started) arrivalTrail.record(nowMs, eta.arrivalMs, (eta.bandS * 1000).toLong())
+        if (ride.started && progress.onRouteYet && !progress.offRoute) {
+            if (etaStartMs == null) etaStartMs = eta.arrivalMs
+            // Half way: as much ridden as still to ride.
+            if (etaHalfMs == null && progress.progressM > 0 && progress.progressM >= progress.remainingM) etaHalfMs = eta.arrivalMs
+        }
         // Once offered the prompt stays until answered, even if the band widens again (off route).
         val firm = progress.onRouteYet && !progress.offRoute && eta.bandS < Eta.FIRM_BAND_S
         _live.value = ride.copy(

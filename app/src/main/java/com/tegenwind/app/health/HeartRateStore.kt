@@ -23,9 +23,20 @@ class HeartRateStore(private val hc: HealthConnectHr, private val dao: RideDao) 
     /** Deletes readings older than [HR_KEEP_DAYS] days. */
     suspend fun forgetOld(nowMs: Long = System.currentTimeMillis()) = dao.deleteHrBefore(cutoff(nowMs))
 
+    /** Rides whose readings are still kept but whose average isn't stored yet (from before it was) get it now. */
+    suspend fun fillAverages() {
+        for (ride in dao.realRidesOldestFirst()) {
+            if (ride.avgHrBpm != null) continue
+            val bpm = dao.hrBpm(ride.id)
+            if (bpm.isNotEmpty()) dao.setAvgHr(ride.id, bpm.average())
+        }
+    }
+
     /** Keeps [samples] read for [ride], unless the ride is simulated or already too old to keep. */
     suspend fun keep(ride: RideEntity, samples: List<Sample>, nowMs: Long = System.currentTimeMillis()) {
         if (ride.simulated || samples.isEmpty()) return
+        // The average outlives the readings, which go after two weeks.
+        dao.setAvgHr(ride.id, samples.map { it.value }.average())
         val keep = samples.filter { it.timeMs >= cutoff(nowMs) }
         if (keep.isNotEmpty()) dao.insertHr(keep.map { HrSampleEntity(ride.id, it.timeMs, it.value) })
     }

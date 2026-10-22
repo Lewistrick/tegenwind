@@ -330,7 +330,14 @@ private fun follows(path: List<GeoPoint>, other: List<GeoPoint>): Boolean {
 }
 
 /** A line with one stretch replaced, where old distances land on it, and where the new stretch lies on it. */
-class Reroute(val line: Polyline, val map: AlongMap, val fromM: Double, val toM: Double)
+class Reroute(
+    val line: Polyline,
+    val map: AlongMap,
+    val fromM: Double,
+    val toM: Double,
+    /** True when the line now follows the other street; false when it only moved part of the way toward it. */
+    val full: Boolean = true,
+)
 
 /** Replaces the stretch of [line] that [detour] rode elsewhere with the way it went. */
 fun splice(line: Polyline, detour: Detour): Reroute {
@@ -340,7 +347,37 @@ fun splice(line: Polyline, detour: Detour): Reroute {
     val end = line.pointAt(b)
     val between = cleanPoints(listOf(start) + detour.path, minStepM = 3.0).toMutableList()
     if (between.size >= 2 && distanceM(between.last(), end) < 3.0) between[between.lastIndex] = end else between += end
-    val stretch = simplify(between, RouteDrift.STORE_TOLERANCE_M)
+    return replaceStretch(line, a, b, simplify(between, RouteDrift.STORE_TOLERANCE_M), full = true)
+}
+
+/**
+ * Moves the stretch of [line] that [detour] rode elsewhere [weight] of the way toward the way it
+ * went, however far that was: both are walked from end to end in step, by share of their length,
+ * and each point of the line moves that share toward the matching point of the ride. The ends stay
+ * where the ride left and rejoined the line.
+ */
+fun blend(line: Polyline, detour: Detour, weight: Double = RouteDrift.NUDGE_WEIGHT): Reroute {
+    val a = detour.leaveM
+    val b = detour.rejoinM
+    val old = Polyline(listOf(line.pointAt(a)) + line.points.filterIndexed { i, _ -> line.cumulative[i] > a && line.cumulative[i] < b } + line.pointAt(b))
+    val ridden = Polyline(cleanPoints(listOf(old.points.first()) + detour.path + old.points.last(), minStepM = 3.0).let {
+        if (it.size >= 2) it else listOf(old.points.first(), old.points.last())
+    })
+    val n = max(2, ceil(max(old.lengthM, ridden.lengthM) / RouteDrift.STATION_M).toInt() + 1)
+    val moved = (0 until n).map { k ->
+        val f = k.toDouble() / (n - 1)
+        val o = old.pointAt(old.lengthM * f)
+        val r = ridden.pointAt(ridden.lengthM * f)
+        GeoPoint(o.lat + weight * (r.lat - o.lat), o.lon + weight * (r.lon - o.lon))
+    }.toMutableList()
+    // The ends are exactly where the line was left and rejoined.
+    moved[0] = old.points.first()
+    moved[moved.lastIndex] = old.points.last()
+    return replaceStretch(line, a, b, simplify(moved, RouteDrift.STORE_TOLERANCE_M), full = false)
+}
+
+/** [line] with its stretch from [a] to [b] replaced by [stretch], which starts and ends at those points. */
+private fun replaceStretch(line: Polyline, a: Double, b: Double, stretch: List<GeoPoint>, full: Boolean): Reroute {
     val before = line.points.filterIndexed { i, _ -> line.cumulative[i] < a }
     val after = line.points.filterIndexed { i, _ -> line.cumulative[i] > b }
     val newLine = Polyline(before + stretch + after)
@@ -351,7 +388,7 @@ fun splice(line: Polyline, detour: Detour): Reroute {
         doubleArrayOf(0.0, fromM, toM, newLine.lengthM),
         gap = a to b,
     )
-    return Reroute(newLine, map, fromM, toM)
+    return Reroute(newLine, map, fromM, toM, full)
 }
 
 /**
@@ -421,6 +458,10 @@ class LineFolder(start: Polyline, segments: List<Pair<Double, Double>>) {
     var rerouted: Pair<Double, Double>? = null
         private set
 
+    /** Whether the line now follows the street the ride took there; false when it only moved part of the way. */
+    var reroutedFully: Boolean = false
+        private set
+
     private val maps = ArrayList<AlongMap>()
 
     val changed: Boolean get() = maps.isNotEmpty()
@@ -438,14 +479,18 @@ class LineFolder(start: Polyline, segments: List<Pair<Double, Double>>) {
         if (coverage(line, placed) < RouteDrift.MIN_COVERAGE) return false
         if (earlier != null) {
             val theirs = earlier.map { detours(place(line, it)) }
-            val adopted = detours(placed).filter { d -> theirs.any { t -> t.any { sameDetour(d, it) } } }
-            // From the end backwards, so each splice leaves the distances of the ones before it as they were.
-            for (d in adopted.sortedByDescending { it.leaveM }) {
-                val r = splice(line, d)
+            // Another street taken on an earlier ride too is followed from now on; one taken only
+            // this time moves the line a quarter of the way toward it, however far it was.
+            val own = detours(placed)
+            val adopted = own.filter { d -> theirs.any { t -> t.any { sameDetour(d, it) } } }
+            // From the end backwards, so each change leaves the distances of the ones before it as they were.
+            for (d in own.sortedByDescending { it.leaveM }) {
+                val r = if (d in adopted) splice(line, d) else blend(line, d)
                 apply(r.map, r.line)
                 rerouted = rerouted?.let { (from, to) -> minOf(from, r.fromM) to maxOf(to, r.toM) } ?: (r.fromM to r.toM)
+                reroutedFully = reroutedFully || r.full
             }
-            if (adopted.isNotEmpty()) placed = place(line, fixes)
+            if (own.isNotEmpty()) placed = place(line, fixes)
         }
         nudge(line, placed)?.let { apply(it.map, it.line) }
         return true

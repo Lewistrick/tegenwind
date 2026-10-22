@@ -327,8 +327,29 @@ The bottom bar is **Ride · Rides · Routes · Stats**. Rides replaced Map.
   Its fitness and fatigue are in load/day: an hour of solid riding is about 100.
   Durations are start to finish, standing still included. "Slowest segments" ranks segments by
   your usual speed there (median time over your real rides), with no physics in it (20 Oct 2026;
-  it used to compare with bare physics). An "All rides" card at the top totals distance and rides
-  across every route.
+  it used to compare with bare physics).
+  - **More stats (20 Oct 2026, database 10):** above the route picker, across every route: an "All
+    rides" card (distance, rides, riding time), "Burned and saved" (≈kcal from effort × time ÷ 24%
+    muscle efficiency; petrol and CO₂ against a 6.5 L/100 km car), "Wind" (time the wind cost and
+    gave back, worked out per segment from the ride's own effort with and without its headwind, and
+    the share of rides with a headwind), the fitness card, and heart rate against effort.
+    Per route, after the duration charts: strongest and weakest ride with a power trend, moving
+    speed with its trend, the gap between predicted and actual arrival, time of day and weekday
+    against duration, temperature and rain against duration. Code: `ui/stats/StatsMath.kt`
+    (tested), `ui/stats/StatsCharts.kt`.
+  - **Kept with each ride from now on (`RideEntity`):** the arrival predicted at the start and
+    halfway (`etaStartArrivalMs`, `etaHalfArrivalMs`; the gap is measured against the moment the
+    last segment was left, so rides before this have none), average heart rate (`avgHrBpm`; the
+    readings themselves are deleted after two weeks), and the average temperature and rain on the
+    ride (`avgTempC`, `rainMm`, from the forecast along the route). Rides from before get their
+    weather once from Open-Meteo's record, at the place they began (`ride/WeatherBackfill.kt`,
+    `weather/WeatherHistory.kt`); heart rate averages are only known for rides still within the
+    two weeks of readings, or opened later on the ride page.
+  - **To remove once old rides have their weather:** the one-off lookup in Open-Meteo's weather
+    record (`weather/WeatherHistory.kt`, `ride/WeatherBackfill.kt`, `weatherOverRide` and
+    `HourlyWeather` in `weather/RideWeather.kt` with their test, the `backfillWeather` launch in
+    `TegenwindApp.kt`, `RideDao.firstPoint` and `ridesWithoutWeather`). Open-Meteo itself stays for
+    the wind forecast and elevation; new rides record their weather from the live forecast.
 
 ### Maps (13 Oct 2026)
 
@@ -379,8 +400,14 @@ can go underneath later.
   GPX file or one ride, and then ridden a little differently.
   - Every real ride moves the line a quarter of the way toward where it went, where it went within
     40 m. That is a fading average over about the last seven rides, and it settles within a metre.
-  - A stretch ridden on another street (more than 40 m away, leaving and rejoining the line) on two
-    of the last three rides is rerouted: the line takes that street, and the ride's page says so.
+  - A stretch ridden on another street (more than 40 m away, leaving and rejoining the line) moves
+    that stretch of the line a quarter of the way toward it, however far it was (21 Oct 2026; before,
+    one ride changed nothing there). Each point of the stretch moves toward the matching point of
+    the ride, matched by share of their lengths, so the ends stay where the ride left and rejoined.
+    On two of the last three rides the stretch is rerouted: the line takes that street fully.
+    Either way the ride's page says so, and the stretch's segments start learning again.
+    Errands (winding back to about where they left), GPS spikes and rides that never come back
+    change nothing.
   - What the route learned stays with the road it was learned on. Segments move with the line and
     keep their corrections, adjusted so their expected time doesn't change with their new length.
     The speed profile moves along too. Only the segments over a rerouted stretch start again, and

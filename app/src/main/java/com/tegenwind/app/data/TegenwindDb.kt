@@ -49,6 +49,8 @@ data class RideEntity(
      */
     val rerouteStartM: Double? = null,
     val rerouteEndM: Double? = null,
+    /** True when the line now follows the street this ride took there; false when it only moved part of the way toward it. */
+    val rerouteFull: Boolean? = null,
     /** The bike the ride was on, as named in the settings then; null for rides from before bikes could be set. */
     val bikeName: String? = null,
     /**
@@ -58,13 +60,22 @@ data class RideEntity(
      * itself, and for rides without segment passes.
      */
     val pedalPowerW: Double? = null,
+    /** The arrival the app predicted when the ride first got going on its route, ms since epoch; null for rides from before it was kept. */
+    val etaStartArrivalMs: Long? = null,
+    /** The arrival it predicted when half the route was ridden. */
+    val etaHalfArrivalMs: Long? = null,
+    /** Average heart rate, bpm, kept while the readings still exist (they are deleted after two weeks). */
+    val avgHrBpm: Double? = null,
+    /** Average temperature over the ride, °C, and the rain that fell on it, mm: from the forecast then, or the weather record after. */
+    val avgTempC: Double? = null,
+    val rainMm: Double? = null,
 )
 
 /** The stretch a ride rerouted; see [RideEntity.rerouteStartM]. */
-data class RideReroute(val rerouteStartM: Double?, val rerouteEndM: Double?)
+data class RideReroute(val rerouteStartM: Double?, val rerouteEndM: Double?, val rerouteFull: Boolean?)
 
 /** Distance and number of every real, finished ride, whatever its route. */
-data class RideTotals(val distanceM: Double, val rides: Int)
+data class RideTotals(val distanceM: Double, val movingMs: Long, val rides: Int)
 
 /** How long one ride took over one route segment: the raw material for stats and learning. */
 @Entity(
@@ -256,6 +267,28 @@ interface RideDao {
     @Query("SELECT * FROM track_points WHERE rideId = :rideId ORDER BY timeMs")
     suspend fun points(rideId: Long): List<TrackPointEntity>
 
+    /** Where the ride began: the weather backfill looks it up there. */
+    @Query("SELECT * FROM track_points WHERE rideId = :rideId ORDER BY timeMs LIMIT 1")
+    suspend fun firstPoint(rideId: Long): TrackPointEntity?
+
+    /** Every real, finished ride, oldest first, kept up to date: the Stats page's all-rides numbers. */
+    @Query("SELECT * FROM rides WHERE simulated = 0 AND endedAtMs IS NOT NULL ORDER BY startedAtMs")
+    fun realRides(): Flow<List<RideEntity>>
+
+    /** Real, finished rides on a route that have no weather stored yet. */
+    @Query("SELECT * FROM rides WHERE simulated = 0 AND endedAtMs IS NOT NULL AND avgTempC IS NULL ORDER BY startedAtMs")
+    suspend fun ridesWithoutWeather(): List<RideEntity>
+
+    @Query("UPDATE rides SET avgHrBpm = :bpm WHERE id = :rideId")
+    suspend fun setAvgHr(rideId: Long, bpm: Double)
+
+    @Query("UPDATE rides SET avgTempC = :tempC, rainMm = :rainMm WHERE id = :rideId")
+    suspend fun setWeather(rideId: Long, tempC: Double?, rainMm: Double?)
+
+    /** Heart rate readings of a ride that are still kept, bpm. */
+    @Query("SELECT bpm FROM hr_samples WHERE rideId = :rideId")
+    suspend fun hrBpm(rideId: Long): List<Double>
+
     @Query("SELECT MAX(timeMs) FROM track_points WHERE rideId = :rideId")
     suspend fun lastPointTime(rideId: Long): Long?
 
@@ -278,7 +311,7 @@ interface RideDao {
     fun ridesForRoute(routeId: Long): Flow<List<RideEntity>>
 
     /** Total distance and count of every real, finished ride, on a route or not: the Stats page's "All rides". */
-    @Query("SELECT COALESCE(SUM(distanceM), 0) AS distanceM, COUNT(*) AS rides FROM rides WHERE endedAtMs IS NOT NULL AND simulated = 0")
+    @Query("SELECT COALESCE(SUM(distanceM), 0) AS distanceM, COALESCE(SUM(movingMs), 0) AS movingMs, COUNT(*) AS rides FROM rides WHERE endedAtMs IS NOT NULL AND simulated = 0")
     fun totals(): Flow<RideTotals>
 
     /** Training load per ride since [sinceMs], oldest first: what the fitness and fatigue model runs on. */
@@ -381,11 +414,11 @@ interface RideDao {
     )
     suspend fun twoRidesOnRouteBefore(routeId: Long, beforeMs: Long): List<RideEntity>
 
-    @Query("UPDATE rides SET rerouteStartM = :startM, rerouteEndM = :endM WHERE id = :rideId")
-    suspend fun setReroute(rideId: Long, startM: Double, endM: Double)
+    @Query("UPDATE rides SET rerouteStartM = :startM, rerouteEndM = :endM, rerouteFull = :full WHERE id = :rideId")
+    suspend fun setReroute(rideId: Long, startM: Double, endM: Double, full: Boolean)
 
     /** Written a moment after the ride finishes, while its page may already be open. */
-    @Query("SELECT rerouteStartM, rerouteEndM FROM rides WHERE id = :rideId")
+    @Query("SELECT rerouteStartM, rerouteEndM, rerouteFull FROM rides WHERE id = :rideId")
     fun rerouteFlow(rideId: Long): Flow<RideReroute?>
 }
 
@@ -612,13 +645,13 @@ interface RouteDao {
         RideEntity::class, TrackPointEntity::class, RouteEntity::class, RoutePointEntity::class,
         RouteSegmentEntity::class, SegmentTraversalEntity::class, RouteProfileEntity::class, HrSampleEntity::class,
     ],
-    version = 9,
+    version = 11,
     exportSchema = true,
     autoMigrations = [
         AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3),
         AutoMigration(from = 3, to = 4), AutoMigration(from = 4, to = 5),
         AutoMigration(from = 5, to = 6), AutoMigration(from = 6, to = 7),
-        AutoMigration(from = 7, to = 8), AutoMigration(from = 8, to = 9),
+        AutoMigration(from = 7, to = 8), AutoMigration(from = 8, to = 9), AutoMigration(from = 9, to = 10), AutoMigration(from = 10, to = 11),
     ],
 )
 abstract class TegenwindDb : RoomDatabase() {

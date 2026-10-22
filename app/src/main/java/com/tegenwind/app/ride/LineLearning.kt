@@ -155,6 +155,6 @@ suspend fun foldRidesIntoLine(
         rebuildSegments(routeId, spans, segments, line) to remapProfile(profile, folder::map)
     }
     val rerouted = folder.rerouted ?: return false
-    if (rerouteRideId != null) rideDao.setReroute(rerouteRideId, rerouted.first, rerouted.second)
+    if (rerouteRideId != null) rideDao.setReroute(rerouteRideId, rerouted.first, rerouted.second, folder.reroutedFully)
     return true
 }
