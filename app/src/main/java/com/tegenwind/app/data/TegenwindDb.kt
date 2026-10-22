@@ -142,6 +142,9 @@ data class RouteEntity(
      * Null for a route from before lines followed rides: all its rides are still to be folded in.
      */
     val lineFoldedThroughMs: Long? = null,
+    /** True once the lookup has fetched side roads, bridges and lights for the live map. */
+    @ColumnInfo(defaultValue = "0")
+    val mapFeaturesLooked: Boolean = false,
 )
 
 @Entity(
@@ -220,12 +223,25 @@ data class RouteProfileEntity(
     val rides: Int,
 )
 
+/**
+ * What the live map draws around a route besides the road: side roads, bridges and traffic lights
+ * (see [com.tegenwind.app.routes.MapFeature]), from the route's map lookup. [points] is
+ * "lat,lon;lat,lon"; places rather than distances, so they stay put when the line moves.
+ */
+@Entity(
+    tableName = "route_map_features",
+    primaryKeys = ["routeId", "idx"],
+    foreignKeys = [ForeignKey(RouteEntity::class, ["id"], ["routeId"], onDelete = ForeignKey.CASCADE)],
+)
+data class RouteMapFeatureEntity(val routeId: Long, val idx: Int, val kind: String, val points: String)
+
 /** Everything stored about one route's line; see [RouteDao.full]. */
 data class FullRoute(
     val route: RouteEntity,
     val points: List<RoutePointEntity>,
     val segments: List<RouteSegmentEntity>,
     val profile: List<RouteProfileEntity>,
+    val features: List<RouteMapFeatureEntity> = emptyList(),
 )
 
 /** One real segment pass joined with its segment, for [RiderFit]. */
@@ -515,6 +531,31 @@ interface RouteDao {
     )
     suspend fun setMapData(routeId: Long, idx: Int, gradePct: Double?, buildings: Int?, exposure: Double?, signals: Int?)
 
+    @Query("SELECT * FROM route_map_features WHERE routeId = :routeId ORDER BY idx")
+    suspend fun mapFeatures(routeId: Long): List<RouteMapFeatureEntity>
+
+    @Query("DELETE FROM route_map_features WHERE routeId = :routeId")
+    suspend fun deleteMapFeatures(routeId: Long)
+
+    @Insert
+    suspend fun insertMapFeatures(features: List<RouteMapFeatureEntity>)
+
+    /** A route's side roads, bridges and lights, in place of what it had. */
+    @Transaction
+    suspend fun replaceMapFeatures(routeId: Long, features: List<RouteMapFeatureEntity>) {
+        deleteMapFeatures(routeId)
+        if (features.isNotEmpty()) insertMapFeatures(features)
+    }
+
+    /** Looked-up routes from before side roads and bridges were kept: their lookup runs once more. */
+    @Query(
+        "SELECT * FROM routes WHERE enrichState = 'done' AND mapFeaturesLooked = 0"
+    )
+    suspend fun routesWithoutMapFeatures(): List<RouteEntity>
+
+    @Query("UPDATE routes SET mapFeaturesLooked = 1 WHERE id = :routeId")
+    suspend fun setMapFeaturesLooked(routeId: Long)
+
     @Transaction
     suspend fun setMapData(segments: List<RouteSegmentEntity>) {
         segments.forEach { setMapData(it.routeId, it.idx, it.gradePct, it.buildings, it.exposure, it.signals) }
@@ -579,7 +620,7 @@ interface RouteDao {
     @Transaction
     suspend fun full(routeId: Long): FullRoute? {
         val route = route(routeId) ?: return null
-        return FullRoute(route, points(routeId), segments(routeId), profile(routeId))
+        return FullRoute(route, points(routeId), segments(routeId), profile(routeId), mapFeatures(routeId))
     }
 
     @Query("UPDATE routes SET lineFoldedThroughMs = :foldedThroughMs WHERE id = :routeId")
@@ -643,15 +684,15 @@ interface RouteDao {
 @Database(
     entities = [
         RideEntity::class, TrackPointEntity::class, RouteEntity::class, RoutePointEntity::class,
-        RouteSegmentEntity::class, SegmentTraversalEntity::class, RouteProfileEntity::class, HrSampleEntity::class,
+        RouteSegmentEntity::class, SegmentTraversalEntity::class, RouteProfileEntity::class, HrSampleEntity::class, RouteMapFeatureEntity::class,
     ],
-    version = 11,
+    version = 12,
     exportSchema = true,
     autoMigrations = [
         AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3),
         AutoMigration(from = 3, to = 4), AutoMigration(from = 4, to = 5),
         AutoMigration(from = 5, to = 6), AutoMigration(from = 6, to = 7),
-        AutoMigration(from = 7, to = 8), AutoMigration(from = 8, to = 9), AutoMigration(from = 9, to = 10), AutoMigration(from = 10, to = 11),
+        AutoMigration(from = 7, to = 8), AutoMigration(from = 8, to = 9), AutoMigration(from = 9, to = 10), AutoMigration(from = 10, to = 11), AutoMigration(from = 11, to = 12),
     ],
 )
 abstract class TegenwindDb : RoomDatabase() {

@@ -24,7 +24,11 @@ val Danger = Color(0xFFFF6A5C)
  * green  = good: faster, a tailwind, the fastest ride, the top x% of a route's rides
  * red    = bad or dangerous: slower, a headwind, off route, the bottom x%, delete (and heart rate as a series)
  * grey   = everything descriptive, such as how open a stretch of road is
+ * water  = water under a bridge on the live map, and nothing else
  */
+
+/** Water under a bridge: a muted blue, darker than speed's, so it reads as ground, not data. */
+val Water = Color(0xFF1F4E6B)
 
 /** Series colors: speed and heart rate always look the same across screens. */
 val SpeedColor = Color(0xFF3FB6FF)

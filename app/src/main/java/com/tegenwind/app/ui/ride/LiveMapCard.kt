@@ -114,6 +114,11 @@ private fun GapText(text: String, sign: Int) {
  * you as a blue arrow, and as a see-through white arrow the ghost, where it was this long after
  * setting off. In the top right, how far and how long you are ahead of or behind it.
  */
+/** The ghost last chosen under the live map: the expected ride until another was picked. */
+fun savedGhostChoice(context: Context): GhostChoice =
+    context.getSharedPreferences("tegenwind", Context.MODE_PRIVATE).getString(PREF_GHOST, null)
+        ?.let { name -> GhostChoice.entries.firstOrNull { it.name == name } } ?: GhostChoice.EXPECTED
+
 @Composable
 fun LiveMapCard(ride: LiveRide, nowMs: Long) {
     val context = LocalContext.current
@@ -121,7 +126,7 @@ fun LiveMapCard(ride: LiveRide, nowMs: Long) {
     val loaded = container.recorder.ridingRoute ?: return
     val prefs = remember { context.getSharedPreferences("tegenwind", Context.MODE_PRIVATE) }
     var choice by remember {
-        mutableStateOf(GhostChoice.entries.firstOrNull { it.name == prefs.getString(PREF_GHOST, null) } ?: GhostChoice.EXPECTED)
+        mutableStateOf(savedGhostChoice(context))
     }
     val learned by container.riderModel.learned.collectAsStateWithLifecycle()
     val setup by container.riderSetup.setup.collectAsStateWithLifecycle()
@@ -188,6 +193,7 @@ fun LiveMapCard(ride: LiveRide, nowMs: Long) {
                         },
                         youColor = SpeedColor,
                         // Off the route, or not on it yet: a red line back to its nearest point, anywhere along it.
+                        features = loaded.features,
                         offRouteTo = if (!onRoute || progress!!.offRoute) {
                             loaded.line.pointAt(loaded.line.project(you).alongM)
                         } else null,

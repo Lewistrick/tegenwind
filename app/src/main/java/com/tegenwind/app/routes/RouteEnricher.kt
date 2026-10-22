@@ -13,7 +13,12 @@ import java.net.URLEncoder
 import java.util.Locale
 import kotlin.math.exp
 
-data class OsmStats(val buildingCounts: List<Int>, val signalPoints: List<GeoPoint>)
+data class OsmStats(
+    val buildingCounts: List<Int>,
+    val signalPoints: List<GeoPoint>,
+    /** Roads near the route, for drawing side roads and bridges on the live map. */
+    val ways: List<OsmWay> = emptyList(),
+)
 
 /**
  * Looks up free, key-less public data for a route:
@@ -49,6 +54,11 @@ class RouteEnricher {
             val lons = line.points.map { it.lon }
             val bbox = "${fmt(lats.min() - 0.001)},${fmt(lons.min() - 0.001)},${fmt(lats.max() + 0.001)},${fmt(lons.max() + 0.001)}"
             append("node[\"highway\"=\"traffic_signals\"]($bbox);out;\n")
+            // Roads near the route, along the line itself (every ~50 m): side roads and bridges.
+            val along = generateSequence(0.0) { it + ROAD_STEP_M }.takeWhile { it < line.lengthM }.map(line::pointAt).toList() +
+                line.points.last()
+            val path = along.joinToString(",") { "${fmt(it.lat)},${fmt(it.lon)}" }
+            append("way[\"highway\"~\"$ROAD_TYPES\"](around:$ROAD_REACH_M,$path);out tags geom;\n")
         }
         val body = request(
             URL("https://overpass-api.de/api/interpreter"),
@@ -57,15 +67,24 @@ class RouteEnricher {
         val elements = JSONObject(body).getJSONArray("elements")
         val counts = ArrayList<Int>()
         val signals = ArrayList<GeoPoint>()
+        val ways = ArrayList<OsmWay>()
         for (i in 0 until elements.length()) {
             val e = elements.getJSONObject(i)
             when (e.getString("type")) {
                 "count" -> counts += e.getJSONObject("tags").getString("ways").toInt()
                 "node" -> signals += GeoPoint(e.getDouble("lat"), e.getDouble("lon"))
+                "way" -> {
+                    val geometry = e.optJSONArray("geometry") ?: continue
+                    val points = (0 until geometry.length()).map { k ->
+                        geometry.getJSONObject(k).let { GeoPoint(it.getDouble("lat"), it.getDouble("lon")) }
+                    }
+                    val bridge = e.optJSONObject("tags")?.optString("bridge", "no").let { it != null && it != "no" && it.isNotEmpty() }
+                    ways += OsmWay(points, bridge)
+                }
             }
         }
         if (counts.size != bounds.size) throw IOException("OpenStreetMap returned ${counts.size} of ${bounds.size} segments")
-        OsmStats(counts, signals)
+        OsmStats(counts, signals, ways)
     }
 
     private fun fmt(v: Double) = "%.5f".format(Locale.ROOT, v)
@@ -99,6 +118,11 @@ class RouteEnricher {
     }
 
     companion object {
+        /** Roads looked for near the route: the ones you could turn into on a bike. */
+        private const val ROAD_TYPES =
+            "^(primary|secondary|tertiary|unclassified|residential|living_street|service|cycleway|path|footway|pedestrian)$"
+        private const val ROAD_REACH_M = 20
+        private const val ROAD_STEP_M = 50.0
         private const val USER_AGENT = "Tegenwind/1.0 (personal cycling app; github.com/Lewistrick/tegenwind)"
         private val RETRY_CODES = setOf(429, 502, 503, 504)
         const val MAX_ATTEMPTS = 4

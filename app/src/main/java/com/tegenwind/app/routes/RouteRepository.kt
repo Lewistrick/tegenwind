@@ -4,6 +4,7 @@ import com.tegenwind.app.data.EnrichState
 import com.tegenwind.app.data.RideDao
 import com.tegenwind.app.data.RouteDao
 import com.tegenwind.app.data.RouteEntity
+import com.tegenwind.app.data.RouteMapFeatureEntity
 import com.tegenwind.app.data.RoutePointEntity
 import com.tegenwind.app.data.RouteSegmentEntity
 import com.tegenwind.app.eta.ProfileBin
@@ -50,6 +51,8 @@ data class LoadedRoute(
     val line: Polyline,
     val segments: List<RouteSegmentEntity>,
     val profile: SpeedProfile? = null,
+    /** Side roads, bridges and traffic lights for the live map; empty before the lookup has found them. */
+    val features: List<MapFeature> = emptyList(),
 ) {
     val signalsAtM: List<Double>
         get() = segments.flatMap { s -> List(s.signals ?: 0) { s.endM } }
@@ -168,7 +171,8 @@ class RouteRepository(
         val stored = dao.full(routeId) ?: return null
         val line = Polyline(stored.points.map { GeoPoint(it.lat, it.lon) })
         val profile = SpeedProfile(stored.profile.associate { it.bin to ProfileBin(it.logShape, it.rides) })
-        return LoadedRoute(stored.route, line, stored.segments, profile.takeUnless { it.isEmpty })
+        val features = stored.features.mapNotNull { f -> FeatureKind.of(f.kind)?.let { MapFeature(it, decodePoints(f.points)) } }
+        return LoadedRoute(stored.route, line, stored.segments, profile.takeUnless { it.isEmpty }, features)
     }
 
     /** Every saved route, for working out which one is being ridden. */
@@ -192,6 +196,8 @@ class RouteRepository(
     fun resumeStalledEnrichment() {
         scope.launch {
             dao.unenriched().forEach { enrich(it.id) }
+            // Routes looked up before side roads, bridges and lights were kept get them now.
+            dao.routesWithoutMapFeatures().forEach { enrich(it.id) }
         }
     }
 
@@ -228,6 +234,10 @@ class RouteRepository(
                 }
                 // Only the map columns: a ride may have finished and learned while this ran.
                 dao.setMapData(updated)
+                // Side roads, bridges and lights for the live map.
+                val features = mapFeatures(line, osm.ways, osm.signalPoints)
+                dao.replaceMapFeatures(routeId, features.mapIndexed { i, f -> RouteMapFeatureEntity(routeId, i, f.kind.key, encodePoints(f.points)) })
+                dao.setMapFeaturesLooked(routeId)
                 dao.setEnrichState(routeId, EnrichState.DONE, null)
             } catch (e: CancellationException) {
                 throw e // a newer lookup for this route took over, and it set the state

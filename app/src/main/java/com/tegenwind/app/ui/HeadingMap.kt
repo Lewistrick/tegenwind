@@ -26,6 +26,9 @@ import com.tegenwind.app.routes.GeoPoint
 import com.tegenwind.app.routes.Polyline
 import com.tegenwind.app.routes.bearingDeg
 import com.tegenwind.app.ui.theme.Danger
+import com.tegenwind.app.ui.theme.Water
+import com.tegenwind.app.routes.FeatureKind
+import com.tegenwind.app.routes.MapFeature
 import kotlin.math.cos
 import kotlin.math.sin
 
@@ -145,11 +148,18 @@ fun HeadingMap(
     youColor: Color,
     /** Off the route: the nearest point of it, which a thin red line points you back to, however far. */
     offRouteTo: GeoPoint? = null,
+    /** Side roads, bridges and traffic lights around the route ([com.tegenwind.app.routes.mapFeatures]). */
+    features: List<MapFeature> = emptyList(),
 ) {
     val plain = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = ROAD_ALPHA)
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
     val ink = MaterialTheme.colorScheme.onSurface
     val card = MaterialTheme.colorScheme.surfaceContainer
+    val amber = MaterialTheme.colorScheme.primary
+    val side = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = SIDE_ALPHA)
+    val sideRoads = remember(features) { features.filter { it.kind == FeatureKind.SIDE } }
+    val bridges = remember(features) { features.filter { it.kind == FeatureKind.BRIDGE && it.points.size == 2 } }
+    val lights = remember(features) { features.filter { it.kind == FeatureKind.LIGHT }.map { it.points.first() } }
 
     // The heading turns the short way round, smoothly; the zoom eases between speeds.
     val turn = remember { Animatable(headingDeg.toFloat()) }
@@ -165,7 +175,49 @@ fun HeadingMap(
             points.forEachIndexed { i, g -> view.at(g).let { o -> if (i == 0) moveTo(o.x, o.y) else lineTo(o.x, o.y) } }
         }
         val road = Stroke(ROAD.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
+        // Side roads first and fainter, so they read as streets that join, not as the way to go.
+        val sideStroke = Stroke(SIDE.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
+        for (s in sideRoads) drawPath(pathOf(s.points), side, style = sideStroke)
+        // Water under each bridge: a band across the road, a little longer than the bridge is wide.
+        for (b in bridges) {
+            val a = view.at(b.points[0])
+            val z = view.at(b.points[1])
+            val len = (z - a).getDistance()
+            if (len < 1f) continue
+            val dir = (z - a) / len
+            val across = Offset(-dir.y, dir.x)
+            val mid = (a + z) / 2f
+            val halfAlong = len * WATER_ALONG / 2
+            val halfAcross = WATER_ACROSS.toPx() / 2
+            drawPath(
+                Path().apply {
+                    (mid - dir * halfAlong - across * halfAcross).let { moveTo(it.x, it.y) }
+                    (mid + dir * halfAlong - across * halfAcross).let { lineTo(it.x, it.y) }
+                    (mid + dir * halfAlong + across * halfAcross).let { lineTo(it.x, it.y) }
+                    (mid - dir * halfAlong + across * halfAcross).let { lineTo(it.x, it.y) }
+                    close()
+                },
+                Water,
+            )
+        }
         drawPath(pathOf(line.points), plain, style = road)
+        // A bridge's railings: a light line on each side of the road over its length.
+        for (b in bridges) {
+            val a = view.at(b.points[0])
+            val z = view.at(b.points[1])
+            val len = (z - a).getDistance()
+            if (len < 1f) continue
+            val across = Offset(-(z - a).y / len, (z - a).x / len) * (ROAD.toPx() / 2 + RAIL_GAP.toPx())
+            for (sign in listOf(1f, -1f)) {
+                drawLine(ink.copy(alpha = RAIL_ALPHA), a + across * sign, z + across * sign, strokeWidth = RAIL.toPx(), cap = StrokeCap.Round)
+            }
+        }
+        // Traffic lights where they really are: small amber dots with a dark rim.
+        for (l in lights) {
+            val o = view.at(l)
+            drawCircle(card, LIGHT.toPx() + 1.5.dp.toPx(), o)
+            drawCircle(amber, LIGHT.toPx(), o)
+        }
         drawCircle(muted, END.toPx(), view.at(line.points.last()))
         // Where one segment ends and the next begins: the ones ahead bright, the ones behind faint.
         for (f in flags) {
@@ -191,6 +243,15 @@ fun HeadingMap(
 }
 
 private val ROAD = 8.dp
+private val SIDE = 5.dp
+private const val SIDE_ALPHA = 0.4f
+/** The water band: this share of the bridge's length along the road, and this wide across it. */
+private const val WATER_ALONG = 0.8f
+private val WATER_ACROSS = 34.dp
+private val RAIL = 1.5.dp
+private val RAIL_GAP = 2.dp
+private const val RAIL_ALPHA = 0.6f
+private val LIGHT = 4.dp
 private val OFF_ROUTE = 2.dp
 private val END = 5.dp
 private val ARROW = 26.dp
