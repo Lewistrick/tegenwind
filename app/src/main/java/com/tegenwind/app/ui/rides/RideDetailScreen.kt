@@ -3,9 +3,7 @@ package com.tegenwind.app.ui.rides
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -171,27 +169,11 @@ fun RideDetailScreen(rideId: Long, onBack: () -> Unit, backLabel: String = "Ride
 
         if (!r.simulated) HowItWentCard(r, routeRides, routePasses, summaryRoute, ghostChoice)
 
-        // Among the rides on its route, by the same start-to-finish time as "Total".
-        val rank = routeRides.takeIf { rides -> rides.any { it.id == r.id } }
-            ?.let { rides -> RideRank.of(totalMs(r), rides.map(::totalMs)) }
-        // Equal heights, so the tile with a ranking under its value doesn't stand out of the row.
-        Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            StatTile("Distance", "%.2f km".format(r.distanceM / 1000), Modifier.weight(1f).fillMaxHeight())
-            StatTile("Moving", formatElapsed(r.movingMs), Modifier.weight(1f).fillMaxHeight())
-            StatTile(
-                "Total", formatElapsed(totalMs(r)), Modifier.weight(1f).fillMaxHeight(),
-                note = when (rank) {
-                    is RideRank.Top -> "top ${rank.percent}%"
-                    is RideRank.Bottom -> "bottom ${rank.percent}%"
-                    RideRank.Middle -> "middle"
-                    null -> null
-                },
-                noteColor = when (rank) {
-                    is RideRank.Top -> GoodColor
-                    is RideRank.Bottom -> MaterialTheme.colorScheme.error
-                    else -> MaterialTheme.colorScheme.onSurfaceVariant
-                },
-            )
+        // How the time ranks among the route's rides is in "How it went" above.
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            StatTile("Distance", "%.2f km".format(r.distanceM / 1000), Modifier.weight(1f))
+            StatTile("Moving", formatElapsed(r.movingMs), Modifier.weight(1f))
+            StatTile("Total", formatElapsed(totalMs(r)), Modifier.weight(1f))
         }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             StatTile("Avg speed", avgSpeedText(r), Modifier.weight(1f))
@@ -428,7 +410,10 @@ private fun HowItWentCard(
     choice: GhostChoice,
 ) {
     val mine = totalMs(ride)
-    val place = placeAmong(mine, routeRides.map(::totalMs)).takeIf { routeRides.any { it.id == ride.id } }
+    val onRoute = routeRides.any { it.id == ride.id }
+    val place = placeAmong(mine, routeRides.map(::totalMs)).takeIf { onRoute }
+    // The same ranking as a share: "top 10%", "bottom 20%", "middle".
+    val rank = if (onRoute) RideRank.of(mine, routeRides.map(::totalMs)) else null
     val earlierRides = routeRides.filter { it.startedAtMs < ride.startedAtMs }
     // Against the ghost: an earlier ride's time, or for the expected ride the arrival predicted at the start.
     val ghost: Pair<Double, String>? = if (route == null) null else when (choice) {
@@ -450,20 +435,24 @@ private fun HowItWentCard(
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text("How it went", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            Row(verticalAlignment = Alignment.Bottom) {
-                Text(formatElapsed(mine), style = MaterialTheme.typography.headlineSmall.copy(fontFeatureSettings = "tnum"), fontWeight = FontWeight.SemiBold)
-                place?.let { p ->
-                    Text(
-                        " · " + placeText(p),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = when {
-                            p.fastest -> GoodColor
-                            p.slowest -> MaterialTheme.colorScheme.error
-                            else -> MaterialTheme.colorScheme.onSurfaceVariant
-                        },
-                        modifier = Modifier.padding(bottom = 3.dp),
-                    )
+            Text(formatElapsed(mine), style = MaterialTheme.typography.headlineSmall.copy(fontFeatureSettings = "tnum"), fontWeight = FontWeight.SemiBold)
+            // Where the time falls among the route's rides, as a place and as a share.
+            place?.let { p ->
+                val share = when (rank) {
+                    is RideRank.Top -> "top ${rank.percent}%"
+                    is RideRank.Bottom -> "bottom ${rank.percent}%"
+                    RideRank.Middle -> "middle"
+                    null -> null
                 }
+                Text(
+                    listOfNotNull(placeText(p), share).joinToString(" · ") { it.replace(' ', '\u00A0') },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = when {
+                        p.fastest || rank is RideRank.Top -> GoodColor
+                        p.slowest || rank is RideRank.Bottom -> MaterialTheme.colorScheme.error
+                        else -> MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                )
             }
             ghost?.let { (s, what) ->
                 val gap = formatElapsed((kotlin.math.abs(s) * 1000).toLong())

@@ -113,17 +113,21 @@ Material 3's default scale, used like this:
   a card are a plain label over a value.
 - **Detail screens** start with a text link back ("‹ Rides"), then the title, then a muted line
   under it (date, length).
-- **"How it went"** is the first card on a ride's page, before the tiles: the time in
-  `headlineSmall`, its place among the route's rides ("3rd fastest of 42"; "fastest yet" in green,
-  "slowest yet" in red), how it went against the ghost chosen on the live map ("0:35 ahead of your
-  median ride", "Arrived 0:35 before the predicted time"; green ahead, red behind), and the
-  segments where this was the quickest pass yet. A segment needs three earlier passes to count.
+- **"How it went"** is the first card on a ride's page, before the tiles:
+  - the time in `headlineSmall`;
+  - on one line, its place among the route's rides and the same as a share ("3rd fastest of 42 ·
+    top 10%"): green for the fastest or top x%, red for the slowest or bottom x%, grey in the
+    middle. The Total tile doesn't repeat it;
+  - how it went against the ghost chosen on the live map ("0:35 ahead of your median ride",
+    "Arrived 0:35 before the predicted time"): green ahead, red behind;
+  - the segments where this was the quickest pass yet. A segment needs three earlier passes.
 - **The order on a detail screen:** numbers (stat tiles), then charts, then explanations (like
   "What this ride taught"), then the action table, then any small print.
 - **Tiles:** `StatTile` in rows of two or three, equal widths (`Modifier.weight(1f)`). Keep labels
   short enough to stay on one line at 360 dp.
   - A tile can carry a one-line `note` under its value, in the label's size: how the value ranks,
-    such as "top 10%" in green, "bottom 20%" in red or "middle" in grey.
+    such as "top 10%" in green, "bottom 20%" in red or "middle" in grey. Not where a card on the
+    same screen already says it (a ride's rank is in "How it went").
   - A row with a note keeps its tiles the same height: `Modifier.height(IntrinsicSize.Min)` on the
     row, `fillMaxHeight()` on each tile.
 - **Touch targets:** at least 48 dp high. Buttons in the action table are 128 × 52 dp.
