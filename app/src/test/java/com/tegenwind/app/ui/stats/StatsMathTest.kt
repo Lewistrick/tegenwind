@@ -125,4 +125,32 @@ class StatsMathTest {
         assertEquals(1.0, w.rainMm!!, 1e-9)
         assertNull(weatherOverRide(start, end, emptyList()))
     }
+
+    @Test
+    fun durationBinsHaveWholeMinuteEdgesAndAtMostTen() {
+        // Your rides: mostly 33-40 minutes, a few short ones, one at 49.
+        val minutes = listOf(3.5, 4.5, 8.3, 9.1) + List(10) { 34.0 + it * 0.6 } + listOf(40.4, 42.9, 49.0)
+        val bins = minuteBins(minutes)
+        assertEquals(5, bins.widthMin)
+        assertEquals(0, bins.firstMin)
+        assertEquals(50, bins.lastMin)
+        assertEquals(minutes.size, bins.counts.sum())
+        // 3.5 and 4.5 are in the first bin, 8.3 and 9.1 in the second.
+        assertEquals(2, bins.counts[0])
+        assertEquals(2, bins.counts[1])
+        // A ride exactly on an edge counts in the bin that starts there.
+        assertEquals(1, minuteBins(listOf(35.0, 36.0, 38.0, 41.0)).counts[0])
+        // Everything within a few minutes: one-minute bins.
+        assertEquals(1, minuteBins(listOf(36.2, 38.9)).widthMin)
+    }
+
+    @Test
+    fun clockTicksAreRoundMinutesWithAtMostSevenSpaces() {
+        // 20 minutes across: every 5 minutes. 40 minutes: every 10. Twelve hours: every two hours.
+        assertEquals(5.0 / 60, tickStep(20.0 / 60, CLOCK_STEPS_H), 1e-9)
+        assertEquals(10.0 / 60, tickStep(40.0 / 60, CLOCK_STEPS_H), 1e-9)
+        assertEquals(2.0, tickStep(12.7, CLOCK_STEPS_H), 1e-9)
+        assertEquals("07:05", clockLabel(7 + 5.0 / 60))
+        assertEquals("19:42", clockLabel(19.7))
+    }
 }

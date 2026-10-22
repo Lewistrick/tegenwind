@@ -164,7 +164,7 @@ fun StatsScreen() {
         }
 
         item {
-            ChartCard("Duration", "how often each time range happens, in minutes") {
+            ChartCard("Duration", "number of rides, by duration in whole minutes · a bar spans from its number to the next") {
                 DurationHistogram(rides)
             }
         }
@@ -178,11 +178,11 @@ fun StatsScreen() {
 
         item {
             ChartCard("Time of day vs duration", "each dot is one ride · up: minutes\nacross: the hour you set off") {
-                ScatterChart(rides.map { startHour(it) to rideDurationMin(it) }, xTick = { "%02d:00".format(it.toInt()) })
+                ScatterChart(rides.map { startHour(it) to rideDurationMin(it) }, xTick = ::clockLabel, exactX = true, xSteps = CLOCK_STEPS_H, minXStep = 5.0 / 60)
             }
         }
         item {
-            ChartCard("Weekday vs duration", "average minutes, by the day you set off") {
+            ChartCard("Weekday vs duration", "average minutes, by the day you set off · the axis doesn't start at 0") {
                 WeekdayBars(weekdayAverages(rides))
             }
         }
@@ -195,11 +195,11 @@ fun StatsScreen() {
                 }
             }
         }
-        val rains = rides.mapNotNull { r -> r.rainMm?.let { it to rideDurationMin(r) } }
+        val rains = rides.mapNotNull { r -> r.rainMm?.takeIf { it > 0.0 }?.let { it to rideDurationMin(r) } }
         if (rains.size >= 2) {
             item {
-                ChartCard("Rain vs duration", "each dot is one ride · up: minutes\nacross: rain that fell during the ride, in mm") {
-                    ScatterChart(rains, xTick = { "%.1f".format(it) }, minXStep = 0.5)
+                ChartCard("Rain vs duration", "each dot is a ride with rain · up: minutes\nacross: rain that fell during the ride, in mm") {
+                    ScatterChart(rains, xTick = { "%.2f".format(it) }, minXStep = 0.01, tightX = true)
                 }
             }
         }
@@ -495,25 +495,16 @@ private fun DurationHistogram(rides: List<RideEntity>) {
     val labelStyle = TextStyle(color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
     val gridColor = MaterialTheme.colorScheme.outlineVariant
 
-    val minutes = remember(rides) { rides.map { durationMs(it) / 60_000.0 } }
+    val bins = remember(rides) { minuteBins(rides.map { durationMs(it) / 60_000.0 }) }
 
     Canvas(Modifier.fillMaxWidth().height(150.dp)) {
-        val mn = minutes.min()
-        val mx = minutes.max()
-        val binWidth = niceStep((mx - mn).coerceAtLeast(2.0), targetTicks = 6.0).coerceAtLeast(1.0)
-        val firstBin = floor(mn / binWidth) * binWidth
-        val lastBin = ceil(mx / binWidth) * binWidth
-        val binCount = (((lastBin - firstBin) / binWidth).toInt()).coerceAtLeast(1)
-        val counts = IntArray(binCount)
-        minutes.forEach { m ->
-            val idx = (((m - firstBin) / binWidth).toInt()).coerceIn(0, binCount - 1)
-            counts[idx]++
-        }
+        val counts = bins.counts
+        val binCount = counts.size
         val maxCount = counts.max()
 
         val padL = 22.dp.toPx()
-        val padR = 6.dp.toPx()
-        val padT = 6.dp.toPx()
+        val padR = 10.dp.toPx()
+        val padT = 14.dp.toPx() // room for the count above the tallest bar
         val padB = 16.dp.toPx()
         val plotW = size.width - padL - padR
         val plotH = size.height - padT - padB
@@ -528,27 +519,26 @@ private fun DurationHistogram(rides: List<RideEntity>) {
             cv += countStep
         }
 
+        val slot = plotW / binCount
         val gap = 3.dp.toPx()
-        val barW = (plotW / binCount) - gap
         for (i in 0 until binCount) {
-            val h = if (maxCount > 0) (counts[i].toFloat() / maxCount) * plotH else 0f
-            val bx = padL + i * (plotW / binCount) + gap / 2
+            if (counts[i] == 0) continue
+            val h = (counts[i].toFloat() / maxCount) * plotH
+            val bx = padL + i * slot + gap / 2
             drawRoundRect(
                 SpeedColor.copy(alpha = 0.75f),
                 topLeft = Offset(bx, padT + plotH - h),
-                size = androidx.compose.ui.geometry.Size(barW.coerceAtLeast(1f), h),
+                size = androidx.compose.ui.geometry.Size((slot - gap).coerceAtLeast(1f), h),
             )
+            // How many rides, above the bar.
+            val layout = measurer.measure(counts[i].toString(), labelStyle)
+            drawText(layout, topLeft = Offset(bx + (slot - gap) / 2 - layout.size.width / 2, padT + plotH - h - layout.size.height))
         }
 
-        listOf(firstBin to 0f, ((firstBin + lastBin) / 2) to 0.5f, lastBin to 1f).forEach { (mins, frac) ->
-            val layout = measurer.measure("${mins.toInt()} min", labelStyle)
-            val cx = padL + plotW * frac
-            val lx = when (frac) {
-                0f -> cx
-                1f -> cx - layout.size.width
-                else -> cx - layout.size.width / 2
-            }
-            drawText(layout, topLeft = Offset(lx, size.height - layout.size.height))
+        // The edge of every bin, in whole minutes, under the place where one bar ends and the next begins.
+        for (i in 0..binCount) {
+            val layout = measurer.measure((bins.firstMin + i * bins.widthMin).toString(), labelStyle)
+            drawText(layout, topLeft = Offset(padL + i * slot - layout.size.width / 2, size.height - layout.size.height))
         }
     }
 }

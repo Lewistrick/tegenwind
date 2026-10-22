@@ -194,7 +194,7 @@ One scheme:
   minutes and seconds without the hour, with a leading colon (":59:30", ":00:00", ":00:15"), and "min:s" in the corner says so.
 - **Bars along a route** (exposure, sky, wind) are drawn left to right from start to finish. When
   there's room, a km axis runs underneath.
-- **The Stats page** (`ui/stats/StatsCharts.kt`) has three charts, each in a `ChartCard` that says
+- **The Stats page** (`ui/stats/StatsCharts.kt`) has these charts, each in a `ChartCard` that says
   what is up and what is across:
   - **Trend:** one value per ride over time, a 2 dp line at 55% under 3 dp dots, the date at each
     end. The best ride is a green dot and the worst a red one when that means something (fastest and
@@ -202,8 +202,18 @@ One scheme:
     follows section 2: blue for durations and speed, white for power.
   - **Scatter:** one 4 dp dot per ride at 75%, two numbers. Used for everything "against" something
     (duration against headwind, time of day, temperature, rain; heart rate in red against power).
+    Where the dots sit in a narrow part of a wide range (time of day, rain), the across axis runs
+    just past the first and last dot, with its ticks inside, so the dots fill the plot. Time of day
+    runs exactly from the first to the last ride, with a tick every 5, 10, 15 or 30 minutes (or
+    whole hours when the rides are spread out): the smallest step with at most seven spaces across. Rain shows
+    only the rides that had rain: a ride without is a dot at 0 that says nothing about how much.
+  - **Histogram:** how many rides take each time, in blue bars with the count above each bar. The
+    edges of the bars are whole minutes, as narrow as can be with at most 10 bars, and each edge is
+    labelled under the place where one bar ends and the next begins. A ride on an edge counts in the
+    bar that starts there.
   - **Weekday bars:** the average duration for each weekday, Monday first, bars in blue; a weekday
-    without rides has no bar.
+    without rides has no bar. The minutes axis fits the bars instead of starting at 0, because the
+    weekdays differ by a few minutes; the subtitle says so.
 - **The Stats page's order:** what goes across all routes comes first, above the route picker, and
   numbers come before charts: the "All rides" card (distance, rides, riding time), "Burned and
   saved", "Wind", "Fitness", then the heart rate chart. Under the picker, one route: tiles, the

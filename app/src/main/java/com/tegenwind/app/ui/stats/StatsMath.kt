@@ -148,6 +148,41 @@ fun weekdayAverages(rides: List<RideEntity>, zone: ZoneId = ZoneId.systemDefault
     return DayOfWeek.values().toList().map { d -> byDay[d]?.let { rs -> rs.map(::rideDurationMin).average() to rs.size } }
 }
 
+/** Whole-minute bins: [counts] of the rides from [firstMin] up to the next bin, each [widthMin] wide. */
+class MinuteBins(val firstMin: Int, val widthMin: Int, val counts: IntArray) {
+    val lastMin: Int get() = firstMin + widthMin * counts.size
+}
+
+/**
+ * Sorts [minutes] into bins whose edges are whole minutes, as narrow as can be while there are at most
+ * [maxBins] of them. A ride exactly on an edge counts in the bin that starts there.
+ */
+fun minuteBins(minutes: List<Double>, maxBins: Int = 10): MinuteBins {
+    val mn = minutes.min()
+    val mx = minutes.max()
+    val width = listOf(1, 2, 3, 5, 10, 15, 20, 30, 60).firstOrNull { w ->
+        kotlin.math.ceil(mx / w).toInt() - kotlin.math.floor(mn / w).toInt() <= maxBins
+    } ?: 60
+    val first = kotlin.math.floor(mn / width).toInt() * width
+    val count = (kotlin.math.ceil(mx / width).toInt() * width - first) / width
+    val counts = IntArray(count.coerceAtLeast(1))
+    minutes.forEach { m -> counts[((m - first) / width).toInt().coerceIn(0, counts.size - 1)]++ }
+    return MinuteBins(first, width, counts)
+}
+
+/** The step to space ticks by: the first of [candidates] (ascending) that gives at most [maxIntervals] across [range]. */
+fun tickStep(range: Double, candidates: List<Double>, maxIntervals: Int = 7): Double =
+    candidates.firstOrNull { range / it <= maxIntervals } ?: candidates.last()
+
+/** Steps for a clock axis, in hours: 5, 10, 15 and 30 minutes, then whole hours. */
+val CLOCK_STEPS_H = listOf(5.0, 10.0, 15.0, 30.0, 60.0, 120.0, 180.0).map { it / 60 }
+
+/** "07:05" for 7.083 hours. */
+fun clockLabel(hours: Double): String {
+    val m = Math.round(hours * 60).toInt()
+    return "%02d:%02d".format(m / 60, m % 60)
+}
+
 /** "42 h 10 min", or "35 min" under an hour. */
 fun hoursMinutes(ms: Long): String {
     val minutes = ms / 60_000

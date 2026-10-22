@@ -111,6 +111,12 @@ internal fun ScatterChart(
     xTick: (Double) -> String,
     minXStep: Double = 1.0,
     color: Color = SpeedColor,
+    /** The axis runs just past the first and last dot, with ticks inside it, rather than out to round numbers. */
+    tightX: Boolean = false,
+    /** The axis runs exactly from the first to the last dot (ticks inside it). */
+    exactX: Boolean = false,
+    /** Steps, ascending, to space the ticks by: the smallest with at most seven spaces across the axis. */
+    xSteps: List<Double>? = null,
 ) {
     val measurer = rememberTextMeasurer()
     val labelStyle = TextStyle(color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
@@ -121,15 +127,19 @@ internal fun ScatterChart(
         val xMx = points.maxOf { it.first }
         val yMn = points.minOf { it.second }
         val yMx = points.maxOf { it.second }
-        val xStep = niceStep((xMx - xMn).coerceAtLeast(minXStep)).coerceAtLeast(minXStep)
+        val xStep = xSteps?.let { tickStep((xMx - xMn).coerceAtLeast(minXStep), it) }
+            ?: niceStep((xMx - xMn).coerceAtLeast(minXStep)).coerceAtLeast(minXStep)
         val yStep = niceStep((yMx - yMn).coerceAtLeast(2.0)).coerceAtLeast(1.0)
-        val xLo = floor(xMn / xStep) * xStep
-        val xHi = (ceil(xMx / xStep) * xStep).coerceAtLeast(xLo + xStep)
+        val xTight = tightX || exactX
+        // One value on its own still needs an axis with some width.
+        val xPad = if (exactX) 0.0 else if (tightX) maxOf((xMx - xMn) * 0.06, minXStep * 0.5) else 0.0
+        val xLo = if (xTight) xMn - xPad else floor(xMn / xStep) * xStep
+        val xHi = if (xTight) maxOf(xMx + xPad, xLo + minXStep) else (ceil(xMx / xStep) * xStep).coerceAtLeast(xLo + xStep)
         val yLo = floor(yMn / yStep) * yStep
         val yHi = (ceil(yMx / yStep) * yStep).coerceAtLeast(yLo + yStep)
 
         val padL = 30.dp.toPx()
-        val padR = 10.dp.toPx()
+        val padR = 18.dp.toPx()
         val padT = 6.dp.toPx()
         val padB = 16.dp.toPx()
         val plotW = size.width - padL - padR
@@ -145,7 +155,7 @@ internal fun ScatterChart(
             drawText(layout, topLeft = Offset(padL - 5.dp.toPx() - layout.size.width, yy - layout.size.height / 2))
             yv += yStep
         }
-        var xv = xLo
+        var xv = if (xTight) ceil(xLo / xStep - 1e-9) * xStep else xLo
         while (xv <= xHi + 0.001) {
             val xx = x(xv)
             drawLine(gridColor, Offset(xx, padT), Offset(xx, padT + plotH), strokeWidth = 1f)
@@ -168,9 +178,12 @@ internal fun WeekdayBars(days: List<Pair<Double, Int>?>) {
     val gridColor = MaterialTheme.colorScheme.outlineVariant
 
     Canvas(Modifier.fillMaxWidth().height(150.dp)) {
-        val top = days.filterNotNull().maxOfOrNull { it.first } ?: return@Canvas
-        val step = niceStep(top, targetTicks = 4.0).coerceAtLeast(1.0)
-        val hi = ceil(top / step) * step
+        val averages = days.filterNotNull().map { it.first }
+        if (averages.isEmpty()) return@Canvas
+        // The minutes axis fits the bars rather than starting at 0: the weekdays differ by a few minutes.
+        val step = niceStep((averages.max() - averages.min()).coerceAtLeast(2.0), targetTicks = 4.0).coerceAtLeast(1.0)
+        val lo = floor((averages.min() - step * 0.3) / step) * step
+        val hi = ceil((averages.max() + step * 0.15) / step) * step
 
         val padL = 30.dp.toPx()
         val padR = 6.dp.toPx()
@@ -179,9 +192,9 @@ internal fun WeekdayBars(days: List<Pair<Double, Int>?>) {
         val plotW = size.width - padL - padR
         val plotH = size.height - padT - padB
 
-        var v = 0.0
+        var v = lo
         while (v <= hi + 0.001) {
-            val yy = padT + (1 - (v / hi)).toFloat() * plotH
+            val yy = padT + (1 - ((v - lo) / (hi - lo))).toFloat() * plotH
             drawLine(gridColor, Offset(padL, yy), Offset(size.width - padR, yy), strokeWidth = 1f)
             val layout = measurer.measure(v.toInt().toString(), labelStyle)
             drawText(layout, topLeft = Offset(padL - 5.dp.toPx() - layout.size.width, yy - layout.size.height / 2))
@@ -193,7 +206,7 @@ internal fun WeekdayBars(days: List<Pair<Double, Int>?>) {
         days.forEachIndexed { i, day ->
             val cx = padL + slot * (i + 0.5f)
             if (day != null) {
-                val h = (day.first / hi).toFloat() * plotH
+                val h = ((day.first - lo) / (hi - lo)).toFloat() * plotH
                 drawRoundRect(
                     SpeedColor.copy(alpha = 0.75f),
                     topLeft = Offset(cx - (slot - gap) / 2, padT + plotH - h),
