@@ -114,6 +114,16 @@ private fun GapText(text: String, sign: Int) {
  * you as a blue arrow, and as a see-through white arrow the ghost, where it was this long after
  * setting off. In the top right, how far and how long you are ahead of or behind it.
  */
+/** For a fix the phone gave no accuracy for: about the width of a road. */
+private const val OFF_ROUTE_FALLBACK_M = 10.0
+
+/**
+ * From how far off the route the live map draws the red line back to it: as far as the position
+ * may be off by itself ([accuracyM], the phone's estimate), so it doesn't flicker while you're on
+ * the road, but does show at a corner you cut.
+ */
+fun offRouteFromM(accuracyM: Double?): Double = accuracyM ?: OFF_ROUTE_FALLBACK_M
+
 /** The ghost last chosen under the live map: the expected ride until another was picked. */
 fun savedGhostChoice(context: Context): GhostChoice =
     context.getSharedPreferences("tegenwind", Context.MODE_PRIVATE).getString(PREF_GHOST, null)
@@ -194,9 +204,13 @@ fun LiveMapCard(ride: LiveRide, nowMs: Long) {
                         youColor = SpeedColor,
                         // Off the route, or not on it yet: a red line back to its nearest point, anywhere along it.
                         features = loaded.features,
-                        offRouteTo = if (!onRoute || progress!!.offRoute) {
-                            loaded.line.pointAt(loaded.line.project(you).alongM)
-                        } else null,
+                        // Off the route, by more than the GPS can tell apart, or not on it yet: a red
+                        // line back to its nearest point, anywhere along it. A cut corner counts too.
+                        offRouteTo = loaded.line.project(you).let { nearest ->
+                            if (!onRoute || progress!!.offRoute || nearest.offsetM > offRouteFromM(s.lastAccuracyM)) {
+                                loaded.line.pointAt(nearest.alongM)
+                            } else null
+                        },
                     )
                     if (gapM != null) {
                         Column(

@@ -268,8 +268,9 @@ no streets, no labels. For a road you ride every day the shape is enough.
     - a bridge as a band of `Water` across the road under it, and a light railing (1.5 dp at 60%)
       on each side of the road over the bridge's length;
     - traffic lights as small amber dots (4 dp, dark rim) where they really are, one per junction.
-  - **Off the route** (or not on it yet), a thin red line (2 dp, `Danger`) runs from you to the
-    nearest point of the route, anywhere along it and however far away. When that point is out of
+  - **Off the route** (further from it than the GPS accuracy of your position, so a cut corner
+    counts too; or not on it yet), a thin red line (2 dp, `Danger`) runs from you to the nearest
+    point of the route, anywhere along it and however far away. When that point is out of
     view the line runs off the edge, pointing the way back. It is drawn under your arrow.
   - **The gap to the ghost** is in the map's top-right corner, on a card-coloured chip at 75%:
     the distance over the time, `headlineSmall` semibold, as "+40 m" over "+0:08". Green when ahead,

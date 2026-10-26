@@ -23,6 +23,8 @@ data class RideSnapshot(
     val lastFixMs: Long?,
     val lastLat: Double? = null,
     val lastLon: Double? = null,
+    /** How far off the phone says that position may be, m; null when it didn't say. */
+    val lastAccuracyM: Double? = null,
     val distanceM: Double,
     val movingMs: Long,
     val paused: Boolean,
@@ -100,6 +102,7 @@ class RideTracker(private val startedAtMs: Long) {
         lastFixMs = last?.timeMs,
         lastLat = last?.lat,
         lastLon = last?.lon,
+        lastAccuracyM = last?.accuracyM,
         distanceM = distanceM,
         movingMs = movingMs,
         paused = paused,
