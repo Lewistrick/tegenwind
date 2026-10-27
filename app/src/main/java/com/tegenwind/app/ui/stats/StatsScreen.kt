@@ -66,6 +66,7 @@ import kotlin.math.floor
 import kotlin.math.log10
 import kotlin.math.pow
 import kotlin.math.roundToInt
+import com.tegenwind.app.ui.theme.AxisInk
 
 @Composable
 fun StatsScreen() {
@@ -492,7 +493,7 @@ internal fun shortDate(epochMs: Long): String =
 @Composable
 private fun DurationHistogram(rides: List<RideEntity>) {
     val measurer = rememberTextMeasurer()
-    val labelStyle = TextStyle(color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
+    val labelStyle = TextStyle(color = AxisInk, fontSize = 10.sp)
     val gridColor = MaterialTheme.colorScheme.outlineVariant
 
     val bins = remember(rides) { minuteBins(rides.map { durationMs(it) / 60_000.0 }) }

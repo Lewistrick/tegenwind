@@ -52,6 +52,7 @@ import com.tegenwind.app.ui.theme.scaleColor
 import com.tegenwind.app.weather.compassPoint
 import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
+import com.tegenwind.app.ui.theme.AxisInk
 
 @Composable
 fun RouteDetailScreen(routeId: Long, onBack: () -> Unit, onOpen: (Long) -> Unit) {
@@ -162,7 +163,7 @@ internal fun ExposureStrip(segments: List<RouteSegmentEntity>, lengthM: Double, 
     val bar = MaterialTheme.colorScheme.onSurfaceVariant
     val light = MaterialTheme.colorScheme.primary
     val measurer = rememberTextMeasurer()
-    val labelStyle = TextStyle(color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
+    val labelStyle = TextStyle(color = AxisInk, fontSize = 10.sp)
     Canvas(modifier) {
         val axisH = if (axis) 16.dp.toPx() else 0f
         val h = size.height - axisH

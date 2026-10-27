@@ -150,6 +150,8 @@ fun HeadingMap(
     offRouteTo: GeoPoint? = null,
     /** Side roads, bridges and traffic lights around the route ([com.tegenwind.app.routes.mapFeatures]). */
     features: List<MapFeature> = emptyList(),
+    /** Where you were over the last minute, oldest first: a thin light line with a dot at each fix. */
+    trail: List<GeoPoint> = emptyList(),
 ) {
     val plain = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = ROAD_ALPHA)
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
@@ -225,6 +227,11 @@ fun HeadingMap(
             if (o.x < -FLAG.toPx() || o.x > size.width + FLAG.toPx() || o.y < 0 || o.y > size.height + FLAG.toPx()) continue
             flag(o, FLAG.toPx(), youColor.copy(alpha = if (f.passed) FLAG_PASSED_ALPHA else 1f), card)
         }
+        // The way you actually went over the last minute, over the road and under the red line.
+        if (trail.size >= 2) {
+            drawPath(pathOf(trail), ink.copy(alpha = TRAIL_ALPHA), style = Stroke(TRAIL.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
+        }
+        for (t in trail) drawCircle(ink.copy(alpha = TRAIL_ALPHA), TRAIL_DOT.toPx(), view.at(t))
         if (offRouteTo != null) {
             drawLine(Danger, view.at(you), view.at(offRouteTo), strokeWidth = OFF_ROUTE.toPx(), cap = StrokeCap.Round)
         }
@@ -253,6 +260,9 @@ private val RAIL_GAP = 2.dp
 private const val RAIL_ALPHA = 0.6f
 private val LIGHT = 4.dp
 private val OFF_ROUTE = 2.dp
+private val TRAIL = 1.5.dp
+private val TRAIL_DOT = 2.dp
+private const val TRAIL_ALPHA = 0.7f
 private val END = 5.dp
 private val ARROW = 26.dp
 private val FLAG = 16.dp

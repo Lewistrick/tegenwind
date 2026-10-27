@@ -410,6 +410,9 @@ can go underneath later.
   GPX file or one ride, and then ridden a little differently.
   - Every real ride moves the line a quarter of the way toward where it went, where it went within
     40 m. That is a fading average over about the last seven rides, and it settles within a metre.
+  - Only a ride that covered at least 75% of the line moves it (27 Oct 2026; was 50%). A stretch
+    ridden on another street counts as covered, so a detour doesn't stop its own ride from moving
+    the line.
   - A stretch ridden on another street (more than 40 m away, leaving and rejoining the line) moves
     that stretch of the line a quarter of the way toward it, however far it was (21 Oct 2026; before,
     one ride changed nothing there). Each point of the stretch moves toward the matching point of

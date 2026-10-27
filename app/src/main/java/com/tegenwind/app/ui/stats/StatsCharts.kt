@@ -23,6 +23,7 @@ import com.tegenwind.app.ui.theme.GoodColor
 import com.tegenwind.app.ui.theme.SpeedColor
 import kotlin.math.ceil
 import kotlin.math.floor
+import com.tegenwind.app.ui.theme.AxisInk
 
 // The charts of the Stats page that more than one number uses.
 
@@ -42,7 +43,7 @@ internal fun TrendChart(
     yLabel: (Double) -> String = { it.toInt().toString() },
 ) {
     val measurer = rememberTextMeasurer()
-    val labelStyle = TextStyle(color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
+    val labelStyle = TextStyle(color = AxisInk, fontSize = 10.sp)
     val gridColor = MaterialTheme.colorScheme.outlineVariant
     val ringColor = MaterialTheme.colorScheme.surfaceContainer
 
@@ -119,7 +120,7 @@ internal fun ScatterChart(
     xSteps: List<Double>? = null,
 ) {
     val measurer = rememberTextMeasurer()
-    val labelStyle = TextStyle(color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
+    val labelStyle = TextStyle(color = AxisInk, fontSize = 10.sp)
     val gridColor = MaterialTheme.colorScheme.outlineVariant
 
     Canvas(Modifier.fillMaxWidth().height(150.dp)) {
@@ -174,7 +175,7 @@ private val WEEKDAY_LABELS = listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "S
 @Composable
 internal fun WeekdayBars(days: List<Pair<Double, Int>?>) {
     val measurer = rememberTextMeasurer()
-    val labelStyle = TextStyle(color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
+    val labelStyle = TextStyle(color = AxisInk, fontSize = 10.sp)
     val gridColor = MaterialTheme.colorScheme.outlineVariant
 
     Canvas(Modifier.fillMaxWidth().height(150.dp)) {

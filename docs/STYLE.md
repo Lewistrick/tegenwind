@@ -38,7 +38,8 @@ there. Don't use a hex value in a screen.
 | `Surface2` | `#1D2528` | Things raised above a card: menus, the Stop button at rest (`surfaceVariant`) |
 | `Line` | `#2A3438` | Outlines, dividers, chart grid |
 | `Ink` | `#EDF2F0` | Text |
-| `InkMuted` | `#8E9A9E` | Labels, descriptions, axis text (`onSurfaceVariant`) |
+| `InkMuted` | `#8E9A9E` | Labels, descriptions (`onSurfaceVariant`) |
+| `AxisInk` | `#C3CCCA` | Chart tick labels and legends: readable at 10 sp, quieter than values |
 | `Amber` | `#F2B53A` | The accent (`primary`, `secondary`) |
 | `AmberInk` | `#241800` | Text on amber |
 | `AmberDim` | `#3B2F17` | Behind the selected tab (`secondaryContainer`) |
@@ -99,7 +100,7 @@ Material 3's default scale, used like this:
 | `bodySmall`, muted | Descriptions and explanations |
 | `labelMedium`, muted | The label above a value |
 | `labelSmall`, muted | A chart's subtitle |
-| 10 sp, muted | Chart axis labels, legend, chart chips |
+| 10 sp, `AxisInk` | Chart axis labels, legend, chart chips |
 
 - Any number that changes or sits in a column uses tabular figures: `fontFeatureSettings = "tnum"`.
 - Text never gets cut off or pushed off screen. Test at 360 dp wide (see section 9).
@@ -183,7 +184,7 @@ One scheme:
   edges as 1 dp lines in the same colour, and the area between them filled with that colour at 18%.
   Arrival time (HH:mm, ticks on whole minutes) runs upward, minutes since the start across.
 - **Axes:**
-  - labels at 10 sp, muted
+  - labels at 10 sp in `AxisInk` (muted grey was too faint to read)
   - grid lines 1 px in `Line`
   - ticks on round numbers (1, 2 or 5 × a power of ten), never two ticks with the same label
   - time labels carry their unit: "−2 min", "−1 min", "now"
@@ -268,8 +269,9 @@ no streets, no labels. For a road you ride every day the shape is enough.
     - a bridge as a band of `Water` across the road under it, and a light railing (1.5 dp at 60%)
       on each side of the road over the bridge's length;
     - traffic lights as small amber dots (4 dp, dark rim) where they really are, one per junction.
-  - **Off the route** (further from it than the GPS accuracy of your position, so a cut corner
-    counts too; or not on it yet), a thin red line (2 dp, `Danger`) runs from you to the nearest
+  - **Your last minute:** the positions of the last 60 s as small dots (2 dp) joined by a thin line
+    (1.5 dp), in `Ink` at 70%, over the road and under the red line and your arrow.
+  - **Off the route** by any distance (a cut corner, GPS wobble, or not on it yet), a thin red line (2 dp, `Danger`) runs from you to the nearest
     point of the route, anywhere along it and however far away. When that point is out of
     view the line runs off the edge, pointing the way back. It is drawn under your arrow.
   - **The gap to the ghost** is in the map's top-right corner, on a card-coloured chip at 75%:

@@ -44,6 +44,7 @@ import kotlin.math.floor
 import kotlin.math.log10
 import kotlin.math.pow
 import kotlin.math.roundToInt
+import com.tegenwind.app.ui.theme.AxisInk
 
 /** The expected line: the app's amber, nearly solid so it reads at a glance, and a little wider than the average line. */
 private const val EXPECTED_ALPHA = 0.9f
@@ -100,7 +101,7 @@ fun TimeSeriesChart(
     legend: Boolean = false,
 ) {
     val measurer = rememberTextMeasurer()
-    val labelStyle = TextStyle(color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
+    val labelStyle = TextStyle(color = AxisInk, fontSize = 10.sp)
     val gridColor = MaterialTheme.colorScheme.outlineVariant
     val average = remember(samples) { rollingMean(samples, TWO_MINUTES_MS) }
 
@@ -255,7 +256,7 @@ private object LegendShown {
 private fun ChartLegend(color: Color, expectedColor: Color?, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val open by remember { LegendShown.state(context) }
-    val ink = MaterialTheme.colorScheme.onSurfaceVariant
+    val ink = AxisInk
     val text = TextStyle(color = ink, fontSize = 10.sp, lineHeight = 12.sp)
     // Its own click, so tapping the legend doesn't also toggle the chart underneath.
     val toggle = Modifier.clickable { LegendShown.set(context, !open) }

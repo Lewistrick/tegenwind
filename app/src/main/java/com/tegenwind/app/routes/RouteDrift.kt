@@ -60,8 +60,11 @@ object RouteDrift {
     /** The moved line is stored without the points that lie within this of the rest. */
     const val STORE_TOLERANCE_M = 1.0
 
-    /** A ride says something about a line only when it was on at least this share of it. */
-    const val MIN_COVERAGE = 0.5
+    /**
+     * A ride moves a line only when it covered at least this share of it ([coverage]): a ride that
+     * broke off or joined halfway says too little about where the route runs.
+     */
+    const val MIN_COVERAGE = 0.75
     const val COVER_STEP_M = 25.0
 
     /** A detour is off the line for at least this many fixes, and its ends are this far apart. */
@@ -124,12 +127,20 @@ fun place(line: Polyline, fixes: List<GeoPoint>): List<Placed> {
     }
 }
 
-/** The share of [line] a ride was on: of its 25 m stretches, those with a fix within reach. */
+/**
+ * The share of [line] a ride covered: of its 25 m stretches, those with a fix within reach, and
+ * those it rode around on another street (between where a detour left the line and rejoined it):
+ * that part of the journey was ridden too, just elsewhere.
+ */
 fun coverage(line: Polyline, placed: List<Placed>): Double {
     val n = max(1, ceil(line.lengthM / RouteDrift.COVER_STEP_M).toInt())
     val hit = BooleanArray(n)
+    fun bin(alongM: Double) = (alongM / RouteDrift.COVER_STEP_M).toInt().coerceIn(0, n - 1)
     for (p in placed) {
-        if (p.offsetM <= RouteDrift.REACH_M) hit[(p.alongM / RouteDrift.COVER_STEP_M).toInt().coerceIn(0, n - 1)] = true
+        if (p.offsetM <= RouteDrift.REACH_M) hit[bin(p.alongM)] = true
+    }
+    for (d in detours(placed)) {
+        for (i in bin(d.leaveM)..bin(d.rejoinM)) hit[i] = true
     }
     return hit.count { it }.toDouble() / n
 }

@@ -114,15 +114,8 @@ private fun GapText(text: String, sign: Int) {
  * you as a blue arrow, and as a see-through white arrow the ghost, where it was this long after
  * setting off. In the top right, how far and how long you are ahead of or behind it.
  */
-/** For a fix the phone gave no accuracy for: about the width of a road. */
-private const val OFF_ROUTE_FALLBACK_M = 10.0
-
-/**
- * From how far off the route the live map draws the red line back to it: as far as the position
- * may be off by itself ([accuracyM], the phone's estimate), so it doesn't flicker while you're on
- * the road, but does show at a corner you cut.
- */
-fun offRouteFromM(accuracyM: Double?): Double = accuracyM ?: OFF_ROUTE_FALLBACK_M
+/** Below this the red line back to the route would be a dot under your arrow. */
+private const val MIN_RED_LINE_M = 0.5
 
 /** The ghost last chosen under the live map: the expected ride until another was picked. */
 fun savedGhostChoice(context: Context): GhostChoice =
@@ -204,12 +197,11 @@ fun LiveMapCard(ride: LiveRide, nowMs: Long) {
                         youColor = SpeedColor,
                         // Off the route, or not on it yet: a red line back to its nearest point, anywhere along it.
                         features = loaded.features,
-                        // Off the route, by more than the GPS can tell apart, or not on it yet: a red
-                        // line back to its nearest point, anywhere along it. A cut corner counts too.
+                        trail = s.trail,
+                        // Any distance off the line, however small: a red line back to its nearest
+                        // point, anywhere along it. A cut corner shows, and so does GPS wobble.
                         offRouteTo = loaded.line.project(you).let { nearest ->
-                            if (!onRoute || progress!!.offRoute || nearest.offsetM > offRouteFromM(s.lastAccuracyM)) {
-                                loaded.line.pointAt(nearest.alongM)
-                            } else null
+                            if (nearest.offsetM > MIN_RED_LINE_M) loaded.line.pointAt(nearest.alongM) else null
                         },
                     )
                     if (gapM != null) {

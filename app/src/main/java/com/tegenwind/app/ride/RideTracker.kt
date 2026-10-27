@@ -23,8 +23,6 @@ data class RideSnapshot(
     val lastFixMs: Long?,
     val lastLat: Double? = null,
     val lastLon: Double? = null,
-    /** How far off the phone says that position may be, m; null when it didn't say. */
-    val lastAccuracyM: Double? = null,
     val distanceM: Double,
     val movingMs: Long,
     val paused: Boolean,
@@ -34,6 +32,8 @@ data class RideSnapshot(
     val speeds: List<Sample>,
     /** Direction of travel, degrees clockwise from north; null until you've covered a little ground. */
     val headingDeg: Double? = null,
+    /** Where you were over the last minute, oldest first: the live map's trail of dots. */
+    val trail: List<GeoPoint> = emptyList(),
 )
 
 /**
@@ -49,6 +49,7 @@ class RideTracker(private val startedAtMs: Long) {
     private var paused = false
     private var speedKmh: Double? = null
     private val recent = ArrayDeque<Fix>()
+    private val trail = ArrayDeque<Fix>()
     private var headingDeg: Double? = null
 
     /** Returns false when the fix was too inaccurate or out of order to use. */
@@ -79,6 +80,8 @@ class RideTracker(private val startedAtMs: Long) {
         speeds += Sample(fix.timeMs, kmh)
         speedKmh = kmh
         last = fix
+        trail.addLast(fix)
+        while (fix.timeMs - trail.first().timeMs > TRAIL_MS) trail.removeFirst()
         updateHeading(fix)
         return true
     }
@@ -102,7 +105,6 @@ class RideTracker(private val startedAtMs: Long) {
         lastFixMs = last?.timeMs,
         lastLat = last?.lat,
         lastLon = last?.lon,
-        lastAccuracyM = last?.accuracyM,
         distanceM = distanceM,
         movingMs = movingMs,
         paused = paused,
@@ -110,10 +112,13 @@ class RideTracker(private val startedAtMs: Long) {
         speedKmh = speedKmh,
         speeds = speeds.toList(),
         headingDeg = headingDeg,
+        trail = trail.map { GeoPoint(it.lat, it.lon) },
     )
 
     companion object {
         const val MAX_ACCURACY_M = 20.0
+        /** How far back the live map's trail of your positions goes. */
+        const val TRAIL_MS = 60_000L
         const val HEADING_BASE_M = 25.0
         /** 30 s of fixes: enough to find 25 m of travel even at walking pace. */
         const val HEADING_WINDOW = 30

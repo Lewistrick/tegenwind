@@ -22,6 +22,7 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import kotlin.math.ceil
 import kotlin.math.floor
+import com.tegenwind.app.ui.theme.AxisInk
 
 private val clock: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 private val minuteSecond: DateTimeFormatter = DateTimeFormatter.ofPattern("':'mm:ss")
@@ -63,7 +64,7 @@ fun arrivalAxis(points: List<ArrivalPoint>): ArrivalAxis? {
 @Composable
 fun ArrivalChart(points: List<ArrivalPoint>, axis: TimeAxis?, modifier: Modifier = Modifier) {
     val measurer = rememberTextMeasurer()
-    val labelStyle = TextStyle(color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
+    val labelStyle = TextStyle(color = AxisInk, fontSize = 10.sp)
     val gridColor = MaterialTheme.colorScheme.outlineVariant
     Canvas(modifier) {
         // Only what the time axis shows, from a point before it so the line enters from the left edge.

@@ -118,6 +118,7 @@ import com.tegenwind.app.weather.beaufort
 import com.tegenwind.app.weather.compassPoint
 import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
+import com.tegenwind.app.ui.theme.AxisInk
 
 private const val PREF_ROUTE = "lastRouteId"
 private const val PREF_SHARE_LIVE = "shareLive"
@@ -906,7 +907,7 @@ private fun ChartChip(text: String, modifier: Modifier = Modifier) {
         modifier
             .background(MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.85f), RoundedCornerShape(4.dp))
             .padding(horizontal = 5.dp, vertical = 2.dp),
-        style = TextStyle(color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, lineHeight = 12.sp),
+        style = TextStyle(color = AxisInk, fontSize = 10.sp, lineHeight = 12.sp),
     )
 }
 

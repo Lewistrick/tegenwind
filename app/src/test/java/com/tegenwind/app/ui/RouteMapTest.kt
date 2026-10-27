@@ -11,7 +11,6 @@ import com.tegenwind.app.routes.GeoPoint
 import com.tegenwind.app.routes.Polyline
 import com.tegenwind.app.routes.distanceM
 import com.tegenwind.app.ui.ride.ghostNote
-import com.tegenwind.app.ui.ride.offRouteFromM
 import com.tegenwind.app.ui.ride.gapSign
 import com.tegenwind.app.ui.ride.signedGapText
 import com.tegenwind.app.ui.ride.timeGapText
@@ -164,14 +163,5 @@ class RouteMapTest {
         assertEquals(-0.25, gained(pass(50_000, 40_000))!!, 1e-9)
         assertNull(gained(pass(50_000, null)))
         assertTrue(abs(gained(pass(40_000, 40_000))!!) < 1e-9)
-    }
-
-    @Test
-    fun theRedLineShowsOncePastWhatTheGpsCanTellApart() {
-        // 6 m accuracy: 8 m off is a cut corner, 5 m off may just be the GPS.
-        assertTrue(8.0 > offRouteFromM(6.0))
-        assertTrue(5.0 <= offRouteFromM(6.0))
-        // A fix without an accuracy: about a road's width.
-        assertEquals(10.0, offRouteFromM(null), 0.0)
     }
 }

@@ -11,6 +11,8 @@ val Surface2 = Color(0xFF1D2528)
 val Line = Color(0xFF2A3438)
 val Ink = Color(0xFFEDF2F0)
 val InkMuted = Color(0xFF8E9A9E)
+/** Chart tick labels: brighter than [InkMuted], which is hard to read at 10 sp, but quieter than [Ink]. */
+val AxisInk = Color(0xFFC3CCCA)
 val Amber = Color(0xFFF2B53A)
 val AmberInk = Color(0xFF241800)
 /** Amber dimmed into the dark: the background of a selected tab. */

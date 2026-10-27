@@ -95,7 +95,18 @@ class RouteDriftTest {
     fun aRideOnTooLittleOfTheLineSaysNothing() {
         val folder = LineFolder(straight, quarters)
         assertFalse(folder.fold(ride(-20.0 to 8.0, 300.0 to 8.0)))
+        // 70% of the line is still too little; 80% is enough.
+        assertFalse(folder.fold(ride(-20.0 to 8.0, 700.0 to 8.0)))
         assertFalse(folder.changed)
+        assertTrue(folder.fold(ride(-20.0 to 8.0, 800.0 to 8.0)))
+        assertTrue(folder.changed)
+    }
+
+    @Test
+    fun aStretchRiddenOnAnotherStreetCountsAsCovered() {
+        // 400 of 1000 m on a street 100 m away, the rest on the line: covered, so it can move the line.
+        assertEquals(1.0, coverage(straight, place(straight, around(100.0))), 0.05)
+        assertTrue(LineFolder(straight, quarters).fold(around(100.0), earlier = listOf(beside(0.0), beside(0.0))))
     }
 
     @Test
