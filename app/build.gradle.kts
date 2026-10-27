@@ -18,6 +18,15 @@ val secrets = Properties().apply {
 }
 fun secret(name: String): String = secrets.getProperty(name, "")
 
+/**
+ * The version is the number of commits, so every build of a newer main counts higher than the one
+ * on the phone and installs over it, from Android Studio or from a GitHub release alike.
+ */
+val commitCount: Int = runCatching {
+    providers.exec { commandLine("git", "rev-list", "--count", "HEAD") }
+        .standardOutput.asText.get().trim().toInt()
+}.getOrDefault(1)
+
 android {
     namespace = "com.tegenwind.app"
     compileSdk {
@@ -28,8 +37,8 @@ android {
         applicationId = "com.tegenwind.app"
         minSdk = 34
         targetSdk = 37
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = commitCount
+        versionName = "1.0.$commitCount"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
