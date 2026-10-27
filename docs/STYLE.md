@@ -195,6 +195,9 @@ One scheme:
   of a caption that describes the lines.
 - **Annotations,** like "last 2 min", go on the same kind of chip in the top-right corner.
 - **A card around a chart** is `ChartCard(title, subtitle)`.
+- **A ride's page** shows speed and heart rate on one time axis, from the ride's start to its
+  finish (`startMs`/`endMs`), so a moment sits above the same spot on both. Where a chart has no
+  data, it draws nothing: a gap, not a line across.
 - **Charts stacked on one time** share its axis (`TimeAxis`): on the ride screen the speed chart and
   the arrival-time chart show the same stretch of the ride, laid out the same way and with the same
   room for value labels (`CHART_PAD_LEFT`), so a moment sits above the same spot on both. Tapping
@@ -222,6 +225,10 @@ One scheme:
     edges of the bars are whole minutes, as narrow as can be with at most 10 bars, and each edge is
     labelled under the place where one bar ends and the next begins. A ride on an edge counts in the
     bar that starts there.
+  - **On a ride's page, "Among your rides"** is a histogram of the route's ride times with exactly
+    10 equal bars from the fastest to the slowest, the count above each bar. Every bar is labelled
+    under it with the middle of its range (m:ss), every other label a row lower so ten fit side by
+    side. This ride's bar is full blue, the others the same blue at 35%.
   - **Weekday bars:** the average duration for each weekday, Monday first, bars in blue; a weekday
     without rides has no bar. The minutes axis fits the bars instead of starting at 0, because the
     weekdays differ by a few minutes; the subtitle says so.
@@ -258,11 +265,11 @@ no streets, no labels. For a road you ride every day the shape is enough.
   - Segment borders are small blue checkpoint flags (a pole with a pennant, upright on screen):
     bright ahead, at 35% once passed.
   - **The ghost** is picked under the map: the expected ride (the default), or your median, best or
-    last ride, where it was this long after setting off. The expected ride holds your
-    usual effort (the median watts of your last 10 real rides) against today's wind, slope and open
-    road: into a headwind it is slower than on a calm day, with a tailwind faster. It never waits at
-    a light, so a red light costs you time against it. Before your first real ride there is no
-    expected ride.
+    last ride, where it was this long after setting off. The expected ride is the arrival time
+    predicted at the start, laid along the route: each segment as fast as the prediction expects
+    there (learned from your rides, for today's wind), standing at its end as long as you usually
+    do. It arrives when Tegenwind predicted, so ahead of it is ahead of the prediction. It waits
+    at the start until you set off, like your own clock.
   - **Around the route,** from the route's map lookup (OpenStreetMap), under everything else:
     - side roads as short stubs (40 m from where they meet the route), in the road's grey but
       fainter (40%) and thinner (5 dp), so they read as streets that join, not as the way to go;
@@ -295,7 +302,8 @@ no streets, no labels. For a road you ride every day the shape is enough.
     the same pace on a calm day.
   - Form (a speed ratio to the model rider) is never shown. On the ride screen your watts so far
     are followed by your usual, the median of your last 10 real rides: "≈125 W · usually ≈118 W".
-    It's the same effort the expected ride rides at, so ahead of it and above your usual agree.
+    The expected ride follows the predicted arrival instead (section 7), which counts the waiting
+    at lights too.
   - Estimates on the Stats page carry "≈" like power does: kcal burned (effort × time moving ÷ 24%
     muscle efficiency), petrol and CO₂ saved (against a petrol car at 6.5 L/100 km, 2.31 kg CO₂
     per litre) and the time the wind cost or gave back. The card says what they are worked out from.

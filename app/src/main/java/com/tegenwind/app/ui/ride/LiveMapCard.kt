@@ -45,7 +45,6 @@ import com.tegenwind.app.ui.theme.GoodColor
 import com.tegenwind.app.ui.theme.Ink
 import com.tegenwind.app.ui.theme.SpeedColor
 import com.tegenwind.app.ui.mapAspect
-import com.tegenwind.app.ui.rides.usualWatts
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
@@ -138,17 +137,16 @@ fun LiveMapCard(ride: LiveRide, nowMs: Long) {
     val ghost by produceState<Ghost?>(null, loaded.route.id, loaded.line, choice, startedAtMs, learned, setup) {
         val rides = container.db.rides()
         if (choice == GhostChoice.EXPECTED) {
-            val params = setup.params()
-            val segments = loaded.etaModel(learned, params).segments
-            // Your usual effort: none before a real ride on record, and none on a bike that rides itself.
-            val powerW = usualWatts(rides.recentRidesWithPower()) ?: return@produceState
+            // The arrival time predicted at the start, laid along the route.
+            val model = loaded.etaModel(learned, setup.params())
+            val form = container.recorder.startingForm
             var weather = container.weather.alongRoute(loaded.line)
-            value = withContext(Dispatchers.Default) { expectedGhost(segments, params, loaded.profile, weather, powerW, startedAtMs) }
+            value = withContext(Dispatchers.Default) { expectedGhost(model, loaded.profile, weather, form, startedAtMs) }
             // Without a forecast it is still air, until one arrives.
             while (weather == null) {
                 delay(60_000)
                 weather = container.weather.alongRoute(loaded.line)
-                if (weather != null) value = withContext(Dispatchers.Default) { expectedGhost(segments, params, loaded.profile, weather, powerW, startedAtMs) }
+                if (weather != null) value = withContext(Dispatchers.Default) { expectedGhost(model, loaded.profile, weather, form, startedAtMs) }
             }
         } else {
             val pick = pickGhostRide(rides.ridesForRoute(loaded.route.id).first(), choice, loaded.line.lengthM)

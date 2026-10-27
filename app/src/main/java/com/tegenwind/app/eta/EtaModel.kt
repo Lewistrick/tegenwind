@@ -113,6 +113,10 @@ class EtaModel(
         return seconds
     }
 
+    /** How long you're expected to stand still on [s]: learned from its passes, or a guess from its traffic lights. */
+    fun stopAt(s: EtaSegment): StopExpectation =
+        s.stop ?: StopExpectation(s.signals * learned.stopMeanS, s.signals * learned.stopVarS2)
+
     /** [weather] gives each segment the forecast nearest to it, for the moment you're expected there. */
     fun predict(progressM: Double, nowMs: Long, weather: RouteWeather?, form: FormEstimate): Eta {
         var clockMs = nowMs.toDouble()
@@ -136,7 +140,7 @@ class EtaModel(
             // out over a long route.
             segVar += t * t * (s.learned.logVar + learned.passExtra * learned.passExtra)
             // Standing still is counted at the end of its segment.
-            val stop = s.stop ?: StopExpectation(s.signals * learned.stopMeanS, s.signals * learned.stopVarS2)
+            val stop = stopAt(s)
             stops += stop.meanS
             stopVar += stop.varS2
             clockMs += stop.meanS * 1000

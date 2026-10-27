@@ -42,4 +42,21 @@ class RideSummaryTest {
         // Segment 0: quicker than all three. 1: only as quick. 2: slower. 3: too few earlier passes.
         assertEquals(listOf(0), recordSegments(mine, earlier))
     }
+
+    @Test
+    fun tenEqualBinsFromFastestToSlowestWithTheSlowestInTheLast() {
+        // 20:00 to 30:00: one minute per bin.
+        val all = listOf(20, 21, 21, 24, 25, 29, 30).map { it * 60_000L }
+        val bins = timeBins(all, mine = 24 * 60_000L)!!
+        assertEquals(listOf(1, 2, 0, 0, 1, 1, 0, 0, 0, 2), bins.counts.toList())
+        assertEquals(4, bins.mine)
+        assertEquals(60_000.0, bins.widthMs, 0.0)
+        assertEquals(24 * 60_000L + 30_000L, bins.middleMs(4))
+    }
+
+    @Test
+    fun onlyOneTimeHasNoBins() {
+        assertNull(timeBins(listOf(1_000L, 1_000L), mine = 1_000L))
+        assertNull(timeBins(emptyList(), mine = 1_000L))
+    }
 }
