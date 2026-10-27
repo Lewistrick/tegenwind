@@ -53,3 +53,24 @@ fun recordSegments(mine: List<SegmentTraversalEntity>, earlier: List<SegmentTrav
         others.size >= minEarlier && others.all { (p.exitMs - p.enterMs) < (it.exitMs - it.enterMs) }
     }.map { it.segIdx }.sorted()
 }
+
+/**
+ * The route's ride times in [counts.size] equal bins from the fastest ([fromMs]) to the slowest,
+ * each [widthMs] wide; [mine] is the bin this ride is in. The slowest ride counts in the last bin.
+ */
+class TimeBins(val fromMs: Long, val widthMs: Double, val counts: IntArray, val mine: Int) {
+    /** The middle of bin [i]: what its bar is labelled with. */
+    fun middleMs(i: Int): Long = (fromMs + (i + 0.5) * widthMs).toLong()
+}
+
+/** [all] (start-to-finish ms of the route's rides, this one's [mine] among them) in [bins] bins. Null with fewer than two different times. */
+fun timeBins(all: List<Long>, mine: Long, bins: Int = 10): TimeBins? {
+    val from = all.minOrNull() ?: return null
+    val to = all.max()
+    if (to <= from) return null
+    val width = (to - from).toDouble() / bins
+    fun binOf(t: Long) = ((t - from) / width).toInt().coerceIn(0, bins - 1)
+    val counts = IntArray(bins)
+    all.forEach { counts[binOf(it)]++ }
+    return TimeBins(from, width, counts, binOf(mine))
+}

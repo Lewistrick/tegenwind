@@ -169,6 +169,15 @@ fun RideDetailScreen(rideId: Long, onBack: () -> Unit, backLabel: String = "Ride
 
         if (!r.simulated) HowItWentCard(r, routeRides, routePasses, summaryRoute, ghostChoice)
 
+        // Where this ride's time falls among the route's rides, in ten bars.
+        if (!r.simulated && routeRides.size >= 3 && routeRides.any { it.id == r.id }) {
+            timeBins(routeRides.map(::totalMs), totalMs(r))?.let { bins ->
+                ChartCard("Among your rides", "rides on this route by time, start to finish · each bar says the middle of its range · this ride is the bright bar") {
+                    TimeHistogram(bins)
+                }
+            }
+        }
+
         // How the time ranks among the route's rides is in "How it went" above.
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             StatTile("Distance", "%.2f km".format(r.distanceM / 1000), Modifier.weight(1f))
@@ -183,14 +192,21 @@ fun RideDetailScreen(rideId: Long, onBack: () -> Unit, backLabel: String = "Ride
         }
 
         ChartCard("Speed") {
-            TimeSeriesChart(speeds, SpeedColor, Modifier.fillMaxWidth().height(150.dp), yRange = 0.0..45.0, legend = true)
+            TimeSeriesChart(
+                speeds, SpeedColor, Modifier.fillMaxWidth().height(150.dp),
+                startMs = r.startedAtMs, endMs = r.endedAtMs ?: r.startedAtMs, yRange = 0.0..45.0, legend = true,
+            )
         }
 
         // A simulated ride has no heart rate to show or wait for.
         if (!r.simulated) when (val state = hr) {
             HrState.Loading -> ChartCard("Heart rate", "loading…") { }
             is HrState.Loaded -> ChartCard("Heart rate", "max ${state.samples.maxOf { it.value }.toInt()} bpm") {
-                TimeSeriesChart(state.samples, HeartColor, Modifier.fillMaxWidth().height(150.dp), gapMs = 120_000, legend = true)
+                // On the same time axis as speed, start to finish, so a moment sits above the same spot on both.
+                TimeSeriesChart(
+                    state.samples, HeartColor, Modifier.fillMaxWidth().height(150.dp),
+                    startMs = r.startedAtMs, endMs = r.endedAtMs ?: r.startedAtMs, gapMs = 120_000, legend = true,
+                )
             }
             else -> Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {

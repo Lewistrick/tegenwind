@@ -1,6 +1,8 @@
 package com.tegenwind.app.ride
 
+import com.tegenwind.app.eta.EtaModel
 import com.tegenwind.app.eta.EtaSegment
+import com.tegenwind.app.eta.FormEstimate
 import com.tegenwind.app.eta.Physics
 import com.tegenwind.app.eta.RiddenStretch
 import com.tegenwind.app.eta.RiderParams
@@ -22,31 +24,43 @@ class ExpectedGhostTest {
 
     private fun wind(fromDeg: Double) = RouteWeather.everywhere(WindForecast(listOf(WindSample(0, 6.0, fromDeg, 15.0))))
 
+    private val model = EtaModel(segments, params)
+    private val usual = FormEstimate(1.0, 0.0)
+
     @Test
-    fun itHoldsYourEffortAndRidesStraightThroughTheLights() {
-        val ghost = expectedGhost(segments, params, null, null, 140.0, 0)
-        val speed = Physics.speedMps(140.0, 0.0, 0.0, rho, params)
-        // 2.5 km at what 140 W carries you: not a second more for the ten lights.
-        assertEquals(2500.0 / speed, ghost.totalS, 1.0)
-        assertEquals(1250.0, ghost.alongAt(1250.0 / speed), 15.0)
+    fun itArrivesWhenTheArrivalTimePredictedAtTheStartSays() {
+        val ghost = expectedGhost(model, null, null, 1.0, 0)
+        assertEquals(model.predict(0.0, 0, null, usual).remainingS, ghost.totalS, 1.0)
+        val windy = expectedGhost(model, null, wind(0.0), 1.0, 0)
+        assertEquals(model.predict(0.0, 0, wind(0.0), usual).remainingS, windy.totalS, 1.0)
+    }
+
+    @Test
+    fun itStandsAtEachSegmentsLightsAsLongAsYouUsuallyDo() {
+        val ghost = expectedGhost(model, null, null, 1.0, 0)
+        val movingS = model.movingTimeS(0.0, 2500.0, 0, null)
+        assertEquals(movingS + 10 * model.stopAt(segments[0]).meanS, ghost.totalS, 1.0)
+        // Arrived at the end of the first segment, it waits there before riding on.
+        val atLight = ghost.elapsedAt(250.0)!!
+        assertEquals(250.0, ghost.alongAt(atLight + model.stopAt(segments[0]).meanS / 2), 0.01)
     }
 
     @Test
     fun aHeadwindHoldsItBackAndATailwindSpeedsItUp() {
-        val calm = expectedGhost(segments, params, null, null, 140.0, 0).totalS
+        val calm = expectedGhost(model, null, null, 1.0, 0).totalS
         // Heading north: wind from the north is a headwind, from the south a tailwind.
-        assertTrue(expectedGhost(segments, params, null, wind(0.0), 140.0, 0).totalS > calm * 1.15)
-        assertTrue(expectedGhost(segments, params, null, wind(180.0), 140.0, 0).totalS < calm * 0.9)
+        assertTrue(expectedGhost(model, null, wind(0.0), 1.0, 0).totalS > calm * 1.1)
+        assertTrue(expectedGhost(model, null, wind(180.0), 1.0, 0).totalS < calm * 0.95)
     }
 
     @Test
-    fun moreEffortIsFaster() {
-        assertTrue(expectedGhost(segments, params, null, null, 160.0, 0).totalS < expectedGhost(segments, params, null, null, 140.0, 0).totalS)
+    fun betterFormIsFaster() {
+        assertTrue(expectedGhost(model, null, null, 1.1, 0).totalS < expectedGhost(model, null, null, 1.0, 0).totalS)
     }
 
     @Test
     fun theGhostReachesEachSpotAtTheTimeItSays() {
-        val ghost = expectedGhost(segments, params, null, null, 140.0, 0)
+        val ghost = expectedGhost(model, null, null, 1.0, 0)
         val at = ghost.elapsedAt(1000.0)!!
         assertEquals(1000.0, ghost.alongAt(at), 1.0)
         assertNull(ghost.elapsedAt(2600.0))
@@ -61,10 +75,6 @@ class ExpectedGhostTest {
         // ...and the same time spent in calm air would have taken far less.
         val calm = listOf(RiddenStretch(2000.0, 0.0, 0.0, 2000.0 / v))
         assertTrue(SteadyPower.watts(calm, params)!! < 110.0)
-        // The expected ride at that effort in that wind takes just as long.
-        val ghost = expectedGhost(segments.take(8), params, null, wind(0.0), 150.0, 0)
-        val head = Physics.headwindMps(6.0, 0.0, 0.0, 1.0)
-        assertEquals(2000.0 / Physics.speedMps(150.0, 0.0, head, rho, params), ghost.totalS, 1.0)
     }
 
     @Test

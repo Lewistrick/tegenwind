@@ -73,6 +73,8 @@ internal fun niceIntStep(mn: Double, mx: Double): Double {
  * The lines break where there is no data for [gapMs], so gaps are never papered over.
  *
  * @param windowMs show only the last [windowMs] before [endMs]; null shows everything.
+ * @param startMs with [endMs] and no window: the axis runs from [startMs] to [endMs] whatever the
+ *   samples cover, so charts of the same ride line up; where a series has no data, nothing is drawn.
  * @param yRange fixed axis range, or null to fit the data.
  * @param niceY when fitting the data (yRange null), round to a step that keeps ticks legible on a
  *   narrow range (e.g. speed over a 2-minute window) instead of the coarser default used for HR.
@@ -91,6 +93,7 @@ fun TimeSeriesChart(
     modifier: Modifier = Modifier,
     windowMs: Long? = null,
     endMs: Long? = null,
+    startMs: Long? = null,
     yRange: ClosedFloatingPointRange<Double>? = null,
     niceY: Boolean = false,
     logXWhenFull: Boolean = false,
@@ -112,7 +115,7 @@ fun TimeSeriesChart(
                 drawText(layout, topLeft = Offset((size.width - layout.size.width) / 2, (size.height - layout.size.height) / 2))
                 return@Canvas
             }
-            val axis = TimeAxis(samples.first().timeMs, samples.last().timeMs, windowMs, endMs, logXWhenFull)
+            val axis = TimeAxis(samples.first().timeMs, samples.last().timeMs, windowMs, endMs, logXWhenFull, startMs)
             val left = axis.left
             val right = axis.right
             val firstVisible = samples.indexOfFirst { it.timeMs >= left }.coerceAtLeast(0)

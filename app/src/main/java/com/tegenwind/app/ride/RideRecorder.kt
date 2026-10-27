@@ -112,6 +112,10 @@ class RideRecorder(
     /** The route being ridden: with auto-select, the likeliest one so far. */
     val ridingRoute: LoadedRoute? get() = route
 
+    /** Your form when this ride began: what the arrival time predicted at the start, and the expected ride, are ridden at. */
+    var startingForm: Double = 1.0
+        private set
+
     private var tracker: RideTracker? = null
     private var routeTracker: RouteTracker? = null
     private var route: LoadedRoute? = null
@@ -145,8 +149,8 @@ class RideRecorder(
     private var autoFinishCancelled = false
     private var sharePromptAnswered = false
 
-    /** The first fix seen while still standing at the start, to measure the first metres against. */
-    private var waitingSince: Fix? = null
+    /** Tells when you really leave after tapping Start. */
+    private val departure = SetOff()
 
     /** The weather on each segment when you left it, by position in the route's segment list. */
     private val riddenWeather = HashMap<Int, SegmentWeather>()
@@ -182,12 +186,13 @@ class RideRecorder(
         bike = setupNow.activeBike
         params = setupNow.params()
         model = route?.etaModel(learnedNow, params)
+        startingForm = priorForm
         form = FormEstimator(prior = priorForm, priorSd = learnedNow.formSd * priorForm, obsSd = learnedNow.passNoise * priorForm, drift = learnedNow.formDrift)
         formObservedM = 0.0
         stretches.reset()
         autoFinishCancelled = false
         sharePromptAnswered = false
-        waitingSince = null
+        departure.reset()
         riddenWeather.clear()
         weather = null
         traversals.clear()
@@ -219,18 +224,15 @@ class RideRecorder(
 
     /**
      * Nothing is recorded between tapping Start and actually setting off, so the time spent opening
-     * a maps app or starting a workout on the watch isn't part of the ride. Returns true once this
-     * fix says you're moving, from which moment the ride's clock, track and stats begin.
+     * a maps app or starting a workout on the watch isn't part of the ride, and the ghost waits too.
+     * Null while you're still at the start; once you've left, the fixes since you last stood still,
+     * from which moment the ride's clock, track and stats begin (see [SetOff]).
      */
-    private fun setOff(fix: Fix): Boolean {
-        val from = waitingSince ?: fix.also { waitingSince = it }
-        val rolling = (fix.speedMps ?: 0.0) >= RideTracker.STOP_SPEED_MPS
-        val moved = haversineM(from.lat, from.lon, fix.lat, fix.lon) >= SET_OFF_M
-        if (!rolling && !moved) return false
-        tracker = RideTracker(fix.timeMs)
-        waitingSince = null
+    private fun setOff(fix: Fix): List<Fix>? {
+        val ridden = departure.add(fix) ?: return null
+        tracker = RideTracker(ridden.first().timeMs)
         _live.value = _live.value?.copy(started = true, snapshot = tracker!!.snapshot())
-        return true
+        return ridden
     }
 
     fun setWeather(w: RouteWeather) {
@@ -239,11 +241,12 @@ class RideRecorder(
     }
 
     fun onFix(fix: Fix) {
-        var ride = _live.value ?: return
-        if (!ride.started) {
-            if (!setOff(fix)) return
-            ride = _live.value!!
-        }
+        val ride = _live.value ?: return
+        if (ride.started) record(fix) else setOff(fix)?.forEach { record(it) }
+    }
+
+    private fun record(fix: Fix) {
+        val ride = _live.value ?: return
         val t = tracker ?: return
         val point = TrackPointEntity(
             rideId = ride.rideId, timeMs = fix.timeMs, lat = fix.lat, lon = fix.lon,
@@ -660,7 +663,5 @@ class RideRecorder(
         const val MIN_MOVING_MS = 5_000L
         /** The form of a ride is only kept once it rests on this much road: three segments' worth. */
         const val MIN_FORM_M = 750.0
-        /** Far enough from where you tapped Start to call it setting off, if GPS speed doesn't say so. */
-        const val SET_OFF_M = 25.0
     }
 }

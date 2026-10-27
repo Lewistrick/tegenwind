@@ -15,7 +15,8 @@ val CHART_PAD_LEFT = 36.dp
 /**
  * The time axis of a chart: what [com.tegenwind.app.ui.TimeSeriesChart] and [ArrivalChart] share, so
  * that a moment sits above the same spot on both when they are stacked. Either the last [windowMs]
- * before [endMs] (default: the last data), or everything from [firstMs] to [endMs]; the whole ride
+ * before [endMs] (default: the last data), or everything from [startMs] (default: the first data)
+ * to [endMs]; the whole ride
  * can be laid out on a log scale ([logXWhenFull]), which gives the most recent stretch the most room.
  */
 class TimeAxis(
@@ -24,9 +25,10 @@ class TimeAxis(
     windowMs: Long? = null,
     endMs: Long? = null,
     logXWhenFull: Boolean = false,
+    startMs: Long? = null,
 ) {
     val right: Long = endMs ?: lastMs
-    val left: Long = if (windowMs != null) right - windowMs else firstMs
+    val left: Long = if (windowMs != null) right - windowMs else startMs ?: firstMs
     val windowed: Boolean = windowMs != null
     private val span: Float = (right - left).coerceAtLeast(60_000L).toFloat()
     private val useLogX = logXWhenFull && windowMs == null

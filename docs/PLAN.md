@@ -374,12 +374,24 @@ can go underneath later.
 - **End-of-ride card** ("How it went", top of a ride's page): place among the route's rides, the
   result against the ghost chosen on the live map (for the expected ride: the arrival predicted at
   the start), and the segments where this was the quickest pass yet (`ui/rides/RideSummary.kt`,
-  tested).
+  tested). Under it, "Among your rides": the route's ride times in 10 equal bars, this ride's bar
+  bright (`ui/rides/TimeHistogram.kt`).
+- **The expected ride** (27 Oct 2026) is the arrival time predicted at the start, laid along the
+  route: each segment at the speed the prediction expects there (learned from your rides, corrected
+  for the forecast wind, at your starting form), standing at its end as long as you usually do. It
+  used to ride your usual watts on physics alone and never stop, so it was ahead of a typical ride
+  by all your waiting at lights. Now ahead of it means ahead of the prediction.
+- **A ride's speed and heart rate charts** share one time axis, from start to finish; where either
+  has no data, nothing is drawn.
 
 ### Riding and routes
 
-- **Recording** starts only when you set off (moving, or 25 m from where you tapped Start), so the
-  time spent at the door isn't part of the ride. A ride that never sets off isn't kept.
+- **Recording** starts only when you set off, so the time spent at the door isn't part of the ride
+  and the ghost waits too. GPS speed and a single far-off position wander while you stand, so
+  neither counts: you have set off once an accurate position (20 m or better) is 15 m further from
+  where you stood than both positions' accuracy. The ride then begins at the last position still at
+  that spot, and the positions since are recorded too (`ride/SetOff.kt`, tested). A ride that never
+  sets off isn't kept.
 - **Live pipeline:** as planned (Doppler speed, fixes worse than 20 m dropped, auto-pause below
   1.5 km/h after 5 s, screen kept on), except the rolling line is a median, which rides through GPS
   spikes, and there is no landscape layout.
