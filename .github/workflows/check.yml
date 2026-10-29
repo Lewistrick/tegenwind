@@ -1,0 +1,37 @@
+# Builds the app and runs the unit tests on every push to a branch other than main, so a change is
+# known to compile before it's merged. It publishes nothing: releases come from main (release.yml).
+name: Check
+
+on:
+  push:
+    branches-ignore: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The version is the commit count, which needs the whole history.
+          fetch-depth: 0
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      # Signed with a throwaway debug key: this build is only checked, never installed.
+      - name: Test and build
+        run: ./gradlew testDebugUnitTest assembleDebug
+
+      # A database change exports a new schema file, which belongs in the repository.
+      - name: Schema files not in the repository
+        if: always()
+        run: git status --porcelain app/schemas
