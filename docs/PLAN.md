@@ -383,6 +383,19 @@ can go underneath later.
   by all your waiting at lights. Now ahead of it means ahead of the prediction.
 - **A ride's speed and heart rate charts** share one time axis, from start to finish; where either
   has no data, nothing is drawn.
+- **A ride on a street map** (29 Oct 2026): "Show on a street map" under a ride's map opens it full
+  screen on OpenStreetMap's tiles, turned dark (`ui/rides/RideStreetMap.kt`). It shows the route as
+  the ride had it (planned), the ride's own track coloured by a picker (against predicted, speed,
+  or the route map's colourings), and the route after it learned from the ride, which is what the
+  next ride gets. Each can be switched off.
+  - The tiles are drawn by the app (`ui/OsmMap.kt`, `ui/OsmTiles.kt`, arithmetic in
+    `ui/WebMercator.kt`, tested), so still no map library. They come from tile.openstreetmap.org on
+    its conditions: the app's User-Agent, at most two fetches at a time, only tiles on screen, kept
+    in the app's cache for a week.
+  - Each ride's line before and after the line learned from it is written when the ride is folded
+    into the line (`foldRidesIntoLine` → `RideLineStore`): a small file per ride in
+    `files/ride-lines`, two lines of polyline6 text, not the database, so no migration. Rides folded
+    in before this show the route as it is now.
 
 ### Riding and routes
 

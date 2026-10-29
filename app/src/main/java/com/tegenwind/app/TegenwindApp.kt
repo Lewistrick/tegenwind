@@ -18,13 +18,16 @@ import com.tegenwind.app.ride.backfillProfiles
 import com.tegenwind.app.ride.backfillSteadyPower
 import com.tegenwind.app.ride.backfillWeather
 import com.tegenwind.app.weather.WeatherHistory
+import com.tegenwind.app.routes.RideLineStore
 import com.tegenwind.app.routes.RouteEnricher
 import com.tegenwind.app.routes.RouteRepository
+import com.tegenwind.app.ui.OsmTiles
 import com.tegenwind.app.weather.WeatherRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import java.io.File
 
 class TegenwindApp : Application() {
     lateinit var container: AppContainer
@@ -58,7 +61,11 @@ class AppContainer(app: Application) {
     val healthConnect = HealthConnectHr(app)
     val heartRate = HeartRateStore(healthConnect, db.rides())
     val liveShare = LiveShare()
-    val routes: RouteRepository = RouteRepository(db.routes(), db.rides(), RouteEnricher(), appScope) { recorder.live.value != null }
+    /** Each ride's route line before and after the line learned from it, for the ride's street map. */
+    val rideLines = RideLineStore(File(app.filesDir, "ride-lines"))
+    val routes: RouteRepository = RouteRepository(db.routes(), db.rides(), RouteEnricher(), appScope, rideLines) { recorder.live.value != null }
+    /** OpenStreetMap's map tiles, kept on the phone once fetched. */
+    val tiles = OsmTiles(File(app.cacheDir, "osm-tiles"))
     val weather = WeatherRepository()
 
     init {

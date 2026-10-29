@@ -39,3 +39,10 @@ The version is the number of commits (`1.0.<count>`), set in `app/build.gradle.k
 newer `main`, from GitHub or from Android Studio, always counts higher than an older one, so it
 installs over it. Installing a build of an older commit than the one on the phone fails as a
 downgrade.
+
+## Every other branch
+
+Pushing to any branch but `main` runs `.github/workflows/check.yml`: it builds the app and runs the
+unit tests, and publishes nothing. A red cross on the branch means it doesn't build or a test fails;
+the run's log on GitHub (Actions → Check) says which. It also lists a database schema file the build
+exported that isn't committed yet.

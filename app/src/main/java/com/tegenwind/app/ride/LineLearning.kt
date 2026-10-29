@@ -112,7 +112,9 @@ private const val FULL_RIDE_SHARE = 0.9
  * Folds the rides on a route that aren't in its line yet into it, oldest first: see [LineFolder].
  * Only [rerouteRideId], the ride that just finished, may reroute a stretch; the others only nudge.
  * Nothing is stored when [commit] says no once it's all worked out: a ride has started meanwhile, on
- * the line as it was. Returns true when a stretch was rerouted, which needs the map lookup again.
+ * the line as it was. Once stored, [onFolded] hears of every ride folded in: the line before it and
+ * after it (the same line when the ride didn't move it). Returns true when a stretch was rerouted,
+ * which needs the map lookup again.
  */
 suspend fun foldRidesIntoLine(
     rideDao: RideDao,
@@ -120,6 +122,7 @@ suspend fun foldRidesIntoLine(
     routeId: Long,
     rerouteRideId: Long? = null,
     commit: () -> Boolean = { true },
+    onFolded: suspend (rideId: Long, planned: Polyline, after: Polyline) -> Unit = { _, _, _ -> },
 ): Boolean {
     val stored = routeDao.full(routeId) ?: return false
     if (stored.points.size < 2) return false
@@ -129,18 +132,23 @@ suspend fun foldRidesIntoLine(
         Polyline(stored.points.map { GeoPoint(it.lat, it.lon) }),
         stored.segments.map { it.startM to it.endM },
     )
+    // Each ride's line before and after it was folded in, for its map.
+    val folded = ArrayList<Triple<Long, Polyline, Polyline>>()
     for (ride in rides) {
         val fixes = fixesOf(rideDao.points(ride.id))
         val earlier = if (ride.id != rerouteRideId) null else {
             rideDao.twoRidesOnRouteBefore(routeId, ride.startedAtMs).map { fixesOf(rideDao.points(it.id)) }
         }
+        val planned = folder.line
         // Thousands of fixes against the line: off the main thread.
         withContext(Dispatchers.Default) { folder.fold(fixes, earlier) }
+        folded += Triple(ride.id, planned, folder.line)
     }
     val foldedThroughMs = rides.last().startedAtMs
     if (!commit()) return false
     if (!folder.changed) {
         routeDao.setLineFolded(routeId, foldedThroughMs)
+        folded.forEach { (rideId, planned, after) -> onFolded(rideId, planned, after) }
         return false
     }
     val line = folder.line
@@ -154,6 +162,7 @@ suspend fun foldRidesIntoLine(
     ) { segments, profile ->
         rebuildSegments(routeId, spans, segments, line) to remapProfile(profile, folder::map)
     }
+    folded.forEach { (rideId, planned, after) -> onFolded(rideId, planned, after) }
     val rerouted = folder.rerouted ?: return false
     if (rerouteRideId != null) rideDao.setReroute(rerouteRideId, rerouted.first, rerouted.second, folder.reroutedFully)
     return true

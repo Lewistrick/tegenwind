@@ -27,6 +27,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -97,6 +98,7 @@ fun RideDetailScreen(rideId: Long, onBack: () -> Unit, backLabel: String = "Ride
     var confirmReplaceRoute by remember { mutableStateOf(false) }
     var taught by remember { mutableStateOf<Taught?>(null) }
     var mapData by remember { mutableStateOf<RideMapData?>(null) }
+    var streetMap by rememberSaveable { mutableStateOf(false) }
     val hrPermissionLauncher = rememberLauncherForActivityResult(
         PermissionController.createRequestPermissionResultContract()
     ) { hrRefresh++ }
@@ -230,7 +232,8 @@ fun RideDetailScreen(rideId: Long, onBack: () -> Unit, backLabel: String = "Ride
             }
         }
 
-        mapData?.let { RideMapCard(it) }
+        mapData?.let { RideMapCard(it, onOpenStreetMap = { streetMap = true }) }
+        if (streetMap) RideStreetMapDialog(rideId) { streetMap = false }
 
         val rerouted = reroute?.let { rr -> rr.rerouteStartM?.let { from -> rr.rerouteEndM?.let { to -> from to to } } }
         WhatThisRideTaughtCard(taught, rerouted, reroute?.rerouteFull != false, onRoute = r.routeId != null, simulated = r.simulated)
@@ -266,6 +269,7 @@ fun RideDetailScreen(rideId: Long, onBack: () -> Unit, backLabel: String = "Ride
                             confirmDelete = false
                             scope.launch {
                                 dao.delete(rideId)
+                                withContext(Dispatchers.IO) { container.rideLines.forget(rideId) }
                                 onBack()
                             }
                         } else confirmDelete = true

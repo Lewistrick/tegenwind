@@ -63,6 +63,8 @@ class RouteRepository(
     private val rideDao: RideDao,
     private val enricher: RouteEnricher,
     private val scope: CoroutineScope,
+    /** Where each ride's line before and after learning from it is kept, for the ride's map. */
+    private val rideLines: RideLineStore? = null,
     /** True while a ride is being recorded: its route's line must stay as the ride loaded it. */
     private val isRiding: () -> Boolean = { false },
 ) {
@@ -114,7 +116,11 @@ class RouteRepository(
      */
     suspend fun learnLine(routeId: Long, rerouteRideId: Long? = null) {
         val rerouted = try {
-            lineLock.withLock { foldRidesIntoLine(rideDao, dao, routeId, rerouteRideId, commit = { !isRiding() }) }
+            lineLock.withLock {
+                foldRidesIntoLine(rideDao, dao, routeId, rerouteRideId, commit = { !isRiding() }) { rideId, planned, after ->
+                    rideLines?.let { store -> withContext(Dispatchers.IO) { store.save(rideId, planned, after) } }
+                }
+            }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {

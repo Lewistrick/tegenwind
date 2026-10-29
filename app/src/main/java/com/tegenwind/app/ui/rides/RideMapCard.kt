@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -87,10 +88,11 @@ fun rideMapData(
 
 /**
  * Where the ride went. On a route, each stretch is coloured by the time gained or lost against what
- * was predicted for it that day, and tapping one says by how much.
+ * was predicted for it that day, and tapping one says by how much. [onOpenStreetMap] opens the ride
+ * on a full-screen street map.
  */
 @Composable
-fun RideMapCard(data: RideMapData) {
+fun RideMapCard(data: RideMapData, onOpenStreetMap: (() -> Unit)? = null) {
     if (data.track.size < 2 && data.line == null) return
     var selected by remember(data) { mutableStateOf<Int?>(null) }
     val onRoute = data.line != null && data.passes.isNotEmpty()
@@ -120,6 +122,9 @@ fun RideMapCard(data: RideMapData) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     minLines = 2,
                 )
+            }
+            onOpenStreetMap?.let { open ->
+                OutlinedButton(onClick = open, modifier = Modifier.fillMaxWidth()) { Text("Show on a street map") }
             }
         }
     }

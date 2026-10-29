@@ -55,7 +55,7 @@ there. Don't use a hex value in a screen.
   - the main action and button text
   - the selected tab
   - the wind arrow
-  - what is expected (the expected-speed line)
+  - what is expected (the expected-speed line; on a ride's street map, the route as your next ride gets it)
   - traffic lights
 - **Blue** is speed, and nothing else, except the arrival-time chart, and your arrow and the
   checkpoint flags on the ride screen's map.
@@ -288,6 +288,28 @@ no streets, no labels. For a road you ride every day the shape is enough.
 - **Tapping a stretch** gives it a light edge and says what is known about it in one muted line
   under the map. That line keeps two lines of room, so the page doesn't jump.
 - The ride screen's map is 1.25 times as wide as high. Other maps are as wide as the card and as tall as the route needs (between 1.3 and 2.8 times as wide as high).
+- **A ride's street map** opens full screen from "Show on a street map" under a ride's map
+  (`ui/rides/RideStreetMap.kt`). The only map with streets: OpenStreetMap's tiles (`ui/OsmMap.kt`),
+  made dark like the rest of the app (inverted, turned half way round the colour wheel so water
+  stays blue and parks green, and dimmed). Drag to move, pinch or double-tap to zoom; "Whole ride"
+  opens it on everything again. "© OpenStreetMap contributors" always stays in the bottom right
+  corner and links to the licence.
+  - **Planned** (the route as this ride had it): a light band, 9 dp, `Ink` at 30%, with small grey
+    dots at its ends.
+  - **Next ride**: the route after it learned from this ride, a dashed amber line (2.5 dp, dashes of
+    8 dp with 5 dp gaps). "After ride" when later rides have moved the route since. When the ride
+    didn't move the route there is one band, called "Route"; for rides from before lines were kept,
+    that band is the route as it is now.
+  - **Ridden**: the ride's own track, 4 dp on a dark edge, coloured by the picker under the map:
+    against predicted (as on the ride's own map), speed against the ride's own median (the
+    red–yellow–green scale, fully from a quarter), or the route map's learned pace, wind exposure,
+    slope and standing still. Where there is nothing to say (off the route) it is `Ink` at 70%.
+  - **Dots:** amber where you stood still; under "Standing still" the route's traffic lights where
+    they really are, amber or grey as on the route's map.
+  - Under the map, on the card colour: the picker, what the colours mean, then one toggle per line,
+    which is also its legend (each shows the line's own look; 48 dp high, filled when on), then one
+    line about what was tapped. Tapping the track rings the nearest fix and says how far into the
+    ride it was, the speed there and what is known about the stretch.
 
 ## 8. Words
 
