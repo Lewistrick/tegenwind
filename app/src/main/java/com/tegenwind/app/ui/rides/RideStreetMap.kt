@@ -220,6 +220,8 @@ fun RideStreetMap(rideId: Long, onClose: () -> Unit) {
                     fitTo = d.all,
                     modifier = Modifier.fillMaxSize(),
                     fitKey = fitCount,
+                    // Clear of the status bar and the buttons over the map.
+                    fitTopPad = 96.dp,
                     onTap = { at, projector -> selected = if (showRidden) nearestFix(d, projector, at, TAP_REACH_PX) else null },
                 ) { p ->
                     val band = d.bandWorld

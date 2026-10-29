@@ -78,21 +78,32 @@ fun visibleTiles(center: WorldXY, zoom: Double, widthPx: Float, heightPx: Float,
     return out.sortedBy { (it.x - cx) * (it.x - cx) + (it.y - cy) * (it.y - cy) }
 }
 
-/** The view that shows all of [points]: its middle and zoom, leaving [padPx] free along every edge. */
-fun fitView(points: List<WorldXY>, widthPx: Float, heightPx: Float, tilePx: Float, padPx: Float): Pair<WorldXY, Double> {
+/**
+ * The view that shows all of [points]: its middle and zoom, leaving [padPx] free along every edge
+ * and [topPadPx] along the top, where buttons sit over the map.
+ */
+fun fitView(
+    points: List<WorldXY>,
+    widthPx: Float,
+    heightPx: Float,
+    tilePx: Float,
+    padPx: Float,
+    topPadPx: Float = padPx,
+): Pair<WorldXY, Double> {
     if (points.isEmpty()) return WorldXY(0.5, 0.5) to OsmZoom.MIN
     val minX = points.minOf { it.x }
     val maxX = points.maxOf { it.x }
     val minY = points.minOf { it.y }
     val maxY = points.maxOf { it.y }
-    val center = WorldXY((minX + maxX) / 2, (minY + maxY) / 2)
     val w = (widthPx - 2 * padPx).coerceAtLeast(1f)
-    val h = (heightPx - 2 * padPx).coerceAtLeast(1f)
+    val h = (heightPx - padPx - topPadPx).coerceAtLeast(1f)
     // A single spot, or a ride that never moved: close enough in to see the streets.
     val spanX = (maxX - minX).coerceAtLeast(1e-9)
     val spanY = (maxY - minY).coerceAtLeast(1e-9)
-    val zoom = minOf(log2(w / (spanX * tilePx)), log2(h / (spanY * tilePx)))
-    return center to zoom.coerceIn(OsmZoom.MIN, 17.0)
+    val zoom = minOf(log2(w / (spanX * tilePx)), log2(h / (spanY * tilePx))).coerceIn(OsmZoom.MIN, 17.0)
+    // The free part's middle lies half the difference in padding below the view's: the view moves up as much.
+    val shift = (topPadPx - padPx) / 2 / worldPx(zoom, tilePx)
+    return WorldXY((minX + maxX) / 2, (minY + maxY) / 2 - shift) to zoom
 }
 
 /**

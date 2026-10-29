@@ -71,6 +71,17 @@ class WebMercatorTest {
     }
 
     @Test
+    fun roomForButtonsAlongTheTopMovesTheRideDown() {
+        val ride = listOf(GeoPoint(52.0907, 5.1214), GeoPoint(52.1100, 5.1500), GeoPoint(52.0950, 5.1800)).map(::worldOf)
+        val (center, zoom) = fitView(ride, 1080f, 1500f, 704f, 77f, topPadPx = 264f)
+        val world = worldPx(zoom, 704f)
+        for (p in ride) {
+            val y = (p.y - center.y) * world + 750
+            assertTrue(y in 263.0..1424.0)
+        }
+    }
+
+    @Test
     fun aSingleSpotOpensCloseInButNotFurtherThanStreetLevel() {
         val (_, zoom) = fitView(listOf(worldOf(dam)), 1080f, 1500f, 704f, 77f)
         assertEquals(17.0, zoom, 0.0)

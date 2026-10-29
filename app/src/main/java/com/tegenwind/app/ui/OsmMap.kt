@@ -34,6 +34,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
@@ -85,7 +86,8 @@ private val FIT_PAD = 28.dp
 
 /**
  * A street map from OpenStreetMap, dark like the rest of the app, opened on all of [fitTo] and
- * opened on it again whenever [fitKey] changes. Drag to move, pinch or double-tap to zoom.
+ * opened on it again whenever [fitKey] changes; [fitTopPad] keeps it clear of buttons along the
+ * top. Drag to move, pinch or double-tap to zoom.
  * [overlay] draws on top of the streets, with a [MapProjector] for the view as it is; [onTap] gets
  * where a single tap landed, on screen. OpenStreetMap's credit sits in the bottom right corner, as
  * its licence asks.
@@ -95,6 +97,7 @@ fun OsmMap(
     fitTo: List<WorldXY>,
     modifier: Modifier = Modifier,
     fitKey: Any? = null,
+    fitTopPad: Dp = FIT_PAD,
     onTap: ((Offset, MapProjector) -> Unit)? = null,
     overlay: DrawScope.(MapProjector) -> Unit,
 ) {
@@ -103,6 +106,7 @@ fun OsmMap(
     val density = LocalDensity.current
     val tilePx = with(density) { TILE_SIZE.toPx() }
     val padPx = with(density) { FIT_PAD.toPx() }
+    val topPadPx = with(density) { fitTopPad.toPx() }
     val dark = remember { ColorFilter.colorMatrix(ColorMatrix(darkTileMatrix())) }
     val background = MaterialTheme.colorScheme.background
     // The latest tap handler, without restarting the gesture detection each time it changes.
@@ -110,8 +114,9 @@ fun OsmMap(
     BoxWithConstraints(modifier.clipToBounds().background(background)) {
         val widthPx = constraints.maxWidth.toFloat()
         val heightPx = constraints.maxHeight.toFloat()
-        val view = remember(fitKey) {
-            val (center, zoom) = fitView(fitTo, widthPx, heightPx, tilePx, padPx)
+        // Opened again once the map has a size: a view fitted to no room at all would show the whole country.
+        val view = remember(fitKey, widthPx > 0f && heightPx > 0f) {
+            val (center, zoom) = fitView(fitTo, widthPx, heightPx, tilePx, padPx, topPadPx)
             OsmView(center, zoom)
         }
         val visible = visibleTiles(view.center, view.zoom, widthPx, heightPx, tilePx)
